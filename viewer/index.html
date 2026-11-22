@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>入卷 · 清明上河图一段</title>
+<style>
+  :root { --paper:#EDE6D6; --ink:#2A2620; --zhu:#B0362B; --panel:rgba(250,246,236,.92); }
+  html,body { margin:0; height:100%; background:var(--paper); color:var(--ink);
+    font-family:"Noto Serif SC","Songti SC",serif; overflow:hidden; }
+  canvas { display:block; touch-action:none; }
+  #hud { position:fixed; left:12px; top:12px; background:var(--panel); padding:10px 12px;
+    border:1px solid #cbbfa6; border-radius:6px; max-width:min(360px, calc(100vw - 48px)); font-size:13px; line-height:1.55; }
+  #hud h1 { font-size:15px; margin:0 0 6px; }
+  #hud .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { font:inherit; font-size:13px; padding:4px 10px; border:1px solid #9c8f74; background:#fffaf0;
+    border-radius:4px; cursor:pointer; color:var(--ink); }
+  button[aria-pressed="true"] { background:var(--zhu); color:#fff; border-color:var(--zhu); }
+  #help { color:#5d5546; font-size:12px; }
+  #status { font-size:12px; color:#5d5546; }
+  #credit { font-size:11px; color:#7a705e; margin-top:6px; border-top:1px solid #d8ccb2; padding-top:5px; }
+  #seal { position:fixed; right:14px; top:14px; writing-mode:vertical-rl; background:var(--zhu); color:#fff;
+    padding:8px 5px; font-size:14px; letter-spacing:3px; border-radius:3px; opacity:.9; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud">
+  <h1>入卷 · 清院本清明上河图（一段）</h1>
+  <div class="row">
+    <button id="bPaint" aria-pressed="true">画卷视角</button>
+    <button id="bFly">飞入画中</button>
+    <button id="bWalk" aria-pressed="false">漫游</button>
+    <button id="bOrbit" aria-pressed="false">俯瞰</button>
+  </div>
+  <div class="row"><button id="bModels" aria-pressed="false" hidden>房屋：纸片</button></div>
+  <div id="help"></div>
+  <div id="status">加载中…</div>
+  <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。</div>
+</div>
+<div id="seal">入卷 v1</div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const params = new URLSearchParams(location.search);
+const base = (params.get("scene") || "../data/seg01/scene/").replace(/\/?$/, "/");
+const L = await fetch(base + "layout.json").then(r => r.json());
+const th = THREE.MathUtils.degToRad(L.camera.elev_deg);
+const s = L.camera.m_per_px, W = L.image.width, H = L.image.height;
+const GW = L.ground.width, GD = L.ground.depth;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xEDE6D6);
+const loader = new THREE.TextureLoader();
+const tex = url => { const t = loader.load(base + url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+
+// Ground: the painting with objects removed, mapped affinely onto the ground plane.
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBasicMaterial({ map: tex(L.ground.tex) }));
+ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -GD / 2); scene.add(ground);
+const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
+apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.add(apron);
+
+// Cards: fixed ones face the painting's viewer (+Z); sprites turn to face the camera about Y.
+const sprites = [], swapCards = [], models = [];
+for (const o of L.objects) {
+  const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
+  const m = new THREE.MeshBasicMaterial({ map: tex(o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(o.x, 0, o.z); mesh.userData = o; scene.add(mesh);
+  if (o.billboard === "sprite") sprites.push(mesh);
+  if (o.mesh) { swapCards.push(mesh); mesh.visible = false; }
+}
+// 3D models (pipeline/mesh.py): texture is the painting projected from the painting camera,
+// so they are drawn unlit, like the cards.
+const gltf = new GLTFLoader();
+await Promise.all(L.objects.filter(o => o.mesh).map(o => new Promise(res => gltf.load(base + o.mesh.glb, g => {
+  g.scene.traverse(n => {
+    if (!n.isMesh) return;
+    const map = n.material.map; if (map) map.colorSpace = THREE.SRGBColorSpace;
+    n.material = new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
+  });
+  g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene); res();
+}, undefined, () => res()))));
+let showModels = true;
+function setModels(on) {
+  showModels = on;
+  for (const m of models) m.visible = on;
+  for (const c of swapCards) c.visible = !on;
+  const b = document.getElementById("bModels");
+  b.setAttribute("aria-pressed", String(on)); b.textContent = on ? `房屋：3D 模型（${models.length}）` : "房屋：纸片";
+}
+
+// --- cameras ---
+const dir = new THREE.Vector3(0, -Math.sin(th), -Math.cos(th));
+const viewH = H * s;                       // screen-space height of the painting
+const paintCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
+const persp = new THREE.PerspectiveCamera(60, 1, 0.05, 4000);
+let pan = 0;                               // horizontal scroll position in metres
+const minPan = -GW / 2, maxPan = GW / 2;
+function paintTarget() { return new THREE.Vector3(pan, 0, -viewH / 2 / Math.sin(th)); }
+function placePaintCam() {
+  const a = innerWidth / innerHeight;
+  paintCam.top = viewH / 2; paintCam.bottom = -viewH / 2;
+  paintCam.left = -a * viewH / 2; paintCam.right = a * viewH / 2;
+  const t = paintTarget();
+  paintCam.position.copy(t).addScaledVector(dir, -1000);
+  paintCam.up.set(0, 1, 0); paintCam.lookAt(t); paintCam.updateProjectionMatrix();
+}
+const orbit = new OrbitControls(persp, renderer.domElement); orbit.enabled = false;
+
+let mode = "paint", cam = paintCam;
+const help = {
+  paint: "拖动或滚轮：展开画卷。这是原画的视角，场景在这里与原画重合。",
+  walk: "WASD / 方向键走动，拖动鼠标转头，Shift 加速，Q/E 升降。",
+  orbit: "拖动旋转，右键平移，滚轮缩放。",
+  fly: "飞入中…",
+};
+function setMode(m) {
+  mode = m;
+  for (const [id, k] of [["bPaint", "paint"], ["bWalk", "walk"], ["bOrbit", "orbit"]])
+    document.getElementById(id).setAttribute("aria-pressed", String(k === m));
+  document.getElementById("help").textContent = help[m];
+  orbit.enabled = m === "orbit";
+  cam = m === "paint" ? paintCam : persp;
+  if (m === "paint") placePaintCam();
+  if (m === "orbit") {
+    persp.fov = 50; persp.updateProjectionMatrix();
+    orbit.target.copy(paintTarget());
+    persp.position.copy(orbit.target).add(new THREE.Vector3(0, GD * 0.6, GD * 0.9));
+    orbit.update();
+  }
+}
+
+// --- walk controls ---
+const walk = { yaw: 0, pitch: -0.05, pos: new THREE.Vector3(0, 1.6, 2) };
+const keys = new Set();
+addEventListener("keydown", e => keys.add(e.key.toLowerCase()));
+addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+let drag = null;
+renderer.domElement.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY }; });
+addEventListener("pointerup", () => drag = null);
+addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY };
+  if (mode === "walk") { walk.yaw -= dx * 0.004; walk.pitch = THREE.MathUtils.clamp(walk.pitch - dy * 0.004, -1.4, 1.4); }
+  if (mode === "paint") { pan = THREE.MathUtils.clamp(pan - dx * viewH / innerHeight, minPan, maxPan); placePaintCam(); }
+});
+renderer.domElement.addEventListener("wheel", e => {
+  if (mode !== "paint") return;
+  e.preventDefault();
+  pan = THREE.MathUtils.clamp(pan + (e.deltaY + e.deltaX) * viewH / innerHeight * 0.5, minPan, maxPan); placePaintCam();
+}, { passive: false });
+function applyWalk() {
+  persp.position.copy(walk.pos);
+  persp.quaternion.setFromEuler(new THREE.Euler(walk.pitch, walk.yaw, 0, "YXZ"));
+}
+
+// --- fly into the painting: narrow-FOV far camera (≈ the orthographic view) → street level ---
+let fly = null;
+function startFly() {
+  const t = paintTarget();
+  const f0 = 1.0, D = viewH / 2 / Math.tan(THREE.MathUtils.degToRad(f0 / 2));
+  const p0 = t.clone().addScaledVector(dir, -D);
+  const q0 = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(p0, t, new THREE.Vector3(0, 1, 0)));
+  walk.pos.set(pan, 1.6, -GD * 0.25); walk.yaw = 0; walk.pitch = -0.04;
+  const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(walk.pitch, walk.yaw, 0, "YXZ"));
+  fly = { t0: performance.now(), dur: 6000, p0, p1: walk.pos.clone(), q0, q1, f0, f1: 60 };
+  mode = "fly"; cam = persp; orbit.enabled = false;
+  document.getElementById("help").textContent = help.fly;
+}
+function stepFly(now) {
+  const u = Math.min(1, (now - fly.t0) / fly.dur);
+  const e = u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+  // FOV in log space; position follows the dolly so the framing changes smoothly.
+  const f = Math.exp(Math.log(fly.f0) * (1 - e) + Math.log(fly.f1) * e);
+  persp.fov = f; persp.updateProjectionMatrix();
+  const ef = Math.pow(e, 0.35);  // distance collapses early, rotation finishes late
+  persp.position.lerpVectors(fly.p0, fly.p1, ef);
+  persp.quaternion.slerpQuaternions(fly.q0, fly.q1, e);
+  if (u >= 1) { fly = null; setMode("walk"); }
+}
+
+document.getElementById("bPaint").onclick = () => setMode("paint");
+document.getElementById("bWalk").onclick = () => { walk.pos.set(pan, 1.6, -GD * 0.25); setMode("walk"); };
+document.getElementById("bOrbit").onclick = () => setMode("orbit");
+document.getElementById("bFly").onclick = () => startFly();
+document.getElementById("bModels").onclick = () => setModels(!showModels);
+if (models.length) { document.getElementById("bModels").hidden = false; setModels(true); }
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  persp.aspect = innerWidth / innerHeight; persp.updateProjectionMatrix();
+  if (mode === "paint") placePaintCam();
+}
+addEventListener("resize", resize); resize(); setMode("paint");
+
+const clock = new THREE.Clock();
+const fwd = new THREE.Vector3(), right = new THREE.Vector3();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (mode === "fly") stepFly(now);
+  if (mode === "walk") {
+    const v = (keys.has("shift") ? 9 : 3) * dt;
+    fwd.set(-Math.sin(walk.yaw), 0, -Math.cos(walk.yaw)); right.set(-fwd.z, 0, fwd.x);
+    if (keys.has("w") || keys.has("arrowup")) walk.pos.addScaledVector(fwd, v);
+    if (keys.has("s") || keys.has("arrowdown")) walk.pos.addScaledVector(fwd, -v);
+    if (keys.has("d") || keys.has("arrowright")) walk.pos.addScaledVector(right, v);
+    if (keys.has("a") || keys.has("arrowleft")) walk.pos.addScaledVector(right, -v);
+    if (keys.has("e")) walk.pos.y += v; if (keys.has("q")) walk.pos.y = Math.max(0.3, walk.pos.y - v);
+    applyWalk();
+  }
+  const camPos = cam.position;
+  for (const sp of sprites) sp.rotation.y = mode === "paint" ? 0 : Math.atan2(camPos.x - sp.position.x, camPos.z - sp.position.z);
+  renderer.render(scene, cam);
+});
+const counts = {};
+for (const o of L.objects) counts[o.label] = (counts[o.label] || 0) + 1;
+document.getElementById("status").textContent =
+  `${L.objects.length} 个物体 · ` + Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(" · ") +
+  ` · 段 x=${L.x0}–${L.x1}px · 仰角 ${L.camera.elev_deg}°`;
+window.__scene = { L, setMode, startFly, setModels, models, renderer, scene, persp, orbit, walk };
+</script>
+</body>
+</html>
