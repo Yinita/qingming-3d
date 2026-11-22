@@ -41,9 +41,9 @@
   <div class="row"><button id="bModels" aria-pressed="false" hidden>房屋：纸片</button></div>
   <div id="help"></div>
   <div id="status">加载中…</div>
-  <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。</div>
+  <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1</div>
+<div id="seal">入卷 v1.1</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -72,15 +72,43 @@ const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.
 apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.add(apron);
 
 // Cards: fixed ones face the painting's viewer (+Z); sprites turn to face the camera about Y.
-const sprites = [], swapCards = [], models = [];
+// offPainting: extras that exist only away from the painting view (cross cards, shadows), so the
+// painting view still reproduces the scroll exactly.
+const sprites = [], swapCards = [], models = [], offPainting = [];
+const SHADOWED = new Set(["person", "horse", "donkey", "ox", "cart", "sedan chair", "tree", "umbrella"]);
+const shadowSpots = [];
 for (const o of L.objects) {
   const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
-  const m = new THREE.MeshBasicMaterial({ map: tex(o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
+  const m = new THREE.MeshBasicMaterial({ map: tex(o.tex_hd || o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, m);
   mesh.position.set(o.x, 0, o.z); mesh.userData = o; scene.add(mesh);
   if (o.billboard === "sprite") sprites.push(mesh);
   if (o.mesh) swapCards.push(mesh);
+  if (o.label === "tree") {
+    // A second card at right angles: the tree keeps its volume when seen from the side.
+    const x = new THREE.Mesh(g, m); x.rotation.y = Math.PI / 2; mesh.add(x); offPainting.push(x);
+  }
+  if (SHADOWED.has(o.label)) shadowSpots.push(o);
 }
+// Contact shadows: one instanced soft ellipse per grounded object.
+{
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const x = c.getContext("2d"), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, "rgba(60,45,30,0.55)"); gr.addColorStop(0.6, "rgba(60,45,30,0.22)"); gr.addColorStop(1, "rgba(60,45,30,0)");
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  const sg = new THREE.PlaneGeometry(1, 1); sg.rotateX(-Math.PI / 2);
+  const sm = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false });
+  const inst = new THREE.InstancedMesh(sg, sm, shadowSpots.length);
+  const M = new THREE.Matrix4();
+  shadowSpots.forEach((o, i) => {
+    const w = o.label === "tree" ? o.w * 0.75 : o.w * 1.1, d = o.label === "tree" ? o.w * 0.6 : Math.max(0.5, o.w * 0.55);
+    M.compose(new THREE.Vector3(o.x + 0.08 * o.h, 0.015, o.z - 0.05 * o.h), new THREE.Quaternion(), new THREE.Vector3(w, 1, d));
+    inst.setMatrixAt(i, M);
+  });
+  inst.renderOrder = -1; scene.add(inst); offPainting.push(inst);
+}
+// Atmospheric haze for the perspective views (the scroll's own paper colour); off in the painting view.
+const haze = new THREE.Fog(0xEDE6D6, 45, 260);
 // 3D models (pipeline/mesh.py): drawn unlit like the cards (their texture is the painting itself).
 // Loaded in the background: the card scene shows at once, each house swaps to its model on arrival.
 const gltf = new GLTFLoader();
@@ -132,6 +160,10 @@ function placePaintCam() {
 const orbit = new OrbitControls(persp, renderer.domElement); orbit.enabled = false;
 
 let mode = "paint", cam = paintCam;
+function setPaintingExact(on) {
+  for (const e of offPainting) e.visible = !on;
+  scene.fog = on ? null : haze;
+}
 const help = {
   paint: "拖动或滚轮：展开画卷。这是原画的视角，场景在这里与原画重合。",
   walk: "WASD / 方向键走动，拖动鼠标转头，Shift 加速，Q/E 升降。",
@@ -145,6 +177,7 @@ function setMode(m) {
   document.getElementById("help").textContent = help[m];
   orbit.enabled = m === "orbit";
   cam = m === "paint" ? paintCam : persp;
+  setPaintingExact(m === "paint");
   if (m === "paint") placePaintCam();
   if (m === "orbit") {
     persp.fov = 50; persp.updateProjectionMatrix();
@@ -188,7 +221,7 @@ function startFly() {
   walk.pos.set(pan, 1.6, -GD * 0.25); walk.yaw = 0; walk.pitch = -0.04;
   const q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(walk.pitch, walk.yaw, 0, "YXZ"));
   fly = { t0: performance.now(), dur: 6000, p0, p1: walk.pos.clone(), q0, q1, f0, f1: 60 };
-  mode = "fly"; cam = persp; orbit.enabled = false;
+  mode = "fly"; cam = persp; orbit.enabled = false; setPaintingExact(false);
   document.getElementById("help").textContent = help.fly;
 }
 function stepFly(now) {
