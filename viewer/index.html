@@ -95,15 +95,23 @@ function setModels(on) {
   b.setAttribute("aria-pressed", String(on));
   b.textContent = (on ? `房屋：3D 模型（${models.length}）` : "房屋：纸片") + (pending ? ` · 加载中 ${withMesh.length - pending}/${withMesh.length}` : "");
 }
-for (const o of withMesh) gltf.load(base + o.mesh.glb, g => {
-  g.scene.traverse(n => {
-    if (!n.isMesh) return;
-    const map = n.material.map; if (map) map.colorSpace = THREE.SRGBColorSpace;
-    n.material = new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
-  });
-  g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene);
-  pending--; setModels(showModels);
-}, undefined, () => { pending--; setModels(showModels); });
+// Start downloading models only once the ground and card textures are in (or after 8 s),
+// so the painting appears first instead of competing with ~45 MB of models for bandwidth.
+let modelsStarted = false;
+function startModels() {
+  if (modelsStarted) return; modelsStarted = true;
+  for (const o of withMesh) gltf.load(base + o.mesh.glb, g => {
+    g.scene.traverse(n => {
+      if (!n.isMesh) return;
+      const map = n.material.map; if (map) map.colorSpace = THREE.SRGBColorSpace;
+      n.material = new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
+    });
+    g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene);
+    pending--; setModels(showModels);
+  }, undefined, () => { pending--; setModels(showModels); });
+}
+THREE.DefaultLoadingManager.onLoad = startModels;
+setTimeout(startModels, 8000);
 
 // --- cameras ---
 const dir = new THREE.Vector3(0, -Math.sin(th), -Math.cos(th));
