@@ -79,27 +79,31 @@ for (const o of L.objects) {
   const mesh = new THREE.Mesh(g, m);
   mesh.position.set(o.x, 0, o.z); mesh.userData = o; scene.add(mesh);
   if (o.billboard === "sprite") sprites.push(mesh);
-  if (o.mesh) { swapCards.push(mesh); mesh.visible = false; }
+  if (o.mesh) swapCards.push(mesh);
 }
-// 3D models (pipeline/mesh.py): texture is the painting projected from the painting camera,
-// so they are drawn unlit, like the cards.
+// 3D models (pipeline/mesh.py): drawn unlit like the cards (their texture is the painting itself).
+// Loaded in the background: the card scene shows at once, each house swaps to its model on arrival.
 const gltf = new GLTFLoader();
-await Promise.all(L.objects.filter(o => o.mesh).map(o => new Promise(res => gltf.load(base + o.mesh.glb, g => {
+const withMesh = L.objects.filter(o => o.mesh);
+let showModels = true, pending = withMesh.length;
+const cardOf = new Map(swapCards.map(c => [c.userData.id, c]));
+function setModels(on) {
+  showModels = on;
+  for (const m of models) { m.visible = on; cardOf.get(m.userData.id).visible = !on; }
+  const b = document.getElementById("bModels");
+  b.hidden = !withMesh.length;
+  b.setAttribute("aria-pressed", String(on));
+  b.textContent = (on ? `房屋：3D 模型（${models.length}）` : "房屋：纸片") + (pending ? ` · 加载中 ${withMesh.length - pending}/${withMesh.length}` : "");
+}
+for (const o of withMesh) gltf.load(base + o.mesh.glb, g => {
   g.scene.traverse(n => {
     if (!n.isMesh) return;
     const map = n.material.map; if (map) map.colorSpace = THREE.SRGBColorSpace;
     n.material = new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
   });
-  g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene); res();
-}, undefined, () => res()))));
-let showModels = true;
-function setModels(on) {
-  showModels = on;
-  for (const m of models) m.visible = on;
-  for (const c of swapCards) c.visible = !on;
-  const b = document.getElementById("bModels");
-  b.setAttribute("aria-pressed", String(on)); b.textContent = on ? `房屋：3D 模型（${models.length}）` : "房屋：纸片";
-}
+  g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene);
+  pending--; setModels(showModels);
+}, undefined, () => { pending--; setModels(showModels); });
 
 // --- cameras ---
 const dir = new THREE.Vector3(0, -Math.sin(th), -Math.cos(th));
@@ -196,7 +200,7 @@ document.getElementById("bWalk").onclick = () => { walk.pos.set(pan, 1.6, -GD * 
 document.getElementById("bOrbit").onclick = () => setMode("orbit");
 document.getElementById("bFly").onclick = () => startFly();
 document.getElementById("bModels").onclick = () => setModels(!showModels);
-if (models.length) { document.getElementById("bModels").hidden = false; setModels(true); }
+setModels(true);
 
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
