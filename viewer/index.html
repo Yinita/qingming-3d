@@ -43,7 +43,7 @@
   <div id="status">加载中…</div>
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1.1</div>
+<div id="seal">入卷 v1.2</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -81,7 +81,7 @@ for (const o of L.objects) {
   const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
   const m = new THREE.MeshBasicMaterial({ map: tex(o.tex_hd || o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, m);
-  mesh.position.set(o.x, 0, o.z); mesh.userData = o; scene.add(mesh);
+  mesh.position.set(o.x, o.y || 0, o.z); mesh.userData = o; scene.add(mesh);   // y > 0: standing on the bridge deck
   if (o.billboard === "sprite") sprites.push(mesh);
   if (o.mesh) swapCards.push(mesh);
   if (o.label === "tree") {
@@ -102,11 +102,15 @@ for (const o of L.objects) {
   const M = new THREE.Matrix4();
   shadowSpots.forEach((o, i) => {
     const w = o.label === "tree" ? o.w * 0.75 : o.w * 1.1, d = o.label === "tree" ? o.w * 0.6 : Math.max(0.5, o.w * 0.55);
-    M.compose(new THREE.Vector3(o.x + 0.08 * o.h, 0.015, o.z - 0.05 * o.h), new THREE.Quaternion(), new THREE.Vector3(w, 1, d));
+    M.compose(new THREE.Vector3(o.x + 0.08 * o.h, (o.y || 0) + 0.015, o.z - 0.05 * o.h), new THREE.Quaternion(), new THREE.Vector3(w, 1, d));
     inst.setMatrixAt(i, M);
   });
   inst.renderOrder = -1; scene.add(inst); offPainting.push(inst);
 }
+// Soft light, used only by synthesised house faces (everything else is unlit).
+// (three.js r155+ lighting is physical: Lambert divides albedo by π, so intensities carry a π.)
+scene.add(new THREE.AmbientLight(0xffffff, 0.8 * Math.PI));
+{ const sun = new THREE.DirectionalLight(0xfff4e0, 0.32 * Math.PI); sun.position.set(-0.6, 1, 0.5); scene.add(sun); }
 // Atmospheric haze for the perspective views (the scroll's own paper colour); off in the painting view.
 const haze = new THREE.Fog(0xEDE6D6, 45, 260);
 // 3D models (pipeline/mesh.py): drawn unlit like the cards (their texture is the painting itself).
@@ -115,9 +119,15 @@ const gltf = new GLTFLoader();
 const withMesh = L.objects.filter(o => o.mesh);
 let showModels = true, pending = withMesh.length;
 const cardOf = new Map(swapCards.map(c => [c.userData.id, c]));
+// The painting view always shows the cards (they reproduce the scroll pixel for pixel);
+// models take over as soon as the camera leaves it.
+function applyModelVisibility() {
+  const use = showModels && mode !== "paint";   // only called after `mode` exists (async loads, setMode)
+  for (const m of models) { m.visible = use; cardOf.get(m.userData.id).visible = !use; }
+}
 function setModels(on) {
   showModels = on;
-  for (const m of models) { m.visible = on; cardOf.get(m.userData.id).visible = !on; }
+  applyModelVisibility();
   const b = document.getElementById("bModels");
   b.hidden = !withMesh.length;
   b.setAttribute("aria-pressed", String(on));
@@ -132,7 +142,11 @@ function startModels() {
     g.scene.traverse(n => {
       if (!n.isMesh) return;
       const map = n.material.map; if (map) map.colorSpace = THREE.SRGBColorSpace;
-      n.material = new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
+      // Faces the painting shows stay unlit (exact painted colours); synthesised roof / wall
+      // faces get soft light so the building's form reads from behind and the side.
+      const synth = /^(roof|wall)/.test(n.name);
+      n.material = synth ? new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide })
+                         : new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
     });
     g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene);
     pending--; setModels(showModels);
@@ -163,9 +177,10 @@ let mode = "paint", cam = paintCam;
 function setPaintingExact(on) {
   for (const e of offPainting) e.visible = !on;
   scene.fog = on ? null : haze;
+  applyModelVisibility();
 }
 const help = {
-  paint: "拖动或滚轮：展开画卷。这是原画的视角，场景在这里与原画重合。",
+  paint: "拖动或滚轮：展开画卷。这是原画的视角，场景在这里与原画逐像素重合；离开这个视角，房屋和桥换成 3D 模型。",
   walk: "WASD / 方向键走动，拖动鼠标转头，Shift 加速，Q/E 升降。",
   orbit: "拖动旋转，右键平移，滚轮缩放。",
   fly: "飞入中…",
