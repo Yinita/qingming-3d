@@ -22,7 +22,11 @@
   #credit { font-size:11px; color:#7a705e; margin-top:6px; border-top:1px solid #d8ccb2; padding-top:5px; }
   #seal { position:fixed; right:14px; top:14px; writing-mode:vertical-rl; background:var(--zhu); color:#fff;
     padding:8px 5px; font-size:14px; letter-spacing:3px; border-radius:3px; opacity:.9; }
-  #questEntry { position:fixed; z-index:6; top:22px; right:58px; display:flex; gap:6px; }
+  #questEntry { position:fixed; z-index:6; top:22px; right:58px; padding:12px;
+    border:1px solid #caa77a; border-top:3px solid #893f31; border-radius:5px;
+    background:#f7ebd6f5; box-shadow:0 5px 21px #30221643; }
+  #questEntry strong { display:block; margin:0 0 8px; font-size:16px; }
+  #questEntry .entry-actions { display:flex; gap:6px; }
   #questEntry button { min-height:42px; padding:8px 13px; border-color:#caa77a; font-weight:700; }
   #bMission { background:#793b30; color:#fff5df; }
   #bMissionRestart { background:#fff7e8; color:#722e24; }
@@ -30,7 +34,7 @@
   #missionProgress { display:block; width:100%; height:6px; accent-color:#843b30; }
   #missionProgress::-webkit-progress-bar { background:#d8c7ab; border-radius:3px; }
   #missionProgress::-webkit-progress-value { background:#843b30; border-radius:3px; }
-  body.scene-loading #missionIntro, body.scene-loading #missionRestart { visibility:hidden; }
+  body.scene-loading #missionIntro, body.scene-loading #missionTools { visibility:hidden; }
   .mission-open #hud { display:none; }
   #missionHud { position:fixed; left:22px; top:22px; width:min(329px, calc(100vw - 72px));
     padding:17px 19px 12px; border:1px solid #b8a283; border-top:3px solid #863d34;
@@ -38,7 +42,8 @@
   #missionHud h1 { margin:3px 0 8px; font-size:26px; font-weight:600; letter-spacing:.1em; }
   .mission-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .mission-open #seal { display:none; }
-  #missionRestart { position:fixed; z-index:6; top:22px; right:22px; min-height:42px;
+  #missionTools { position:fixed; z-index:6; top:22px; right:22px; display:flex; gap:6px; }
+  #missionRestart { min-height:44px;
     padding:9px 16px; color:#fff7e1; font-size:14px; font-weight:700; background:#733a2d;
     border:1px solid #e3bd82; box-shadow:0 3px 15px #38271c66; }
   #missionRestart:hover, #missionRestart:focus-visible { background:#9a4635; }
@@ -77,6 +82,8 @@
   #missionWaypoint[data-offscreen="true"]::after { display:inline-block; margin:0 1px 1px 8px;
     width:7px; height:7px; content:""; border-top:2px solid; border-right:2px solid;
     transform:rotate(calc(45deg + var(--waypoint-angle))); }
+  #missionWaypoint[data-start="true"] { color:#4f2719; background:#ffdfa2; border-color:#6b412b; }
+  #missionWaypoint[data-start="true"][data-offscreen="false"]::after { border-top-color:#ffdfa2; }
   body.scene-loading #missionWaypoint { visibility:hidden; }
   @media (max-width:760px), (max-height:525px) {
     #questEntry { top:auto; bottom:12px; right:12px; }
@@ -85,18 +92,18 @@
     #missionIntro { top:66px; padding:15px 16px 13px; }
     #missionIntroTitle { font-size:21px; }
     #missionIntroDetail { font-size:13px; }
-    #missionRestart { top:10px; right:10px; }
+    #missionTools { top:10px; right:10px; }
     #missionNotice:not(:empty) { top:62px; }
   }
   @media (max-height:459px) {
-    #missionIntro { top:10px; width:min(348px,calc(100vw - 244px)); padding:9px 12px; }
+    #missionIntro { top:10px; left:12px; transform:none; width:min(420px,calc(100vw - 200px)); padding:9px 12px; }
     #missionIntroTitle { font-size:18px; }
     #missionIntroDetail { margin:4px 0 8px; }
     #missionHud .mission-controls { display:none; }
     #missionIntro button { min-height:42px; padding:6px 10px; }
   }
   @media (max-width:510px) and (max-height:459px) {
-    #missionIntro { top:57px; width:calc(100vw - 32px); }
+    #missionIntro { top:57px; left:50%; transform:translateX(-50%); width:calc(100vw - 32px); }
   }
   #missionRestartDialog { max-width:min(320px,calc(100vw - 52px)); background:#faf1de; color:#3a2d25;
     border:1px solid #b39b76; border-top:3px solid #843b30; padding:18px 21px; }
@@ -122,6 +129,9 @@
   .loading-panel button { margin-top:10px; }
   .loading-panel[hidden], .loading-panel [hidden] { display:none!important; }
   body.scene-loading #hud, body.scene-loading #missionHud, body.scene-loading #seal { visibility:hidden; }
+  @media(max-width:760px), (max-height:525px) {
+    body:not(.mission-open) #scene-background { bottom:120px; }
+  }
   @media(max-width:640px) {
     #scene-background { max-width:min(265px,75vw); }
   }
@@ -140,14 +150,14 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=111",
+  "./bridge-look.js": "./bridge-look.js?v=113",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=112",
-  "./bridge-quests.js": "./bridge-quests.js?v=112",
+  "./bridge-mission.js": "./bridge-mission.js?v=113",
+  "./bridge-quests.js": "./bridge-quests.js?v=113",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=112",
-  "./bridge-street.js": "./bridge-street.js?v=111",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=111"
+  "./bridge-people.js": "./bridge-people.js?v=113",
+  "./bridge-street.js": "./bridge-street.js?v=113",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=113"
 } }
 </script>
 </head>
@@ -182,10 +192,13 @@
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
 <nav id="questEntry" aria-label="桥畔茶铺任务">
-  <button id="bMission" type="button">去送茶</button>
-  <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
+  <strong>桥畔茶铺任务</strong>
+  <div class="entry-actions">
+    <button id="bMission" type="button">开始送茶</button>
+    <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
+  </div>
 </nav>
-<div id="seal">入卷 v1.11</div>
+<div id="seal">入卷 v1.12</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -309,9 +322,9 @@ for (const o of L.objects) {
 }
 // Soft light, used only by synthesised house faces (everything else is unlit).
 // (three.js r155+ lighting is physical: Lambert divides albedo by π, so intensities carry a π.)
-const ambient = new THREE.AmbientLight(0xffffff, 0.8 * Math.PI);
-const sun = new THREE.DirectionalLight(0xfff4e0, 0.32 * Math.PI);
-sun.position.set(-0.6, 1, 0.5);
+const ambient = new THREE.AmbientLight(0xffffff, 0.62 * Math.PI);
+const sun = new THREE.DirectionalLight(0xfff4e0, 0.49 * Math.PI);
+sun.position.set(-0.68, .91, .61);
 scene.add(ambient, sun);
 // Atmospheric haze for the perspective views (the scroll's own paper colour); off in the painting view.
 const haze = new THREE.Fog(0xEDE6D6, 45, 260);

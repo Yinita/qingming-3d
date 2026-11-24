@@ -35,10 +35,10 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   const worker=riverWorker(temp,surface,"resident",hatted,variant);
   const height=slope===0 ? .009 : 0;
   worker.figure.position.y=height;
-  worker.stand(x=>x*slope,0,height,0,yaw);
+  const feet=worker.stand(x=>x*slope,0,height,0,yaw);
   worker.torsoPivot.position.x=[.018,-.023,.012,-.019][variant];
-  worker.torsoPivot.rotation.set([-.055,.084,-.033,.031][variant],
-    [.16,-.28,.12,-.19][variant],[.051,-.042,.022,-.051][variant]);
+  worker.torsoPivot.rotation.set([-.039,.061,-.021,.034][variant],
+    [.115,-.117,.077,-.103][variant],[.041,-.031,.021,-.039][variant]);
   worker.head.rotation.set([.021,-.065,.145,-.048][variant],
     [.38,-.39,.20,-.26][variant],[-.05,.059,-.035,.063][variant]);
   const [left,right]=worker.limbs.arms;
@@ -47,6 +47,8 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   right.rotation.set([-.34,.08,.05,-.54][variant],[.19,.18,.10,-.23][variant],[-.10,-.09,-.12,-.20][variant]);
   leftElbow.rotation.set([-.17,-.30,-.95,-.21][variant],0,[-.08,-.20,-.30,-.13][variant]);
   rightElbow.rotation.set([-.72,-.13,-.17,-.81][variant],0,[.23,.07,.12,.31][variant]);
+  const grips=[[.18,.34],[.37,.23],[.53,.18],[.24,.47]][variant];
+  worker.limbs.hands.forEach((hand,i)=>hand.setGrip(grips[i]));
   worker.figure.updateMatrixWorld(true);
   const parts=new Map(), point=new THREE.Vector3();
   worker.figure.traverse(node=>{
@@ -73,10 +75,10 @@ function characterParts(surface,hatted,variant,slope,yaw) {
     result.push({material,geometry:mergeGeometries(geometries),colored:material.userData.streetCloth===true});
     geometries.forEach(g=>g.dispose());
   }
-  return result;
+  return {parts:result,feet};
 }
 
-function residents(root,entries,surface) {
+function residents(root,entries,surface,floor) {
   const pose=new THREE.Object3D();
   const chunks=new Map(), templates=new Map();
   for(const o of entries) {
@@ -84,12 +86,13 @@ function residents(root,entries,surface) {
     const shape=template.join(":");
     const key=[shape,Math.floor(o.x/15),Math.floor(o.z/12)].join(":");
     if(!templates.has(shape)) templates.set(shape,characterParts(surface,...template));
+    o.feet=templates.get(shape).feet;
     if(!chunks.has(key)) chunks.set(key,{shape,entries:[]});
     chunks.get(key).entries.push(o);
   }
   const update=new Set();
   for(const group of chunks.values()) {
-    for(const {material,geometry,colored} of templates.get(group.shape)) {
+    for(const {material,geometry,colored} of templates.get(group.shape).parts) {
       const mesh=new THREE.InstancedMesh(geometry,material,group.entries.length);
       mesh.name="Volumetric street residents";
       mesh.castShadow=true;
@@ -110,37 +113,60 @@ function residents(root,entries,surface) {
       root.add(mesh);
     }
   }
-  // Free exploration uses soft fill light. Give each pair of feet a local
-  // contact shadow that follows the instance when an arriving house moves it.
+  // Follow the paved surface at each sole instead of projecting one flat oval
+  // through both shoes and the neighbouring slabs.
   const groundResidents=entries.filter(person=>!person.bridge);
   const image=document.createElement("canvas");
   image.width=image.height=32;
   const ink=image.getContext("2d");
-  const shade=ink.createRadialGradient(16,16,2,16,16,16);
-  shade.addColorStop(0,"rgba(56,43,31,.47)");
-  shade.addColorStop(.52,"rgba(56,43,31,.23)");
-  shade.addColorStop(1,"rgba(56,43,31,0)");
+  const shade=ink.createRadialGradient(16,16,1,16,16,16);
+  shade.addColorStop(0,"rgba(48,34,24,.68)");
+  shade.addColorStop(.45,"rgba(48,34,24,.42)");
+  shade.addColorStop(1,"rgba(48,34,24,0)");
   ink.fillStyle=shade;
   ink.fillRect(0,0,32,32);
-  const shadowGeometry=new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2);
   const shadowMap=new THREE.CanvasTexture(image);
   shadowMap.colorSpace=THREE.SRGBColorSpace;
-  const shadowMaterial=new THREE.MeshBasicMaterial({map:shadowMap,transparent:true,depthWrite:false});
-  const shadows=new THREE.InstancedMesh(shadowGeometry,shadowMaterial,groundResidents.length);
-  shadows.name="Resident foot contact shadows";
+  const shadowMaterial=new THREE.MeshBasicMaterial({map:shadowMap,transparent:true,depthWrite:false,
+    polygonOffset:true,polygonOffsetFactor:-1});
+  const grid=4, stride=(grid+1)**2;
+  const positions=new THREE.BufferAttribute(new Float32Array(groundResidents.length*2*stride*3),3);
+  const uv=[],indices=[];
+  const shadowGeometry=new THREE.BufferGeometry();
+  shadowGeometry.setAttribute("position",positions.setUsage(THREE.DynamicDrawUsage));
+  let movedShadows=false;
   groundResidents.forEach((person,i)=>{
+    for(let foot=0;foot<2;foot++) {
+      const start=(i*2+foot)*stride;
+      for(let v=0;v<=grid;v++) for(let u=0;u<=grid;u++) {
+        uv.push(u/grid,v/grid);
+        if(v===grid || u===grid) continue;
+        const a=start+v*(grid+1)+u, b=a+grid+1;
+        indices.push(a,b,a+1,b,b+1,a+1);
+      }
+    }
     const place=()=>{
-      const width=person.hidden ? 0 : person.width;
-      pose.position.set(person.x,person.y+.008,person.z);
-      pose.rotation.y=person.yaw;
-      pose.scale.set(.65*width,1,.78*width);
-      pose.updateMatrix();
-      shadows.setMatrixAt(i,pose.matrix);
-      update.add(shadows);
+      const {x,y,z,yaw,width,feet,hidden}=person;
+      const c=Math.cos(yaw), s=Math.sin(yaw);
+      for(const [foot,at] of feet.entries()) {
+        const a=at.yaw+yaw, ca=Math.cos(a),sa=Math.sin(a);
+        const cx=x+width*(c*at.x+s*at.z), cz=z+width*(-s*at.x+c*at.z);
+        let index=(i*2+foot)*stride;
+        for(let v=0;v<=grid;v++) for(let u=0;u<=grid;u++,index++) {
+          const dx=(u/grid-.5)*.32*width, dz=(v/grid-.60)*.43*width;
+          const wx=cx+ca*dx+sa*dz, wz=cz-sa*dx+ca*dz;
+          positions.setXYZ(index,hidden ? x : wx,hidden ? y : floor(wx,wz)+.004,hidden ? z : wz);
+        }
+      }
+      movedShadows=true;
     };
     person.instances.push(place);
     place();
   });
+  shadowGeometry.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+  shadowGeometry.setIndex(indices);
+  const shadows=new THREE.Mesh(shadowGeometry,shadowMaterial);
+  shadows.name="Resident foot contact shadows";
   root.add(shadows);
 
   function sync() {
@@ -149,6 +175,11 @@ function residents(root,entries,surface) {
       mesh.computeBoundingSphere();
     }
     update.clear();
+    if(movedShadows) {
+      positions.needsUpdate=true;
+      shadowGeometry.computeBoundingSphere();
+      movedShadows=false;
+    }
   }
   sync();
   return sync;
@@ -508,7 +539,7 @@ export function createStreetScene(scene,objects,anchor) {
     flagstones(root,x,z+depth*.5+.57,width*.79,.94,surface,4379+i*37,.27);
   }
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
-  const syncResidents=residents(root,placed,surface);
+  const syncResidents=residents(root,placed,surface,(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)));
   function registerHouse(object) {
     const house=collisions.meshBox("existing house",object);
     for(const p of placed) {

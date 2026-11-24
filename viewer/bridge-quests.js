@@ -86,8 +86,6 @@ const css = `
 #questJournal .tag[data-status=blocked] { color:#8A3B2A; border-color:#8A3B2A; }
 #questJournal .route[data-status=planned], #questJournal .route[data-status=skipped] { opacity:.62; }
 #questJournal .ledger li { list-style:none; margin-left:-20px; display:flex; justify-content:space-between; gap:12px; }
-.mission-title-actions { flex:none; display:flex; gap:6px; margin-top:3px; }
-.mission-title-actions #missionRestart { margin-top:0; }
 #missionJournal { padding:6px 9px; font-weight:600; color:#322b24; border-color:#b8a283; background:#fff6e7; }
 #missionJournal:hover, #missionJournal:focus-visible { background:#322b24; color:#fff6e7; }
 #questJournal .close { float:right; font:inherit; font-size:13px; border:1px solid #C9BEA6; background:#EDE6D6;

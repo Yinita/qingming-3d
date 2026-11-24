@@ -233,7 +233,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         <div id="missionStage" class="mission-kicker"></div>
         <h1>桥畔茶铺</h1>
       </div>
-      <div class="mission-title-actions">
+      <div id="missionTools" role="group" aria-label="任务选项">
         <button id="missionJournal" type="button" title="任务簿 J">任务簿</button>
         <button id="missionRestart" type="button" title="Shift + R" aria-keyshortcuts="Shift+R"
           aria-haspopup="dialog" aria-controls="missionRestartDialog">重置任务</button>
@@ -398,9 +398,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let markerText="";
   function markObjective() {
     const phase=state.phase;
-    groundMarker.visible=view==="mission" && phase!=="delivered";
-    beacon.visible=groundMarker.visible && !restartDialog.open;
-    waypoint.hidden=!groundMarker.visible || restartDialog.open;
+    groundMarker.visible=view==="mission" && phase!=="delivered" && !restartDialog.open;
+    beacon.visible=groundMarker.visible;
+    waypoint.hidden=!groundMarker.visible;
     if(waypoint.hidden) return;
     const at=phase==="waiting" ? state.crate : counter;
     const x=at.x, z=at.z+(phase==="waiting" ? 0 : .83);
@@ -409,7 +409,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     groundMarker.material.opacity=.85+.13*Math.sin(elapsed*3.6);
     const hover=y+(phase==="waiting" ? 1.06 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
+    const pending=!state.started && phase==="waiting";
     beacon.rotation.y=elapsed*.92;
+    beacon.scale.setScalar(pending ? 1.39 : 1);
+    waypoint.dataset.start=String(pending);
     markerPoint.set(x,hover+.35,z);
     camera.updateMatrixWorld();
     projectedMarker.copy(markerPoint).applyMatrix4(camera.matrixWorldInverse);
@@ -434,7 +437,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处";
+    const target=pending ? "任务起点 · 取茶叶箱" :
+      phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处";
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
     if(text!==markerText) {markerText=text;waypoint.textContent=text;}
     waypoint.hidden=false;
@@ -627,6 +631,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     bodyYaw=heading=spawn.yaw;
     state=newMission();
     clearInput();
+    journal.toggle(state,false);
     previous=null;
     firstPerson=false;
     deliveryTime=-10;
@@ -645,7 +650,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view!=="mission") setMode("mission");
     else syncActors();
     ui();
-    canvas.focus({preventScroll:true});
+    begin.focus({preventScroll:true});
   }
 
   function undo() {
@@ -682,7 +687,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function ui() {
     const {objective}=stageOf(state.phase);
     if(status.textContent!==objective) status.textContent=objective;
-    const phaseTitle={waiting:showStart ? "任务待开始" : "任务进行中 · 桥头取箱",carrying:"任务进行中 · 送往茶铺",courier:"任务进行中 · 伙计送货",delivered:"任务完成"}[state.phase];
+    const phaseTitle={waiting:!state.started ? "任务待开始" : "任务进行中 · 桥头取箱",carrying:"任务进行中 · 送往茶铺",courier:"任务进行中 · 伙计送货",delivered:"任务完成"}[state.phase];
     if(stage.textContent!==phaseTitle) stage.textContent=phaseTitle;
     const step=state.phase==="delivered" ? 2 : state.phase==="waiting" ? 0 : 1;
     if(progress.value!==step) progress.value=step;
@@ -972,6 +977,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     clearInput();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
     intro.hidden=waypoint.hidden=true;
+    groundMarker.visible=beacon.visible=false;
     restartDialog.showModal();
   }
   byId("missionRestart").onclick=event=>requestRestart(event.currentTarget);
@@ -992,7 +998,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   byId("missionExit").onclick = () => setMode("paint");
   byId("missionJournal").onclick=()=>journal.toggle(state);
   window.addEventListener("keydown", e => {
-    if (!root.visible || restartDialog.open || e.repeat) return;
+    if (!root.visible || restartDialog.open || e.repeat || e.defaultPrevented) return;
+    if (e.code === "Escape" && !journal.panel.hidden) {
+      journal.toggle(state,false);
+      byId("missionJournal").focus({preventScroll:true});
+      return;
+    }
     if (e.code==="Enter" && document.activeElement===canvas && !intro.hidden) {
       e.preventDefault();
       beginMission();

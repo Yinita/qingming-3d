@@ -170,7 +170,10 @@ export function createSurfaceLibrary() {
         soil=diffuseColor.rgb*mix(earth,stoneDust,silt);
         soil*=mix(vec3(.92,.87,.82),vec3(1.10,1.10,1.05),districts);
         soil*=mix(vec3(.90,.95,.99),vec3(1.09,1.01,.88),clay);
-        soil*=mix(.88,1.06,relief.r)*mix(1.,.67,compressed);
+        float wash=soilNoise(swale*vec2(2.62,1.71)+7.9);
+        float dampClay=smoothstep(.38,.76,clay*.60+wash*.40)*(1.-.56*looseDust);
+        soil*=mix(vec3(1.02,1.00,.95),vec3(.74,.78,.79),dampClay*.64);
+        soil*=mix(.85,1.09,relief.r)*mix(1.,.70,compressed);
         float grainWidth=max(length(dFdx(swale)),length(dFdy(swale)));
         float gritMask=1.-smoothstep(.018,.077,grainWidth);
         float fineGrit=soilNoise(swale*22.7+17.)*soilNoise(swale*31.6);
@@ -182,7 +185,7 @@ export function createSurfaceLibrary() {
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
-        ${street ? "roughnessFactor=clamp(roughnessFactor+(.07+.12*looseDust-.27*compressed)*finishReady,.51,1.);" : ""}
+        ${street ? "roughnessFactor=clamp(roughnessFactor+(.07+.12*looseDust-.24*compressed-.15*dampClay)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;

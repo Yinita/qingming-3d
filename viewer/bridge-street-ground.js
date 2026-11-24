@@ -78,9 +78,11 @@ function paving(lane,origin,material,addSurface) {
     return seed/4294967296;
   };
   const position=[],uv=[],color=[],indices=[];
+  const joints=[],jointColor=[],jointIndices=[];
   const pigment=new THREE.Color();
-  const palette=[0xbec3ba,0xa6afa9,0xb4bcba,0xc9c2ad,0x9da8a6,0xb1b3a3,0xb4afa2];
-  const sediment=new THREE.Color(0xae9676);
+  const palette=[0xb2b7b1,0x8e9b99,0xa9b2ae,0xc5b49b,0x949e9d,0xa2a592,0xb2a691];
+  const sediment=new THREE.Color(0xaa9575);
+  const seam=new THREE.Color(0x635441);
   const c=Math.cos(lane.angle),s=Math.sin(lane.angle);
   const point=(u,v)=>[lane.x+c*u+s*v,lane.z-s*u+c*v];
 
@@ -103,6 +105,8 @@ function paving(lane,origin,material,addSurface) {
     const mapU=random(),mapV=random();
     const grainAngle=random()*Math.PI;
     const grainX=Math.cos(grainAngle)/.89,grainY=Math.sin(grainAngle)/.89;
+    const wear=THREE.MathUtils.lerp(.21,.57,Math.abs(Math.sin(x*.83+z*.57)));
+    const lip=gravel ? .72 : .96;
     function vertex(du,dv,y,shade,dust=0) {
       const [px,pz]=point(u+du,v+dv);
       position.push(px,streetSurfaceHeight(px,pz)+y,pz);
@@ -111,23 +115,36 @@ function paving(lane,origin,material,addSurface) {
         THREE.MathUtils.lerp(pigment.b,sediment.b,dust)*shade);
       uv.push(mapU+du*grainX+dv*grainY,mapV+dv*grainX-du*grainY);
     }
-    for(const [du,dv] of rim) vertex(du,dv,-.020,.54,.57);
+    for(const [du,dv] of rim) vertex(du,dv,-.022,.48,.72);
     for(const [du,dv,chip] of rim) {
-      vertex(du,dv,height*.32+du*tiltU+dv*tiltV,.72+.17*chip,.32+.26*chip);
+      vertex(du,dv,height*.25+du*tiltU+dv*tiltV,.66+.18*chip,.42+.27*chip);
     }
     for(const [du,dv,chip] of rim) {
-      const inset=(gravel ? .72 : .96)-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.89+.12*chip,.27+.25*chip);
+      const inset=lip-chip*.09;
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.012*chip,.81+.16*chip,wear+.20*chip);
     }
     for(const [du,dv,chip] of rim) {
-      const inset=(gravel ? .72 : .96)-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.94+.15*chip,.12+.29*chip);
+      const inset=lip-chip*.09;
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.012*chip,.86+.19*chip,wear+.10*chip);
     }
-    vertex(width*(random()-.5)*.25,length*(random()-.5)*.31,height+.002,.98+.09*random());
+    vertex(width*(random()-.5)*.37,length*(random()-.5)*.38,height+.002,.94+.16*random(),wear*.32);
     for(let i=0;i<8;i++) {
       const a=offset+i,b=offset+(i+1)%8;
       indices.push(a,a+8,b,b,a+8,b+8,a+8,a+16,b+8,b+8,a+16,b+16,offset+32,b+24,a+24);
       if(!gravel) addSurface(position,(offset+32)*3,(b+24)*3,(a+24)*3);
+    }
+    if(gravel) return;
+    const start=joints.length/3;
+    for(const spread of [0,.025,.064]) for(const [du,dv,chip] of rim) {
+      const radius=Math.max(.01,Math.hypot(du,dv));
+      const r=1+spread*(.72+chip*.67)/radius;
+      const [px,pz]=point(u+du*r,v+dv*r);
+      joints.push(px,streetSurfaceHeight(px,pz)+.005,pz);
+      jointColor.push(seam.r,seam.g,seam.b,spread===0 ? .53 : spread<.03 ? .25 : 0);
+    }
+    for(let i=0;i<8;i++) {
+      const a=start+i,b=start+(i+1)%8;
+      jointIndices.push(a,b,a+8,b,b+8,a+8,a+8,b+8,a+16,b+8,b+16,a+16);
     }
   }
 
@@ -180,7 +197,64 @@ function paving(lane,origin,material,addSurface) {
   const mesh=new THREE.Mesh(geometry,material);
   mesh.name="Inset street paving and gravel";
   mesh.receiveShadow=true;
-  return mesh;
+  const contact=new THREE.BufferGeometry();
+  contact.setAttribute("position",new THREE.Float32BufferAttribute(joints,3));
+  contact.setAttribute("color",new THREE.Float32BufferAttribute(jointColor,4));
+  contact.setIndex(jointIndices);
+  const seams=new THREE.Mesh(contact,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,
+    depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}));
+  seams.name="Sediment at paving joints";
+  return [mesh,seams];
+}
+
+function roadsideGrass(origin) {
+  const positions=[],colors=[];
+  const stalk=new THREE.Color();
+  let seed=7963;
+  const random=()=>{
+    seed=(Math.imul(1664525,seed)+1013904223)>>>0;
+    return seed/4294967296;
+  };
+  for(const lane of lanes) for(let i=0;i<lane.length*13;i++) {
+    const u=(lane.width*(.56+random()*.31)+.13*Math.sin(i*.42))*(random()<.5 ? -1 : 1);
+    const v=(random()-.5)*lane.length*.92;
+    if(Math.sin(v*3.8+u*8.9)+.8*Math.cos(v*1.9)<-.35) continue;
+    const c=Math.cos(lane.angle),s=Math.sin(lane.angle);
+    const x=lane.x+c*u+s*v,z=lane.z-s*u+c*v;
+    if(canalDepth(origin,x,z)>waterHeight+.005) continue;
+    const vigor=.32+.68*random()**1.8;
+    const count=3+Math.floor(random()*6);
+    for(let k=0;k<count;k++) {
+      const az=random()*Math.PI*2, spread=random()*.056;
+      const ax=Math.cos(az),azimuthZ=Math.sin(az);
+      const px=x+spread*ax,pz=z+spread*azimuthZ;
+      const y=streetSurfaceHeight(px,pz)-.006;
+      const height=(.026+random()*.121)*vigor;
+      const width=.002+random()*.0039, bend=.42+random()*.51;
+      const wx=-azimuthZ*width,wz=ax*width;
+      const dx=ax*height*bend,dz=azimuthZ*height*bend;
+      stalk.setHex(random()<.68 ? 0x77794c : 0xa29970);
+      positions.push(px-wx,y,pz-wz,px+wx,y,pz+wz,
+        px+dx*.35+wx*.68,y+height*.64,pz+dz*.35+wz*.68,
+        px-wx,y,pz-wz,px+dx*.35+wx*.68,y+height*.64,pz+dz*.35+wz*.68,
+        px+dx*.35-wx*.68,y+height*.64,pz+dz*.35-wz*.68,
+        px+dx*.35-wx*.68,y+height*.64,pz+dz*.35-wz*.68,
+        px+dx*.35+wx*.68,y+height*.64,pz+dz*.35+wz*.68,
+        px+dx,y+height,pz+dz);
+      for(const tone of [.56,.63,.86,.56,.86,.80,.80,.86,1.16]) {
+        colors.push(stalk.r*tone,stalk.g*tone,stalk.b*tone);
+      }
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+  geometry.computeVertexNormals();
+  const grass=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({side:THREE.DoubleSide,
+    vertexColors:true,roughness:.99}));
+  grass.name="Scattered verge grass";
+  grass.receiveShadow=true;
+  return grass;
 }
 
 // Only the walkable tops participate in foot placement. Gravel and bevels
@@ -188,6 +262,19 @@ function paving(lane,origin,material,addSurface) {
 export function buildStreetGround(root,origin,surface) {
   const stone=surface("worn-stone",0xf9ffff,1.14,.94);
   stone.vertexColors=true;
+  stone.onBeforeCompile=shader=>{
+    shader.fragmentShader=shader.fragmentShader.replace("#include <map_fragment>",`#include <map_fragment>
+      #ifdef USE_MAP
+        // Suppress under-pixel ridges as the road recedes.
+        vec2 shale=vMapUv*vec2(1.,.71);
+        float laminations=shale.y*131.+sin(shale.x*12.)*1.2+sin(shale.x*27.+shale.y*19.)*.41;
+        float mineral=shale.x*20.+shale.y*12.;
+        float relief=pow(max(0.,sin(laminations)),8.)*(1.-smoothstep(.31,1.85,fwidth(laminations)));
+        float weathering=.52+.29*sin(mineral)+.17*sin(shale.x*28.-shale.y*22.);
+        diffuseColor.rgb*=mix(vec3(.77,.79,.75),vec3(1.14,1.11,1.01),weathering)-relief*.105;
+      #endif`);
+  };
+  stone.customProgramCacheKey=()=>"weathered-street-paving";
   const cells=new Map();
   function addSurface(p,i,j,k) {
     const ax=p[i], az=p[i+2], bx=p[j]-ax, bz=p[j+2]-az, cx=p[k]-ax, cz=p[k+2]-az;
@@ -205,7 +292,8 @@ export function buildStreetGround(root,origin,surface) {
       cells.get(key).push(tri);
     }
   }
-  for(const lane of lanes) root.add(paving(lane,origin,stone,addSurface));
+  for(const lane of lanes) root.add(...paving(lane,origin,stone,addSurface));
+  root.add(roadsideGrass(origin));
   return (x,z)=>{
     let y=streetSurfaceHeight(x,z);
     const candidates=cells.get(Math.floor(x)+":"+Math.floor(z));
