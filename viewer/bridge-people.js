@@ -148,15 +148,21 @@ function ribbon(parent, from, to, width, material, depth = .017) {
   return o;
 }
 
+function bootPoint(point,side,sole) {
+  const {x,y,z}=point;
+  const toe=1-THREE.MathUtils.smoothstep(z,-.93,-.16);
+  const heel=THREE.MathUtils.smoothstep(z,.05,.83);
+  const width=1+.13*toe-.25*heel;
+  const height=sole ? Math.max(-.57,y)+.14*toe : y*(.62+.33*heel)+.24*toe;
+  return point.set(x*width+side*.17*toe,height,z);
+}
+
 function bootLast(geometry,side,sole) {
   const vertices=geometry.attributes.position;
+  const point=new THREE.Vector3();
   for(let i=0;i<vertices.count;i++) {
-    const x=vertices.getX(i), y=vertices.getY(i), z=vertices.getZ(i);
-    const toe=1-THREE.MathUtils.smoothstep(z,-.93,-.16);
-    const heel=THREE.MathUtils.smoothstep(z,.05,.83);
-    const width=1+.13*toe-.25*heel;
-    const height=sole ? Math.max(-.57,y)+.14*toe : y*(.62+.33*heel)+.24*toe;
-    vertices.setXYZ(i,x*width+side*.17*toe,height,z);
+    bootPoint(point.fromBufferAttribute(vertices,i),side,sole);
+    vertices.setXYZ(i,point.x,point.y,point.z);
   }
   geometry.computeVertexNormals();
   return geometry;
@@ -221,11 +227,12 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   }
   if(!lowDetail) {
     const points=[];
-    const rimZ=-.062;
+    const rimY=.30;
+    const radius=Math.sqrt(1-rimY*rimY)*1.013;
     for(let i=0;i<=16;i++) {
       const theta=Math.PI*i/16;
-      points.push(new THREE.Vector3(Math.cos(theta)*.070+side*.009*Math.sin(theta),
-        -.050+.007*Math.sin(theta),rimZ-.091*Math.sin(theta)));
+      const onSole=new THREE.Vector3(Math.cos(theta)*radius,rimY,-Math.sin(theta)*radius);
+      points.push(bootPoint(onSole,side,true).multiply(sole.scale).add(sole.position));
     }
     const piping=new THREE.CatmullRomCurve3(points);
     piece(ankle,new THREE.TubeGeometry(piping,24,.0019,5,false),binding,0,0,0);
