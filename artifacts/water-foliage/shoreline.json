@@ -1,0 +1,123 @@
+{
+  "device": {
+    "gpu": "ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 5060/PCIe/SSE2, OpenGL 4.5.0)",
+    "resolution": [
+      3840,
+      2160
+    ]
+  },
+  "target": {
+    "x": -66.46812258006855,
+    "z": -33.13200000000026,
+    "side": -1,
+    "runoff": 0.30130732281564954
+  },
+  "peak": {
+    "time": 10.303699999999225,
+    "intensity": 1,
+    "street": {
+      "steps": 118,
+      "mobile": 45945,
+      "maximumDepthMm": 14.78221321105957,
+      "inputLitres": 52491.9944960902,
+      "infiltratedLitres": 33351.258058294494,
+      "displacedLitres": 0,
+      "riverLitres": 154.88212616875035,
+      "storedLitres": 18985.854309720755,
+      "transportedLitres": 46666.38621525341,
+      "runoffInLitres": 200.89461547896155,
+      "runoffMovedLitres": 192.66562173082727,
+      "runoffInRiverLitres": 1.8356074081823632,
+      "runoffStoredLitres": 58.2310603036561,
+      "balanceErrorLitres": 1.9062003203983337e-06
+    },
+    "thread": "worker",
+    "canal": {
+      "acceptedLitres": 154.88212616875046,
+      "appliedLitres": 153.97604327953118,
+      "pendingLitres": 0.906082889219284,
+      "rejectedLitres": 0,
+      "taggedLitres": 1.8340516673441232,
+      "activeSources": 335,
+      "peakMarker": 0.5240304470062256,
+      "lastMouth": {
+        "x": -66.47990909090909,
+        "z": -33.197,
+        "flowLitresPerSecond": 0.4870317196191509,
+        "vx": 0.12267930978606843,
+        "vz": 0
+      }
+    },
+    "entryRings": 1419,
+    "leaves": {
+      "contacts": 0,
+      "travel": 0,
+      "peak": 0
+    }
+  },
+  "after": {
+    "time": 22.013199999999202,
+    "intensity": 0,
+    "street": {
+      "steps": 257,
+      "mobile": 0,
+      "maximumDepthMm": 6.645437479019165,
+      "inputLitres": 120467.21633231571,
+      "infiltratedLitres": 117885.14854264456,
+      "displacedLitres": 0,
+      "riverLitres": 388.67778604841436,
+      "storedLitres": 2193.3899938014297,
+      "transportedLitres": 115633.46723070243,
+      "runoffInLitres": 428.27076877178695,
+      "runoffMovedLitres": 485.6187025159021,
+      "runoffInRiverLitres": 3.672537541484171,
+      "runoffStoredLitres": 10.6960098359209,
+      "balanceErrorLitres": 9.821313552311022e-06
+    },
+    "thread": "worker",
+    "canal": {
+      "acceptedLitres": 388.67778604841146,
+      "appliedLitres": 388.67517746893157,
+      "pendingLitres": 0.002608579479923545,
+      "rejectedLitres": 0,
+      "taggedLitres": 3.672485488607256,
+      "activeSources": 20,
+      "peakMarker": 0.623051643371582,
+      "lastMouth": {
+        "x": -51.0480909090909,
+        "z": -58.547,
+        "flowLitresPerSecond": 0.022373715941641167,
+        "vx": -0.008780715897100552,
+        "vz": 0
+      }
+    },
+    "entryRings": 3323,
+    "leaves": {
+      "contacts": 2,
+      "travel": 2.014468726704423,
+      "peak": 0.37528446362137047
+    }
+  },
+  "4kIntervalsMs": {
+    "frames": 133,
+    "p50": 16.69999999999891,
+    "p95": 16.700000000000728
+  },
+  "sameFrame": {
+    "changedPixels": 171560,
+    "largestDelta": 18
+  },
+  "errors": [],
+  "shoreline": {
+    "floodedGrooves": 44,
+    "dryRidges": 82,
+    "wetBanks": 160,
+    "rayHits": 42,
+    "heightP95M": 0.0036986009580095578,
+    "materialReady": true,
+    "sameFrame": {
+      "changedPixels": 363577,
+      "largestDelta": 58
+    }
+  }
+}

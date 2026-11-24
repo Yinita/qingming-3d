@@ -3,11 +3,13 @@ import { bridgeDeckHeight, bridgeRailOffset, buildBridgeLook, createPlayLighting
 import { buildForeground, willowSites } from "./bridge-foreground.js";
 import { counterCeramics, riverWorker } from "./bridge-people.js";
 import { buildTea } from "./bridge-tea.js";
-import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
+import { canalDepth, canalHalfLength, canalOrigin, canalTerrainHeight, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { createGroundedGait } from "./bridge-gait.js";
 import { circleTouchesBox, sweepHorizontal, workerHeight, workerRadius } from "./bridge-collision.js";
 import { tileRoof } from "./bridge-architecture.js";
+import { registerWindBuilding } from "./bridge-air.js";
+import { makeCanalRain } from "./bridge-rain.js";
 
 const SAVE = "qingming-bridge-mission-v1";
 export const bridgeAnchor = { x: -59.014, z: -41.422 };
@@ -63,18 +65,24 @@ function loadSave() {
   return { phase: "waiting", crate: { ...pickup }, coins: 6, method: null };
 }
 
-export function createBridgeMission({ scene, camera, renderer, ambient, sun, ground, apron, street, setMode }) {
+export function rainPerspective(mode) {
+  return mode==="mission" || mode==="walk" || mode==="fly" || mode==="orbit";
+}
+
+export function createBridgeMission({ scene, camera, renderer, ambient, sun, ground, apron, street, setMode, swell, gust, rain }) {
   const canvas = renderer.domElement;
   const root = new THREE.Group();
   root.name = "Bridge delivery";
   root.visible = false;
   scene.add(root);
+  const terrain=new THREE.Group();
+  terrain.name="Bridge and river scenery";
+  terrain.visible=false;
+  scene.add(terrain);
   const city=street.collisions;
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
   const material = createSurfaceLibrary();
-  const bridgeLook = buildBridgeLook(root, center, material, ground, apron);
-  const stones = buildPebbleToss(root,depthAt,bridgeLook.hit,bridgeLook.field.height);
   const light = createPlayLighting(scene, renderer, center, ambient, sun);
   const wood = material("tea-wood", 0xf1dbc1, .88);
   const agedWood = material("tea-wood", 0xd9c6ac, .88);
@@ -125,7 +133,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const stall = new THREE.Group();
   stall.name="Tea stall";
   stall.position.set(counter.x, .01, counter.z - 1.04);
-  root.add(stall);
+  stall.visible=false;
+  scene.add(stall);
   const stonePlatform=box(stall,stone,4.55,.1,2.6,0,.03,.34);
   function stallSolid(name,mat,w,h,d,x,y,z) {
     const part=box(stall,mat,w,h,d,x,y,z);
@@ -146,6 +155,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       box(stall,timber,.068,.094,.46,-2.32+i*.211,2.693,.33+side*1.25);
   }
   tileRoof(stall,tile,4.87,1.49,2.72,.33,.323);
+  registerWindBuilding({x:stall.position.x,z:stall.position.z+.32,width:4.2,depth:2.27,height:2.71,
+    enabled:()=>terrain.visible,name:"Tea shop"});
   box(stall, ink, 4.9, .13, .17, 0, 3.255, .33);
   counterCeramics(stall);
   const tea = buildTea(stall);
@@ -170,18 +181,28 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   signMap.colorSpace = THREE.SRGBColorSpace;
   mesh(new THREE.PlaneGeometry(1.8, .65), new THREE.MeshBasicMaterial({ map: signMap, side: THREE.DoubleSide }),
        stall, 0, 2.25, 1.59);
-  const foreground = buildForeground(root, center, material);
+  const foreground = buildForeground(terrain, center, material);
+  const bridgeLook = buildBridgeLook(terrain,center,material,ground,apron,swell,leafFloor,gust,foreground.shore);
+  const stones = buildPebbleToss(root,depthAt,bridgeLook.hit,bridgeLook.field.height,bridgeLook.submerged);
   bridgeLook.leafSource(foreground.shedLeaf);
   const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
-  function floor(x,z) {
-    if (onBridge(x,z)) return deck(x);
+  function floor(x,z,aboveBridge=true) {
+    if (aboveBridge && onBridge(x,z)) return deck(x);
     if(x>=stallFloor.min.x && x<=stallFloor.max.x && z>=stallFloor.min.z && z<=stallFloor.max.z) {
       return stallFloor.max.y;
     }
-    const depth=depthAt(x,z);
     const ground=foreground.floor(x,z);
-    return ground>0 || depth===0 ? ground : waterHeight-depth;
+    const bank=canalTerrainHeight(riverOrigin,x,z);
+    return ground>0 ? Math.max(ground,bank) : bank;
   }
+  function leafFloor(x,z,aboveBridge) {
+    return Math.max(floor(x,z,aboveBridge),foreground.shore.rockTop(x,z));
+  }
+  const weather=rain ? makeCanalRain({
+    root:terrain,street,stall,ground,center,water:bridgeLook.rain,depthAt,onBridge,
+    groundAt:(x,z)=>leafFloor(x,z,false),
+    bridgeAt:(x,z)=>onBridge(x,z) ? deck(x) : -Infinity,
+  }) : null;
   function wadeDepth(x,z) {
     return onBridge(x,z) ? 0 : Math.max(0,waterHeight-floor(x,z));
   }
@@ -220,7 +241,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   labels.id = "missionHud";
   labels.hidden = true;
   labels.innerHTML = `
-    <div class="mission-kicker">清院本 · 桥头</div>
+    <div class="mission-kicker">清院本 · ${rain ? "桥头骤雨" : gust ? "阵风落叶" : swell ? "行船尾浪" : "桥头"}</div>
     <h1>桥畔茶铺</h1>
     <p id="missionObjective"></p>
     <p class="mission-metrics" id="missionEconomy"></p>
@@ -297,12 +318,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
   const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
     const depth=bridgeLook.field.height(x,z,time)-y;
-    if(onBridge(x,z) || depth<.032 || depthAt(x,z)<.024 || Math.hypot(vx,vz)<.22) return false;
+    if(onBridge(x,z) || depth<.032 || depthAt(x,z)<.024 || Math.hypot(vx,vz)<.22)
+      return weather?.touchdown(x,y,z,vx,vz) ?? false;
     const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
     bridgeLook.hit(x,z,time,strength,"step",vx,vz);
     return true;
   });
-  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),()=>false);
+  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),
+    (x,y,z,time,vx,vz)=>weather?.touchdown(x,y,z,vx,vz) ?? false);
   const fwd = new THREE.Vector3();
   const side = new THREE.Vector3();
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
@@ -557,13 +580,21 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     view = mode;
     if (mode !== "mission") stopTeaShot();
     const active = mode === "mission" || mode === "missionScroll";
+    const showTerrain=mode==="mission" || (!!weather && rainPerspective(mode));
     for(const collider of localColliders) collider.enabled=mode==="mission";
     syncActors();
     root.visible = active;
-    foreground.setVisible(mode === "mission");
-    bridgeLook.setVisible(mode === "mission");
-    counterFill.visible = mode === "mission";
-    light(mode === "mission");
+    terrain.visible=showTerrain;
+    stall.visible=active || showTerrain;
+    foreground.setVisible(showTerrain);
+    bridgeLook.setVisible(showTerrain);
+    counterFill.visible = showTerrain;
+    light(showTerrain);
+    if(mode==="mission") light.focus(center);
+    if(weather) {
+      weather.visible(showTerrain);
+      light.storm(showTerrain ? weather.level() : 0);
+    }
     labels.hidden = !active;
     document.body.classList.toggle("mission-open", active);
     groundMarker.visible = mode === "mission" && state.phase !== "delivered";
@@ -638,7 +669,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
           camera.quaternion.slerp(teaRotation, focus);
         }
       }
-      foreground.update(camera, elapsed);
+      foreground.update(camera,elapsed,dt);
     }
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
       (view === "missionScroll" && state.phase === "carrying");
@@ -750,11 +781,21 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   return {
     anchor: center,
     setView, frame,
-    prepare() {
-      if (view !== "mission") return;
-      bridgeLook.frame(elapsed,Math.min(.07,elapsed-lastPrepare));
+    prepare(realtime) {
+      if (!terrain.visible) return;
+      if(view!=="mission") {
+        elapsed+=realtime;
+        foreground.update(camera,elapsed,realtime);
+        light.focus(camera.position);
+      }
+      const dt=Math.min(.07,elapsed-lastPrepare);
+      bridgeLook.frame(elapsed,dt);
       lastPrepare=elapsed;
-      bridgeLook.prepare(renderer,scene,camera);
+      if(weather) {
+        weather.update(elapsed,dt,camera,view!=="mission");
+        light.storm(weather.level());
+        weather.prepare(renderer,wet=>bridgeLook.prepare(renderer,scene,camera,wet));
+      } else bridgeLook.prepare(renderer,scene,camera);
     },
     turn(dx, dy) {
       if (view !== "mission") return;
@@ -767,10 +808,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       ui();
     },
     sampleWater:bridgeLook.probe,
+    sampleRain:weather?.sample,
+    registerRainHouse:weather?.registerHouse,
+    refreshRainShelter:weather?.refreshShelter,
     inspect: () => ({ phase: state.phase, coins: state.coins, method: state.method, view, firstPerson,
       player: { ...player, y: floor(player.x, player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
-      gait:gait.inspect(),
+      gait:gait.inspect(), rain:weather?.inspect(),
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,

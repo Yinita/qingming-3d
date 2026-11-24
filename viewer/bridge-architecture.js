@@ -62,6 +62,7 @@ export function tileRoof(parent,material,width,run,eave,centreZ,slope) {
   geometry.computeVertexNormals();
   const roof=new THREE.Mesh(geometry,material);
   roof.name="Curved ceramic roof tiles";
+  roof.userData.roofProfile={width,run,eave,centreZ,slope};
   roof.castShadow=roof.receiveShadow=true;
   parent.add(roof);
 }

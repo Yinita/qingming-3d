@@ -1,0 +1,50 @@
+{
+  "retreat": {
+    "widest": 0.36482719215709075,
+    "liveReach": 0.1563845977270793,
+    "maxRetained": 0.27013106380954477,
+    "darkened": 64
+  },
+  "wetPixels": {
+    "crop": [
+      1420,
+      1160,
+      3290,
+      2130
+    ],
+    "fractionAboveFour": 0.10711505595677821,
+    "peak": 14.666666666666666
+  },
+  "surfaceAudit": {
+    "vertices": 52851,
+    "triangles": 104784,
+    "meshNames": 1,
+    "separateCrest": false,
+    "separateShore": false,
+    "exteriorEdges": 916,
+    "expectedExterior": 916,
+    "invalidEdges": 0,
+    "rowsChecked": 9,
+    "joinGap": 0,
+    "joinNormal": 0.8586919596459509,
+    "reversalWidth": 0.23619842529296875,
+    "crestRise": 0.13907268643379211,
+    "inverseUnderestimate": 2.582050748967113e-05,
+    "worst": {
+      "u": 0.7833333333333333,
+      "x": -66.94364166259766,
+      "rise": 0.07591287605464458,
+      "predicted": 0.07588705554715491,
+      "center": -67.21712493896484,
+      "roll": 0.9702295660972595,
+      "lift": 0.14852066338062286
+    }
+  },
+  "cadence": [
+    1.6982999999988793,
+    1.6664999999999939,
+    1.6834000000003595
+  ],
+  "errors": [],
+  "4kP95Ms": 16.80000000000109
+}

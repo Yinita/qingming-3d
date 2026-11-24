@@ -57,7 +57,7 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
         positions.push(side*r*width,y,z);
         uv.push(.27+z*.74,y*1.4+j*.31);
         const a = i*7+j, b = a+7;
-        if (i<shape.length-1 && j<6) indices.push(...(side>0 ? [a,b,a+1,a+1,b,b+1] : [a,a+1,b,a+1,b+1,b]));
+        if (i<shape.length-1 && j<6) indices.push(...(side>0 ? [a,a+1,b,a+1,b+1,b] : [a,b,a+1,a+1,b,b+1]));
       }
     }
     const hull = new THREE.BufferGeometry();
@@ -72,6 +72,25 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
         .047,.058,Math.hypot(to-from,w2-w1)+.019,timber,Math.atan2((w2-w1)*side,to-from));
       rail.rotation.x = Math.atan2(h1-h2,to-from);
     }
+  }
+  // Close the underside and the inner planking where the hull sides meet them.
+  // The raised floorboards retain their plank seams over a continuous surface.
+  for (const [span,y,bottom] of [[.48,-.091,true],[.625,.006,false]]) {
+    const positions=[], uv=[], indices=[];
+    for (const [i,[z,width]] of shape.entries()) {
+      positions.push(-width*span,y,z,width*span,y,z);
+      uv.push(.5-width*span,.57*z,.5+width*span,.57*z);
+      if (i===shape.length-1) continue;
+      const a=2*i;
+      const top=[a,a+2,a+1,a+1,a+2,a+3];
+      indices.push(...(bottom ? top.reverse() : top));
+    }
+    const skin=new THREE.BufferGeometry();
+    skin.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+    skin.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+    skin.setIndex(indices);
+    skin.computeVertexNormals();
+    solid(skin,trim,boat);
   }
   for (let i=0; i<6; i++) plank(boat,(i-2.5)*.103,.026,0,.095,.045,2.32,timber);
   for (const [width,z] of [[.91,-.78],[1.10,.05],[.92,.83]]) {
@@ -119,6 +138,11 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
   let tuggedAt=-Infinity, pulls=0, rest=0, span=0, stretch=0, heaveTarget=0;
   const deckOffset=.031;
   const frameStart=new THREE.Vector3();
+  const waterline=[[-.456,-.95],[.456,-.95],[-.425,.96],[.425,.96]].map(([side,along])=>({
+    rim:new THREE.Vector3(side,.024,along),
+    outward:new THREE.Vector3(Math.sign(side),0,Math.sign(along)*.34).normalize(),
+    point:new THREE.Vector3(), normal:new THREE.Vector3(),
+  }));
   boat.position.set(x,waterHeight+deckOffset,z);
   boat.rotation.copy(angle);
   boat.localToWorld(tie.copy(cleat));
@@ -181,7 +205,8 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
     heaveTarget=(bow+stern+port+starboard)*.25+deckOffset;
     wetLine.value=Math.max(heaveTarget-deckOffset+.048,wetLine.value-dt*.009);
     const pitch=(stern-bow)/2.34, roll=(starboard-port)/.90;
-    field.velocity(boat.position.x,boat.position.z,time,flow);
+    // Sample incoming water beyond the stem for the force on the boat.
+    field.velocity(boat.position.x-1.98*s,boat.position.z-1.98*c,time,flow);
 
     frameStart.copy(boat.position);
     const steps=Math.max(1,Math.ceil(dt/.010));
@@ -228,11 +253,15 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
       motion.set((boat.position.x-frameStart.x)/dt,(boat.position.z-frameStart.z)/dt,
         yawVelocity,(boat.position.y-frameStart.y)/dt);
     }
+    for(const contact of waterline) {
+      contact.point.copy(contact.rim).applyQuaternion(boat.quaternion).add(boat.position);
+      contact.normal.copy(contact.outward).applyQuaternion(boat.quaternion).setY(0).normalize();
+    }
     renderRope();
   }
 
   return {
-    anchor, update, wake, motion,
+    anchor, update, wake, motion, waterline,
     tug(time) {
       if(time-tuggedAt<2.2) return false;
       tuggedAt=time;

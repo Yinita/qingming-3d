@@ -4,7 +4,7 @@ import { waterHeight } from "./bridge-canal-bed.js";
 const gravity = 9.81;
 const capacity = 6;
 
-export function buildPebbleToss(parent, depthAt, hitWater, surface) {
+export function buildPebbleToss(parent, depthAt, hitWater, surface, submerged) {
   const material = new THREE.MeshPhysicalMaterial({
     color:0x8b7f60, roughness:.68, clearcoat:.20, clearcoatRoughness:.43,
   });
@@ -34,6 +34,7 @@ export function buildPebbleToss(parent, depthAt, hitWater, surface) {
     pebble.flight=.48+.074*metres;
     pebble.sinkTime=0;
     pebble.struck=false;
+    pebble.bottomed=false;
     pebble.sx=x;
     pebble.sy=y;
     pebble.sz=z;
@@ -60,6 +61,8 @@ export function buildPebbleToss(parent, depthAt, hitWater, surface) {
         p.sinkTime=THREE.MathUtils.clamp(.12+p.drop*.59,.17,1.15);
         const fallSpeed=gravity*p.flight-p.vy;
         const strength=THREE.MathUtils.clamp(fallSpeed/4.5,.64,1.12);
+        p.bottomStrength=strength;
+        p.trailAt=time;
         hitWater(p.dx,p.dz,p.began+p.flight,strength,"stone",p.vx,p.vz);
       }
       if (!p.struck) {
@@ -71,6 +74,15 @@ export function buildPebbleToss(parent, depthAt, hitWater, surface) {
         const x=p.dx+p.vx*drift, z=p.dz+p.vz*drift;
         const bottom=waterHeight-depthAt(x,z)+.034;
         p.mesh.position.set(x,THREE.MathUtils.lerp(p.entry,bottom,1-Math.pow(1-sink,2.1)),z);
+        if(p.mesh.position.y<surface(x,z,time)-.032 && sink<.80 && time>=p.trailAt) {
+          const drag=Math.exp(-sink*4.6)*.39/p.sinkTime;
+          submerged.trail(x,p.mesh.position.y,z,time,p.vx*drag,p.vz*drag);
+          p.trailAt=time+.032;
+        }
+        if(!p.bottomed && sink>=.96) {
+          p.bottomed=true;
+          submerged.bedStrike(x,z,time,p.bottomStrength);
+        }
         p.mesh.rotation.set(age*8.8,age*6.4,age*4.9);
       }
     }

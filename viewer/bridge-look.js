@@ -209,6 +209,7 @@ export function buildWoodenBridge(group,center,surface) {
     const geometry = mergeGeometries(parts);
     parts.forEach(part => part.dispose());
     const model = new THREE.Mesh(geometry, material);
+    if(parts===boards) model.name="Wooden bridge deck";
     model.castShadow = model.receiveShadow = true;
     model.layers.enable(1);
     group.add(model);
@@ -248,7 +249,7 @@ export function walkPath(w, depth, mat) {
   return model;
 }
 
-export function buildBridgeLook(parent, center, surface, ground, apron) {
+export function buildBridgeLook(parent, center, surface, ground, apron, swell, groundAt, gust, shore) {
   const model = new THREE.Group();
   model.name = "Close-range bridge and canal";
   parent.add(model);
@@ -257,8 +258,8 @@ export function buildBridgeLook(parent, center, surface, ground, apron) {
   const skiffRail = surface("rail-wood",0xe6cfab,.70,.82);
   const skiff = mooredSkiff(model, center, skiffBoards, skiffRail, detailedBox);
   const origin = canalOrigin(center);
-  const bed = buildCanalBed(model,origin,ground,apron);
-  const canal = buildCanal(model,origin,piers,skiff.wake,skiff.motion);
+  const canal = buildCanal(model,origin,piers,skiff,swell,groundAt,gust,shore);
+  const bed=buildCanalBed(model,origin,ground,apron,canal.caustics,canal.wetting,surface);
   return {
     setVisible(visible) { model.visible = visible; bed.setVisible(visible); },
     frame(time,dt) { skiff.update(time,dt,canal.field); bed.frame(time); canal.frame(time,dt); },
@@ -268,7 +269,9 @@ export function buildBridgeLook(parent, center, surface, ground, apron) {
     hull:skiff.wake,
     tug:skiff.tug,
     hit: canal.hit,
+    submerged:canal.submerged,
     leafSource:canal.leafSource,
+    rain:canal.rain,
     prepare: canal.prepare,
     inspect(time) { return { ...canal.inspect(), skiff:skiff.inspect(time) }; },
   };
@@ -294,9 +297,34 @@ export function createPlayLighting(scene, renderer, center, ambient, sun) {
   key.shadow.bias = -.0003;
   key.shadow.radius = 2;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  return function activate(active) {
+  function activate(active) {
     renderer.shadowMap.enabled = active;
     sky.visible = key.visible = active;
     ambient.visible = sun.visible = !active;
+  }
+  const dryBackground=scene.background.clone(), rainBackground=new THREE.Color(0xb8c0b2);
+  const drySky=new THREE.Color(0xf2f1d9), rainSky=new THREE.Color(0xd0dfd8);
+  const dryKey=new THREE.Color(0xffedd2), rainKey=new THREE.Color(0xe5eeeb);
+  const fogSettings=new WeakMap();
+  activate.focus=point=>{
+    const x=Math.round(point.x*2)*.5,z=Math.round(point.z*2)*.5;
+    key.position.set(x-9,17,z-7);
+    key.target.position.set(x+.7,0,z);
   };
+  activate.storm=amount=>{
+    sky.color.copy(drySky).lerp(rainSky,amount);
+    key.color.copy(dryKey).lerp(rainKey,amount);
+    sky.intensity=1.15+amount*.13;
+    key.intensity=2.15-amount*1.42;
+    scene.background.copy(dryBackground).lerp(rainBackground,amount);
+    if(scene.fog?.isFog) {
+      const fog=scene.fog;
+      if(!fogSettings.has(fog)) fogSettings.set(fog,{near:fog.near,far:fog.far,color:fog.color.clone()});
+      const baseline=fogSettings.get(fog);
+      fog.color.copy(baseline.color).lerp(rainBackground,amount);
+      fog.near=THREE.MathUtils.lerp(baseline.near,10,amount);
+      fog.far=THREE.MathUtils.lerp(baseline.far,83,amount);
+    }
+  };
+  return activate;
 }
