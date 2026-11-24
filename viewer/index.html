@@ -28,7 +28,7 @@
   #missionProgress { display:block; width:100%; height:6px; accent-color:#843b30; }
   #missionProgress::-webkit-progress-bar { background:#d8c7ab; border-radius:3px; }
   #missionProgress::-webkit-progress-value { background:#843b30; border-radius:3px; }
-  body.scene-loading #missionIntro { visibility:hidden; }
+  body.scene-loading #missionIntro, body.scene-loading #missionRestart { visibility:hidden; }
   .mission-open #hud { display:none; }
   #missionHud { position:fixed; left:22px; top:22px; width:min(329px, calc(100vw - 72px));
     padding:17px 19px 12px; border:1px solid #b8a283; border-top:3px solid #863d34;
@@ -40,17 +40,21 @@
     padding:8px 14px; color:#fff7e1; font-weight:700; background:#733a2d;
     border:1px solid #e3bd82; box-shadow:0 3px 15px #38271c66; }
   #missionRestart:hover, #missionRestart:focus-visible { background:#9a4635; }
-  #missionIntro { position:fixed; z-index:4; top:24px; left:50%; transform:translateX(-50%);
-    display:grid; grid-template-columns:1fr auto; align-items:center; gap:17px;
-    width:min(424px, calc(100vw - 44px)); box-sizing:border-box; padding:16px 18px;
-    color:#fff6e4; background:#572c24f5; border:1px solid #d5a76d;
-    border-top:3px solid #e3b878; box-shadow:0 9px 30px #32221877; border-radius:4px; }
-  #missionIntro strong { display:block; font-size:22px; font-weight:700; letter-spacing:.035em; }
-  #missionIntro span { display:block; margin-top:5px; font-size:13px; line-height:1.5; color:#f7e4c1; }
-  #missionBegin { min-height:43px; padding:7px 14px; background:#f3d398;
-    color:#54251f; border-color:#e9c38b; font-weight:700; white-space:nowrap; }
+  #missionIntro { position:fixed; z-index:5; top:clamp(84px,16vh,168px); left:50%;
+    transform:translateX(-50%); width:min(445px,calc(100vw - 32px)); box-sizing:border-box;
+    padding:24px 27px 20px; color:#fff6e4; background:#502821f8;
+    border:1px solid #d5a76d; border-top:4px solid #e5bd82;
+    box-shadow:0 14px 60px #28171099; border-radius:5px; }
+  #missionIntroTitle { margin:0; font-size:27px; font-weight:700; letter-spacing:.035em; }
+  #missionIntroDetail { margin:8px 0 17px; font-size:15px; line-height:1.5; color:#f7e4c1; }
+  #missionIntro .entry-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  #missionIntro button { min-height:44px; padding:8px 17px; font-weight:700; }
+  #missionBegin { background:#f3d398; color:#54251f; border-color:#e9c38b; }
   #missionBegin:hover, #missionBegin:focus-visible { background:#ffe7b6; }
+  #missionIntroReset { color:#fff3d9; background:#653528; border-color:#b98364; }
   #missionIntro[hidden] { display:none; }
+  #missionRestart:focus-visible, #missionIntro button:focus-visible {
+    outline:2px solid #ffdb99; outline-offset:3px; }
   #missionHud p { margin:7px 0; font-size:13px; line-height:1.55; }
   .mission-kicker { color:#87483b; font-size:11px; letter-spacing:.14em; }
   .mission-metrics { color:#745738; padding:5px 0; border-block:1px solid #c8b89b; }
@@ -71,16 +75,17 @@
   @media (max-width:760px), (max-height:525px) {
     #missionHud { top:auto; bottom:10px; left:10px; padding:8px 12px; }
     #missionHud h1 { font-size:19px; margin-bottom:4px; }
-    #missionIntro { top:62px; gap:10px; padding:10px 12px; }
-    #missionIntro strong { font-size:18px; }
-    #missionIntro span { font-size:12px; }
+    #missionIntro { top:66px; padding:15px 16px 13px; }
+    #missionIntroTitle { font-size:21px; }
+    #missionIntroDetail { font-size:13px; }
     #missionRestart { top:10px; right:10px; }
   }
   @media (max-height:459px) {
-    #missionIntro { top:7px; width:min(364px,calc(100vw - 240px)); padding:6px 9px; }
-    #missionIntro strong { font-size:16px; }
+    #missionIntro { top:10px; width:min(348px,calc(100vw - 244px)); padding:9px 12px; }
+    #missionIntroTitle { font-size:18px; }
+    #missionIntroDetail { margin:4px 0 8px; }
     #missionHud .mission-controls { display:none; }
-    #missionBegin { min-height:38px; }
+    #missionIntro button { min-height:42px; padding:6px 10px; }
   }
   @media (max-width:510px) and (max-height:459px) {
     #missionIntro { top:57px; width:calc(100vw - 32px); }
@@ -125,6 +130,11 @@
 </style>
 <script type="importmap">
 { "imports": {
+  "./bridge-mission.js": "./bridge-mission.js?v=1.9",
+  "./bridge-look.js": "./bridge-look.js?v=1.9",
+  "./bridge-people.js": "./bridge-people.js?v=1.9",
+  "./bridge-street.js": "./bridge-street.js?v=1.9",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=1.9",
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
   "./bridge-look.js": "./bridge-look.js?v=18",
@@ -162,7 +172,7 @@
     <button id="bOrbit" aria-pressed="false">俯瞰</button>
   </div>
   <div class="row quest-entry">
-    <button id="bMission" type="button">进入任务 · 桥畔茶铺</button>
+    <button id="bMission" type="button">任务 · 桥畔茶铺</button>
     <button id="bMissionRestart" type="button">重置任务</button>
   </div>
   <div class="row"><button id="bModels" aria-pressed="false" hidden>远处房屋：原画裁片</button></div>
@@ -170,7 +180,7 @@
   <div id="status">加载中…</div>
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1.8</div>
+<div id="seal">入卷 v1.9</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -233,7 +243,7 @@ ground.receiveShadow=true;
 ground.userData.archiveMaterial=ground.material;
 ground.userData.archiveGeometry=ground.geometry;
 const streetTerrain=createStreetTerrain(GW,GD);
-const walkingGround=surfaces.project("packed-earth",{color:0xd8c6a4,roughness:.94},"street");
+const walkingGround=surfaces.project("packed-earth",{color:0xc4b5a1,roughness:.94},"street");
 ground.userData.perspectiveMaterial=walkingGround;
 
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
@@ -531,7 +541,10 @@ document.getElementById("bWalk").onclick = () => { walk.pos.set(pan, 1.6, -GD * 
 document.getElementById("bOrbit").onclick = () => setMode("orbit");
 document.getElementById("bFly").onclick = () => startFly();
 document.getElementById("bModels").onclick = () => setModels(!showModels);
-document.getElementById("bMission").onclick = () => setMode("mission");
+document.getElementById("bMission").onclick = () => {
+  setMode("mission");
+  mission.openBriefing();
+};
 document.getElementById("bMissionRestart").onclick = event => ensureMission().requestRestart(event.currentTarget);
 setModels(true);
 
@@ -596,7 +609,7 @@ document.getElementById("status").textContent =
   ` · 段 x=${L.x0}–${L.x1}px · 仰角 ${L.camera.elev_deg}°`;
 window.__scene = { L, setMode, startFly, setModels, models, renderer, scene, persp, orbit, walk,
   mission: () => mission?.inspect(),
-  waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect };
+  waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect, streetHeight:street.streetHeight };
 </script>
 </body>
 </html>

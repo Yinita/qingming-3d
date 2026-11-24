@@ -1,4 +1,3 @@
-import { streetSurfaceHeight } from "./bridge-street-ground.js";
 import * as THREE from "three";
 import { bridgeDeckHeight, bridgeRailOffset, buildBridgeLook, createPlayLighting, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { buildForeground, willowSites } from "./bridge-foreground.js";
@@ -52,7 +51,7 @@ function distance(a, b) {
 
 const spawn={x:-73.18,z:routeZ,yaw:-Math.PI/2,pitch:0};
 function newMission() {
-  return { phase:"waiting", crate:{...pickup}, coins:6, method:null };
+  return { phase:"waiting", crate:{...pickup}, coins:6, method:null, started:false };
 }
 function loadSave() {
   try {
@@ -61,7 +60,9 @@ function loadSave() {
     if (crate && [crate.x, crate.z, crate.yaw].every(Number.isFinite) &&
         Number.isInteger(saved.coins) && saved.coins >= 0 && saved.coins <= 11 &&
         ["waiting", "delivered"].includes(saved.phase) &&
-        (saved.phase === "delivered" || walkable(crate.x, crate.z))) return saved;
+        (saved.phase === "delivered" || walkable(crate.x, crate.z))) {
+      return {...saved,started:saved.started===true || saved.phase==="delivered" || distance(crate,pickup)>=.04};
+    }
   } catch (err) {
     // The mission can run without storage.
   }
@@ -184,7 +185,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return stallFloor.max.y;
     }
     const depth=depthAt(x,z);
-    const ground=Math.max(foreground.floor(x,z),depth===0 ? streetSurfaceHeight(x,z) : 0);
+    const ground=Math.max(foreground.floor(x,z),depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }
   function wadeDepth(x,z) {
@@ -281,13 +282,19 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   intro.hidden=true;
   intro.setAttribute("aria-labelledby","missionIntroTitle");
   intro.innerHTML=`
-    <div><strong id="missionIntroTitle"></strong><span id="missionIntroDetail"></span></div>
-    <button id="missionBegin" type="button">开始送茶</button>`;
+    <h2 id="missionIntroTitle"></h2>
+    <p id="missionIntroDetail"></p>
+    <div class="entry-actions">
+      <button id="missionBegin" type="button">开始送茶</button>
+      <button id="missionIntroReset" type="button">重置进度</button>
+    </div>`;
   document.body.appendChild(intro);
   panels.observe(intro);
   const introTitle=intro.querySelector("#missionIntroTitle");
   const introDetail=intro.querySelector("#missionIntroDetail");
-  const begin=intro.querySelector("button");
+  const begin=intro.querySelector("#missionBegin");
+  const introReset=intro.querySelector("#missionIntroReset");
+  introReset.onclick=()=>requestRestart(introReset);
   const waypoint=document.createElement("div");
   waypoint.id="missionWaypoint";
   waypoint.hidden=true;
@@ -458,6 +465,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       remember();
       state.phase = "carrying";
+      state.started=true;
       showStart=false;
       hint.textContent = "茶叶已取。沿桥走到对岸的茶铺。";
     } else if (state.phase === "carrying") {
@@ -496,6 +504,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     remember();
     state.coins -= 3;
     state.phase = "courier";
+    state.started=true;
     showStart=false;
     courierLeg = 0;
     courierGait.reset();
@@ -575,6 +584,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
+    clearInput();
     previous=null;
     firstPerson=false;
     deliveryTime=-10;
@@ -609,11 +619,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function updateBriefing() {
-    const kind=state.phase==="delivered" ? "finished" : distance(state.crate,pickup)<.04 ? "new" : "resume";
+    const kind=state.phase==="delivered" ? "finished" : state.started ? "resume" : "new";
+    introReset.hidden=kind==="new";
     if(kind!==introduced) {
       const [title,detail,action]={
         new:["任务开始 · 桥畔茶铺","在桥头取茶叶箱，过桥送到茶铺。","开始送茶"],
-        resume:["继续送茶","茶叶箱还在原处。跟随标记找回箱子。","继续任务"],
+        resume:["继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
         finished:["茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
       }[kind];
       introTitle.textContent=title;
@@ -632,7 +643,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       delivered: "茶已送到，茶铺开张。",
     };
     if(status.textContent!==objective[state.phase]) status.textContent=objective[state.phase];
-    const phaseTitle={waiting:showStart ? "桥头待领" : "桥头取箱",carrying:"送往茶铺",courier:"伙计送货中",delivered:"任务完成"}[state.phase];
+    const phaseTitle={waiting:showStart ? "任务待开始" : "任务进行中 · 桥头取箱",carrying:"任务进行中 · 送往茶铺",courier:"任务进行中 · 伙计送货",delivered:"任务完成"}[state.phase];
     if(stage.textContent!==phaseTitle) stage.textContent=phaseTitle;
     const step=state.phase==="delivered" ? 2 : state.phase==="waiting" ? 0 : 1;
     if(progress.value!==step) progress.value=step;
@@ -897,7 +908,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return;
     }
     showStart=false;
-    hint.textContent="走到「取茶叶箱」标记处，按 E 拿箱。";
+    state.started=true;
+    store();
+    hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
     ui();
     canvas.focus({preventScroll:true});
   };
@@ -951,6 +964,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   return {
     anchor: center,
     setView, frame, requestRestart,
+    openBriefing() {
+      showStart=true;
+      ui();
+      if(!intro.hidden) begin.focus({preventScroll:true});
+    },
     get restartOpen() { return restartDialog.open; },
     prepare() {
       if (view !== "mission") return;
@@ -959,7 +977,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       bridgeLook.prepare(renderer,scene,camera);
     },
     turn(dx, dy) {
-      if (view !== "mission") return;
+      if (view !== "mission" || restartDialog.open) return;
       if (Number.isFinite(teaShotStart)) {
         stopTeaShot();
         ui();

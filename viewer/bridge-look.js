@@ -73,7 +73,7 @@ export function createSurfaceLibrary() {
       detail.finishReady.value=1;
       material.userData.surfaceReady=true;
     },err=>console.warn("Projected material could not be loaded",id,err.message));
-    material.customProgramCacheKey=()=>street ? "projected-street-finish" :
+    material.customProgramCacheKey=()=>street ? "projected-street-finish-v19" :
       floor ? "projected-floor-finish" : "projected-building-finish";
     material.onBeforeCompile=shader=>{
       Object.assign(shader.uniforms,detail);
@@ -124,39 +124,45 @@ export function createSurfaceLibrary() {
         float aggregate=grains.r;
         vec3 soil=litSurface*dust*(.77+.23*compaction+.12*mottling+.15*aggregate);
         ${street ? `
-        // Wheel paths converge at the market and the two landings.
         float market=1.-smoothstep(8.,16.,length((soilPoint-vec2(25.06,-26.6))*vec2(1.,.56)));
-        float approach=1.-smoothstep(3.,12.,min(length(soilPoint-vec2(-71.0,-41.42)),
-          length(soilPoint-vec2(-43.0,-41.42))));
-        float wander=soilNoise(soilPoint*.38)+.28*sin(soilPoint.y*.37);
+        float west=1.-smoothstep(5.,11.,length(soilPoint-vec2(-71.,-41.42)));
+        float east=1.-smoothstep(5.,11.,length(soilPoint-vec2(-43.,-41.42)));
+        float approach=max(west,east);
+        float wander=soilNoise(soilPoint*.38)+.24*sin(soilPoint.y*.37);
         float crossTrack=mix(soilPoint.x-25.06-(soilPoint.y+26.6)*.08,soilPoint.y+41.42,approach);
-        float track=crossTrack-.29*wander;
+        float track=crossTrack-.25*wander;
         float rutDist=abs(track);
         float rutCentre=rutDist-(.83+.085*sin(mix(soilPoint.y+26.3,soilPoint.x+71.8,approach)*.56));
         float route=max(market,approach);
-        float wheel=(1.-smoothstep(.034,.23,abs(rutCentre)))*route;
-        float tread=(1.-smoothstep(.92,2.36,rutDist))*route;
-        float compressed=(.27*tread+.73*wheel)*(.60+.40*compaction);
-        float drift=smoothstep(.39,.71,soilNoise(soilPoint*.87+5.8))*(1.-.80*tread);
-        float coarse=soilNoise(soilPoint*2.15+4.1);
-        vec3 earth=pigment*vec3(1.66,1.91,2.47);
-        vec3 stoneDust=grains*vec3(1.61,1.79,2.09);
-        soil=diffuseColor.rgb*mix(earth,stoneDust,.35*drift+.17);
-        soil*=mix(.72,1.19,smoothstep(.12,.82,districts+.24*coarse));
-        soil*=mix(.70,1.05,relief.r)*mix(1.,.64,compressed);
-        float fineGrit=soilNoise(soilPoint*19.7+17.)*soilNoise(soilPoint*27.6);
-        float packedSkin=smoothstep(.12,.52,coarse+.2*compaction)*tread;
-        soil*=mix(vec3(1.),vec3(.82,.87,.94),packedSkin*.39);
-        soil*=1.+(smoothstep(.29,.67,fineGrit)-.28)*(.24+.18*drift);
-        soil*=mix(vec3(1.),vec3(1.16,1.10,.97),drift);
-        soil=mix(soil,soil*vec3(.74,.84,.78),smoothstep(.58,.84,coarse)*.53*(1.-.5*tread));
+        float wheel=(1.-smoothstep(.046,.27,abs(rutCentre)))*route;
+        float tread=(1.-smoothstep(.91,2.37,rutDist))*route;
+        float compressed=(.24*tread+.76*wheel)*(.64+.36*compaction);
+        vec2 swale=soilPoint+vec2(districts-.5,compaction-.5)*1.6;
+        float looseDust=smoothstep(.36,.73,soilNoise(swale*.68+5.8))*(1.-.79*tread);
+        float clay=smoothstep(.29,.73,soilNoise(swale*vec2(1.61,.91)+4.1));
+        float gravelMix=smoothstep(.28,.74,soilNoise(swale*vec2(.53,.39)+23.8));
+        mat2 soilTurn=mat2(.8,.6,-.6,.8);
+        vec2 aggregateUV=soilTurn*finishUV.xz*1.73+vec2(.19,.53);
+        vec3 aggregateColor=texture2D(finishColor,aggregateUV).rgb;
+        vec3 tilePigment=mix(pigment,aggregateColor,gravelMix*.74);
+        vec3 earth=mix(vec3(.35,.261,.155),tilePigment,.57)*vec3(1.77,2.09,2.62);
+        vec3 stoneDust=grains*vec3(1.78,2.05,2.40);
+        soil=diffuseColor.rgb*mix(earth,stoneDust,.31*looseDust+.13);
+        soil*=mix(vec3(.85,.81,.76),vec3(1.13,1.10,1.04),districts);
+        soil*=mix(vec3(.80,.87,.92),vec3(1.11,1.07,.96),clay);
+        soil*=mix(.74,1.08,relief.r)*mix(1.,.73,compressed);
+        float grainWidth=max(length(dFdx(swale)),length(dFdy(swale)));
+        float gritMask=1.-smoothstep(.018,.077,grainWidth);
+        float fineGrit=soilNoise(swale*22.7+17.)*soilNoise(swale*31.6);
+        soil*=1.+(smoothstep(.23,.61,fineGrit)-.27)*(.26+.16*looseDust)*gritMask;
+        soil*=mix(vec3(1.),vec3(1.10,1.09,1.04),looseDust);
         ` : ""}
         diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
         ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
-        ${street ? "roughnessFactor=clamp(roughnessFactor+(.09+.08*drift-.32*compressed)*finishReady,.51,1.);" : ""}
+        ${street ? "roughnessFactor=clamp(roughnessFactor+(.07+.12*looseDust-.27*compressed)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
@@ -168,7 +174,9 @@ export function createSurfaceLibrary() {
         ${street ? `
         float bank=exp(-31.*rutCentre*rutCentre)*rutCentre*sign(track)*route;
         vec2 crossSlope=mix(vec2(1.,-.08),vec2(0.,1.),approach);
-        reliefVector=reliefVector*(1.-.48*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.54;
+        vec2 aggregateNormal=(texture2D(finishNormal,aggregateUV).xy*2.-1.)*soilTurn;
+        reliefVector=mix(reliefVector,vec3(aggregateNormal.x,0.,aggregateNormal.y)*.68,gravelMix*.74);
+        reliefVector=reliefVector*(1.-.39*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.51;
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;

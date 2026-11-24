@@ -30,11 +30,12 @@ export function streetSurfaceHeight(x,z) {
       (1-smoothstep(cross,street.width*.65,street.width));
     const rut=Math.abs(cross-(.83+.085*Math.sin(along*.56)));
     const crown=.016*(1-smoothstep(cross,.21,1.2));
-    const shoulder=.024*smoothstep(cross,1.05,2.3);
-    const ridge=.012*Math.exp(-(((rut-.27)/.16)**2));
+    const erosion=.006*Math.sin(along*1.4+side*.58)+.004*Math.cos(along*3.1+side*1.2);
+    const shoulder=(.031+erosion)*smoothstep(cross,1.05,2.33);
+    const ridge=(.011+erosion*.45)*Math.exp(-(((rut-.24)/.18)**2));
     const grit=.008*Math.sin(x*3.7+z*1.1)*Math.sin(z*4.2+x*.87)+
       .006*Math.sin(z*2.3-x*2.1);
-    height+=fade*(crown+shoulder+ridge+(.020+grit)*smoothstep(rut,.08,.31));
+    height+=fade*(crown+shoulder+ridge+(.022+grit)*smoothstep(rut,.08,.36));
   }
   return height;
 }
@@ -70,7 +71,7 @@ export function createStreetTerrain(width,depth) {
   return geometry;
 }
 
-function paving(lane,origin,material) {
+function paving(lane,origin,material,addSurface) {
   let seed=lane.seed;
   const random=()=>{
     seed=(Math.imul(1664525,seed)+1013904223)>>>0;
@@ -78,7 +79,7 @@ function paving(lane,origin,material) {
   };
   const position=[],uv=[],color=[],indices=[];
   const pigment=new THREE.Color();
-  const palette=[0xb5b4a7,0xd3c9b3,0xa9b1a7,0xdbcfba,0x969b93,0xb1a18d,0xa69d91];
+  const palette=[0xc3bfb0,0xcec3b1,0xa8b0ab,0xd2caba,0xa5a7a4,0xbcb0a1,0xaca598];
   const c=Math.cos(lane.angle),s=Math.sin(lane.angle);
   const point=(u,v)=>[lane.x+c*u+s*v,lane.z-s*u+c*v];
 
@@ -107,22 +108,23 @@ function paving(lane,origin,material) {
       color.push(pigment.r*shade,pigment.g*shade,pigment.b*shade);
       uv.push(mapU+du*grainX+dv*grainY,mapV+dv*grainX-du*grainY);
     }
-    for(const [du,dv] of rim) vertex(du,dv,-.014,.48);
+    for(const [du,dv] of rim) vertex(du,dv,-.016,.58);
     for(const [du,dv,chip] of rim) {
-      vertex(du,dv,height*.35+du*tiltU+dv*tiltV,.63+.15*chip);
+      vertex(du,dv,height*.36+du*tiltU+dv*tiltV,.70+.12*chip);
     }
     for(const [du,dv,chip] of rim) {
-      const inset=(gravel ? .65 : .92)-chip*.10;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.009*chip,.86+.18*chip);
+      const inset=(gravel ? .72 : .96)-chip*.09;
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.78+.14*chip);
     }
     for(const [du,dv,chip] of rim) {
-      const inset=(gravel ? .65 : .92)-chip*.10;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.009*chip,.91+.16*chip);
+      const inset=(gravel ? .72 : .96)-chip*.09;
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.94+.09*chip);
     }
-    vertex(width*(random()-.5)*.25,length*(random()-.5)*.31,height+.004,1.04);
+    vertex(width*(random()-.5)*.25,length*(random()-.5)*.31,height+.002,.98+.09*random());
     for(let i=0;i<8;i++) {
       const a=offset+i,b=offset+(i+1)%8;
       indices.push(a,a+8,b,b,a+8,b+8,a+8,a+16,b+8,b+8,a+16,b+16,offset+32,b+24,a+24);
+      if(!gravel) addSurface(position,(offset+32)*3,(b+24)*3,(a+24)*3);
     }
   }
 
@@ -135,7 +137,7 @@ function paving(lane,origin,material) {
       const exposedEdge=Math.abs(row+width*.5)>.29*lane.width;
       const fadingEnd=Math.abs(v)>.39*lane.length;
       const chance=exposedEdge && fadingEnd ? .38 : exposedEdge || fadingEnd ? .76 : .97;
-      if(random()<chance) stone(u,v,width-.031,length-.028,.004+random()**1.7*.023);
+      if(random()<chance) stone(u,v,width-.022,length-.020,.007+random()**1.7*.027);
       else if(random()<.72) {
         stone(u-width*.13,v-length*.14,width*.44,length*.41,.016,true);
         stone(u+width*.17,v+length*.17,width*.26,length*.28,.010,true);
@@ -144,11 +146,12 @@ function paving(lane,origin,material) {
     }
     row+=width;
   }
-  for(let i=0;i<lane.length*36;i++) {
+  for(let i=0;i<lane.length*47;i++) {
     const v=(random()-.5)*lane.length*1.11;
-    const spread=.66+.46*Math.sin(v*.93+lane.seed);
-    const edge=(lane.width*.43+random()**2*(.82+spread))*(random()<.5 ? -1 : 1);
-    const size=.023+random()**2*.084;
+    const spread=.53+.33*Math.sin(v*.93+lane.seed)+.19*Math.cos(v*2.61);
+    const shoulder=(.43+.10*Math.cos(v*1.7))*lane.width;
+    const edge=(shoulder+random()**2*(.96+spread))*(random()<.5 ? -1 : 1);
+    const size=.012+random()**2*.078;
     stone(edge+Math.sin(v*.48)*.29,v,size,size*(.67+random()*.63),size*.25,true);
   }
   const geometry=new THREE.BufferGeometry();
@@ -163,8 +166,38 @@ function paving(lane,origin,material) {
   return mesh;
 }
 
+// Only the walkable tops participate in foot placement. Gravel and bevels
+// remain visual detail; ankles should not react to individual small chips.
 export function buildStreetGround(root,origin,surface) {
-  const stone=surface("worn-stone",0xfaf4e8,.84,.97);
+  const stone=surface("worn-stone",0xfffaf3,.96,.99);
   stone.vertexColors=true;
-  for(const lane of lanes) root.add(paving(lane,origin,stone));
+  const cells=new Map();
+  function addSurface(p,i,j,k) {
+    const ax=p[i], az=p[i+2], bx=p[j]-ax, bz=p[j+2]-az, cx=p[k]-ax, cz=p[k+2]-az;
+    const determinant=bx*cz-bz*cx;
+    if(Math.abs(determinant)<1e-6) return;
+    const tri={
+      ax,az,bx,bz,cx,cz,ay:p[i+1],by:p[j+1]-p[i+1],cy:p[k+1]-p[i+1],
+      invArea:1/determinant,
+    };
+    const x0=Math.floor(ax+Math.min(0,bx,cx)), x1=Math.floor(ax+Math.max(0,bx,cx));
+    const z0=Math.floor(az+Math.min(0,bz,cz)), z1=Math.floor(az+Math.max(0,bz,cz));
+    for(let x=x0;x<=x1;x++) for(let z=z0;z<=z1;z++) {
+      const key=x+":"+z;
+      if(!cells.has(key)) cells.set(key,[]);
+      cells.get(key).push(tri);
+    }
+  }
+  for(const lane of lanes) root.add(paving(lane,origin,stone,addSurface));
+  return (x,z)=>{
+    let y=streetSurfaceHeight(x,z);
+    const candidates=cells.get(Math.floor(x)+":"+Math.floor(z));
+    if(candidates) for(const t of candidates) {
+      const dx=x-t.ax, dz=z-t.az;
+      const u=(dx*t.cz-dz*t.cx)*t.invArea;
+      const v=(dz*t.bx-dx*t.bz)*t.invArea;
+      if(u>=0 && v>=0 && u+v<=1) y=Math.max(y,t.ay+u*t.by+v*t.cy);
+    }
+    return y;
+  };
 }

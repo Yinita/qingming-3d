@@ -1,14 +1,14 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riverWorker } from "./bridge-people.js";
-import { buildStreetGround, streetSurfaceHeight } from "./bridge-street-ground.js";
+import { buildStreetGround } from "./bridge-street-ground.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
 import { flagstones, walkwayHeight, willowSites } from "./bridge-foreground.js";
 import { tileRoof } from "./bridge-architecture.js";
 
-const robes=[0x7b8777,0xa08a67,0x687c87,0xa78067,0xb2a283,0x758268,0x716570,0x979482];
+const robes=[0x728778,0x9c795b,0x687e91,0x9f7058,0xbeb194,0x718064,0x766475,0x9a9485];
 const houseIds=new Set(["o0260","o0315","o0430","o0291","o0551"]);
 const reedsHue=0x6d7551;
 const standingY=1.68;
@@ -36,16 +36,17 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   const height=slope===0 ? .009 : 0;
   worker.figure.position.y=height;
   worker.stand(x=>x*slope,0,height,0,yaw);
-  worker.torsoPivot.rotation.set([-.028,.071,-.025,.039][variant],
-    [.09,-.19,.10,-.14][variant],[.029,-.04,.021,-.036][variant]);
+  worker.torsoPivot.position.x=[.018,-.023,.012,-.019][variant];
+  worker.torsoPivot.rotation.set([-.035,.065,-.037,.021][variant],
+    [.12,-.24,.08,-.17][variant],[.039,-.025,.031,-.045][variant]);
   worker.head.rotation.set([.042,-.081,.10,-.068][variant],
     [.23,-.31,.35,-.20][variant],[-.03,.049,-.051,.041][variant]);
   const [left,right]=worker.limbs.arms;
   const [leftElbow,rightElbow]=worker.limbs.elbows;
-  left.rotation.set([-.17,-.10,-.24,-.37][variant],0,[.08,.19,.03,.15][variant]);
-  right.rotation.set([-.24,-.09,-.17,-.02][variant],0,[-.11,-.075,-.22,-.05][variant]);
-  leftElbow.rotation.set([-.56,-.34,-.76,-.41][variant],0,[-.14,-.04,-.20,-.12][variant]);
-  rightElbow.rotation.set([-.35,-.81,-.35,-.32][variant],0,[.07,.20,.02,.09][variant]);
+  left.rotation.set([-.15,-.14,-.32,-.20][variant],[.06,-.31,.18,.21][variant],[.08,.14,.12,.16][variant]);
+  right.rotation.set([-.29,-.11,-.16,-.40][variant],[.15,.30,-.04,-.27][variant],[-.12,-.12,-.10,-.10][variant]);
+  leftElbow.rotation.set([-.56,-.28,-.88,-.44][variant],0,[-.16,-.15,-.23,-.24][variant]);
+  rightElbow.rotation.set([-.56,-.87,-.30,-.70][variant],0,[.18,.25,.09,.22][variant]);
   worker.figure.updateMatrixWorld(true);
   const parts=new Map(), point=new THREE.Vector3();
   worker.figure.traverse(node=>{
@@ -153,7 +154,7 @@ function residents(root,entries,surface) {
   return sync;
 }
 
-function placeResidents(entries,collisions,anchor,origin) {
+function placeResidents(entries,collisions,anchor,origin,streetHeight) {
   const landmarks=willowSites(anchor);
   function place(resident) {
     const radius=resident.solid.radius, height=workerHeight*resident.scale;
@@ -162,7 +163,7 @@ function placeResidents(entries,collisions,anchor,origin) {
       const step=attempt ? .44*Math.ceil(attempt/8) : 0;
       const angle=(attempt%8)*Math.PI*.25+resident.yaw;
       const x=resident.source.x+step*Math.cos(angle), z=resident.source.z+step*Math.sin(angle);
-      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,walkwayHeight(anchor,x,z),streetSurfaceHeight(x,z));
+      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,walkwayHeight(anchor,x,z),streetHeight(x,z));
       if(!resident.bridge) {
         const along=x-anchor.x, across=Math.abs(z-anchor.z);
         if(along>-15.6 && along<20.1 && across<1.38+radius) continue;
@@ -455,7 +456,7 @@ export function createStreetScene(scene,objects,anchor) {
   root.add(bridge);
   buildWoodenBridge(bridge,anchor,surface);
   const origin=canalOrigin(anchor);
-  buildStreetGround(root,origin,surface);
+  const streetHeight=buildStreetGround(root,origin,surface);
   const replacements=new Set();
   const people=[], treeObjects=[];
   const curb=bridgeRailOffset-.365;
@@ -502,7 +503,7 @@ export function createStreetScene(scene,objects,anchor) {
     const [x,z,width,depth]=spec;
     flagstones(root,x,z+depth*.5+.57,width*.79,.94,surface,4379+i*37,.27);
   }
-  const {placed,place}=placeResidents(people,collisions,anchor,origin);
+  const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
   const syncResidents=residents(root,placed,surface);
   function registerHouse(object) {
     const house=collisions.meshBox("existing house",object);
@@ -515,7 +516,7 @@ export function createStreetScene(scene,objects,anchor) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
     trees:treeObjects.length,houses:buildings.length,props,colliders:collisions.inspect()})};
 }
