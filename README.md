@@ -7,9 +7,17 @@
 - 地面是抠掉所有物体后的原画，空出来的地方用 LaMa 补全。
 - 查看器有四种视角：画卷视角（与原画重合）、飞入画中、漫游（WASD）、俯瞰。左上角按钮可在房屋 3D 模型和纸片之间切换。
 
+## 桥畔茶铺试玩
+
+在查看器点「试玩桥畔茶铺」，也可以[直接进入试玩](https://yinita.github.io/qingming-3d/viewer/?mission)。
+
+- 用 WASD 移动，E 拿放货箱，V 切换第一或第三人称。可以亲自过桥交货，也可以委托伙计。
+- 交货后靠近柜台，点「看掌柜斟茶」。浅滩可以涉水和投石，到系船桩可以拉动小船。
+- 「查看任务画卷」会以卷面视角呈现当前货箱的位置。
+
 ## 来源与许可
 
 - 原画：清院本《清明上河图》，取自 Wikimedia Commons 上标为公有领域的扫描。
 - 房屋 3D 模型（`data/seg01/scene/meshes/*.glb`）由 [Hunyuan3D-2](https://github.com/Tencent/Hunyuan3D-2) 生成，受 Tencent Hunyuan Non-Commercial License 约束：仅限非商业使用，且该许可不适用于欧盟、英国和韩国境内。
 - 地面补全用 [LaMa](https://github.com/advimman/lama)（Apache-2.0），纸片放大用 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)（BSD-3-Clause）。
-- 查看器代码基于 [three.js](https://threejs.org/)（MIT 许可），通过 CDN 加载。
+- 查看器代码基于 [three.js](https://threejs.org/)（MIT 许可）。查看器随仓库提供对应版本。

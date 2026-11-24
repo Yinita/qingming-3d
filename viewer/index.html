@@ -2,6 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>入卷 · 清明上河图一段</title>
 <style>
@@ -21,11 +22,30 @@
   #credit { font-size:11px; color:#7a705e; margin-top:6px; border-top:1px solid #d8ccb2; padding-top:5px; }
   #seal { position:fixed; right:14px; top:14px; writing-mode:vertical-rl; background:var(--zhu); color:#fff;
     padding:8px 5px; font-size:14px; letter-spacing:3px; border-radius:3px; opacity:.9; }
+  #bMission { background:#843b30; color:#fff9e9; border-color:#843b30; }
+  .mission-open #hud { display:none; }
+  #missionHud { position:fixed; left:22px; top:22px; width:min(329px, calc(100vw - 72px));
+    padding:17px 19px 12px; border:1px solid #b8a283; border-top:3px solid #863d34;
+    background:#f6ecdaee; color:#322b24; box-shadow:0 7px 24px #2e201e33; }
+  #missionHud h1 { margin:3px 0 8px; font-size:26px; font-weight:600; letter-spacing:.1em; }
+  #missionHud p { margin:7px 0; font-size:13px; line-height:1.55; }
+  .mission-kicker { color:#87483b; font-size:11px; letter-spacing:.14em; }
+  .mission-metrics { color:#745738; padding:5px 0; border-block:1px solid #c8b89b; }
+  .mission-actions { display:flex; flex-wrap:wrap; gap:5px; margin:7px 0; }
+  .mission-actions button { font-size:12px; padding:4px 8px; }
+  .mission-actions button:disabled { opacity:.45; cursor:default; }
+  #missionSpeech { color:#623a2e; }
+  #missionHud .mission-controls { color:#635745; font-size:11px; }
+  canvas:focus { outline:none; }
+  @media(max-width:640px) {
+    #missionHud { top:auto; bottom:12px; left:12px; padding:8px 12px; }
+    #missionHud h1 { font-size:19px; }
+  }
 </style>
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
 } }
 </script>
 </head>
@@ -37,6 +57,7 @@
     <button id="bFly">飞入画中</button>
     <button id="bWalk" aria-pressed="false">漫游</button>
     <button id="bOrbit" aria-pressed="false">俯瞰</button>
+    <button id="bMission" type="button">试玩桥畔茶铺</button>
   </div>
   <div class="row"><button id="bModels" aria-pressed="false" hidden>房屋：纸片</button></div>
   <div id="help"></div>
@@ -48,6 +69,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
+import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
 
 const params = new URLSearchParams(location.search);
 const base = (params.get("scene") || "../data/seg01/scene/").replace(/\/?$/, "/");
@@ -60,6 +83,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffe
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
+renderer.domElement.tabIndex = 0;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xEDE6D6);
 const loader = new THREE.TextureLoader();
@@ -74,14 +98,26 @@ apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.ad
 // Cards: fixed ones face the painting's viewer (+Z); sprites turn to face the camera about Y.
 // offPainting: extras that exist only away from the painting view (cross cards, shadows), so the
 // painting view still reproduces the scroll exactly.
-const sprites = [], swapCards = [], models = [], offPainting = [];
+const sprites = [], swapCards = [], models = [], offPainting = [], trailCards = [];
 const SHADOWED = new Set(["person", "horse", "donkey", "ox", "cart", "sedan chair", "tree", "umbrella"]);
 const shadowSpots = [];
+const riverOrigin=canalOrigin(bridgeAnchor);
 for (const o of L.objects) {
   const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
   const m = new THREE.MeshBasicMaterial({ map: tex(o.tex_hd || o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(g, m);
   mesh.position.set(o.x, o.y || 0, o.z); mesh.userData = o; scene.add(mesh);   // y > 0: standing on the bridge deck
+  const canalCard = (o.y || 0)<.4 && (o.label==="person" || o.label==="umbrella") &&
+    Math.abs(o.z-riverOrigin.y)<canalHalfLength &&
+    canalDepth(riverOrigin,o.x,o.z)>.022;
+  // The playable landing has its own ground and obstacles in mission mode.
+  const onLanding=o.label==="person" && (o.y||0)<.4 &&
+    o.x>bridgeAnchor.x-13 && o.x<bridgeAnchor.x-7 &&
+    o.z>bridgeAnchor.z-7.15 && o.z<bridgeAnchor.z-1.45;
+  if (o.id === "o0288" || o.id === "o0400" || canalCard || onLanding ||
+      (o.label === "person" && o.y > 0 && Math.abs(o.z + 41.422) < 1.05)) {
+    trailCards.push(mesh);
+  }
   if (o.billboard === "sprite") sprites.push(mesh);
   if (o.mesh) swapCards.push(mesh);
   if (o.label === "tree") {
@@ -109,8 +145,10 @@ for (const o of L.objects) {
 }
 // Soft light, used only by synthesised house faces (everything else is unlit).
 // (three.js r155+ lighting is physical: Lambert divides albedo by π, so intensities carry a π.)
-scene.add(new THREE.AmbientLight(0xffffff, 0.8 * Math.PI));
-{ const sun = new THREE.DirectionalLight(0xfff4e0, 0.32 * Math.PI); sun.position.set(-0.6, 1, 0.5); scene.add(sun); }
+const ambient = new THREE.AmbientLight(0xffffff, 0.8 * Math.PI);
+const sun = new THREE.DirectionalLight(0xfff4e0, 0.32 * Math.PI);
+sun.position.set(-0.6, 1, 0.5);
+scene.add(ambient, sun);
 // Atmospheric haze for the perspective views (the scroll's own paper colour); off in the painting view.
 const haze = new THREE.Fog(0xEDE6D6, 45, 260);
 // 3D models (pipeline/mesh.py): drawn unlit like the cards (their texture is the painting itself).
@@ -122,8 +160,19 @@ const cardOf = new Map(swapCards.map(c => [c.userData.id, c]));
 // The painting view always shows the cards (they reproduce the scroll pixel for pixel);
 // models take over as soon as the camera leaves it.
 function applyModelVisibility() {
-  const use = showModels && mode !== "paint";   // only called after `mode` exists (async loads, setMode)
-  for (const m of models) { m.visible = use; cardOf.get(m.userData.id).visible = !use; }
+  const bridgeCard = swapCards.find(c => c.userData.label === "bridge");
+  if (bridgeCard) bridgeCard.visible = mode !== "mission";
+  for (const m of models) {
+    const bridge = m.userData.label === "bridge";
+    const use = !(mode === "mission" && bridge) &&
+      ((showModels && mode !== "paint" && mode !== "missionScroll") ||
+       (mode === "missionScroll" && bridge));
+    m.visible = use;
+    cardOf.get(m.userData.id).visible = !use && !(mode === "mission" && bridge);
+    for (const face of m.userData.finishFaces) {
+      face.material = mode === "mission" ? face.userData.nearbyMaterial : face.userData.archiveMaterial;
+    }
+  }
 }
 function setModels(on) {
   showModels = on;
@@ -139,6 +188,7 @@ let modelsStarted = false;
 function startModels() {
   if (modelsStarted) return; modelsStarted = true;
   for (const o of withMesh) gltf.load(base + o.mesh.glb, g => {
+    const finishFaces = [];
     g.scene.traverse(n => {
       if (!n.isMesh) return;
       const map = n.material.map; if (map) map.colorSpace = THREE.SRGBColorSpace;
@@ -147,8 +197,15 @@ function startModels() {
       const synth = /^(roof|wall)/.test(n.name);
       n.material = synth ? new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide })
                          : new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
+      if (synth) {
+        n.userData.archiveMaterial = n.material;
+        n.userData.nearbyMaterial = new THREE.MeshBasicMaterial({
+          map, color: map ? 0xece0cb : 0xaf9b76, side: THREE.DoubleSide,
+        });
+        finishFaces.push(n);
+      }
     });
-    g.scene.position.set(...o.mesh.pos); g.scene.userData = o; scene.add(g.scene); models.push(g.scene);
+    g.scene.position.set(...o.mesh.pos); g.scene.userData = { ...o, finishFaces }; scene.add(g.scene); models.push(g.scene);
     pending--; setModels(showModels);
   }, undefined, () => { pending--; setModels(showModels); });
 }
@@ -159,6 +216,7 @@ setTimeout(startModels, 8000);
 const dir = new THREE.Vector3(0, -Math.sin(th), -Math.cos(th));
 const viewH = H * s;                       // screen-space height of the painting
 const paintCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
+const missionCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
 const persp = new THREE.PerspectiveCamera(60, 1, 0.05, 4000);
 let pan = 0;                               // horizontal scroll position in metres
 const minPan = -GW / 2, maxPan = GW / 2;
@@ -173,9 +231,21 @@ function placePaintCam() {
 }
 const orbit = new OrbitControls(persp, renderer.domElement); orbit.enabled = false;
 
-let mode = "paint", cam = paintCam;
+let mode = "paint", cam = paintCam, mission;
+const inMission = () => mode === "mission" || mode === "missionScroll";
+function placeMissionCam() {
+  const w = 37;
+  const h = w * innerHeight / innerWidth;
+  missionCam.left = -w / 2; missionCam.right = w / 2;
+  missionCam.top = h / 2; missionCam.bottom = -h / 2;
+  const aim = new THREE.Vector3(mission.anchor.x + 1.6, .25, mission.anchor.z);
+  missionCam.position.copy(aim).addScaledVector(dir, -150);
+  missionCam.lookAt(aim);
+  missionCam.updateProjectionMatrix();
+}
 function setPaintingExact(on) {
   for (const e of offPainting) e.visible = !on;
+  for (const card of trailCards) card.visible = mode !== "mission";
   scene.fog = on ? null : haze;
   applyModelVisibility();
 }
@@ -186,13 +256,22 @@ const help = {
   fly: "飞入中…",
 };
 function setMode(m) {
+  if (m === "mission" || m === "missionScroll") {
+    mission ||= createBridgeMission({ scene, camera: persp, renderer, ambient, sun, ground, apron, setMode });
+  }
   mode = m;
   for (const [id, k] of [["bPaint", "paint"], ["bWalk", "walk"], ["bOrbit", "orbit"]])
     document.getElementById(id).setAttribute("aria-pressed", String(k === m));
-  document.getElementById("help").textContent = help[m];
+  document.getElementById("help").textContent = help[m] || "";
   orbit.enabled = m === "orbit";
-  cam = m === "paint" ? paintCam : persp;
-  setPaintingExact(m === "paint");
+  cam = m === "paint" ? paintCam : m === "missionScroll" ? missionCam : persp;
+  setPaintingExact(m === "paint" || m === "missionScroll");
+  mission?.setView(m);
+  if (m === "mission") {
+    persp.fov = 58; persp.updateProjectionMatrix();
+    renderer.domElement.focus({ preventScroll: true });
+  }
+  if (m === "missionScroll") placeMissionCam();
   if (m === "paint") placePaintCam();
   if (m === "orbit") {
     persp.fov = 50; persp.updateProjectionMatrix();
@@ -207,6 +286,7 @@ const walk = { yaw: 0, pitch: -0.05, pos: new THREE.Vector3(0, 1.6, 2) };
 const keys = new Set();
 addEventListener("keydown", e => keys.add(e.key.toLowerCase()));
 addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => keys.clear());
 let drag = null;
 renderer.domElement.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY }; });
 addEventListener("pointerup", () => drag = null);
@@ -214,6 +294,7 @@ addEventListener("pointermove", e => {
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY };
   if (mode === "walk") { walk.yaw -= dx * 0.004; walk.pitch = THREE.MathUtils.clamp(walk.pitch - dy * 0.004, -1.4, 1.4); }
+  if (mode === "mission") mission.turn(dx, dy);
   if (mode === "paint") { pan = THREE.MathUtils.clamp(pan - dx * viewH / innerHeight, minPan, maxPan); placePaintCam(); }
 });
 renderer.domElement.addEventListener("wheel", e => {
@@ -256,20 +337,31 @@ document.getElementById("bWalk").onclick = () => { walk.pos.set(pan, 1.6, -GD * 
 document.getElementById("bOrbit").onclick = () => setMode("orbit");
 document.getElementById("bFly").onclick = () => startFly();
 document.getElementById("bModels").onclick = () => setModels(!showModels);
+document.getElementById("bMission").onclick = () => setMode("mission");
 setModels(true);
 
 function resize() {
   renderer.setSize(innerWidth, innerHeight);
   persp.aspect = innerWidth / innerHeight; persp.updateProjectionMatrix();
   if (mode === "paint") placePaintCam();
+  if (mode === "missionScroll") placeMissionCam();
 }
-addEventListener("resize", resize); resize(); setMode("paint");
+addEventListener("resize", resize); resize(); setMode(params.has("mission") ? "mission" : "paint");
 
 const clock = new THREE.Clock();
 const fwd = new THREE.Vector3(), right = new THREE.Vector3();
 renderer.setAnimationLoop(now => {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.getDelta();
+  const dt = Math.min(elapsed, 0.05);
   if (mode === "fly") stepFly(now);
+  if (inMission()) {
+    let remaining = Math.min(elapsed, .18);
+    while (remaining > .001) {
+      const step = Math.min(remaining, .035);
+      mission.frame(step, keys);
+      remaining -= step;
+    }
+  }
   if (mode === "walk") {
     const v = (keys.has("shift") ? 9 : 3) * dt;
     fwd.set(-Math.sin(walk.yaw), 0, -Math.cos(walk.yaw)); right.set(-fwd.z, 0, fwd.x);
@@ -281,7 +373,9 @@ renderer.setAnimationLoop(now => {
     applyWalk();
   }
   const camPos = cam.position;
-  for (const sp of sprites) sp.rotation.y = mode === "paint" ? 0 : Math.atan2(camPos.x - sp.position.x, camPos.z - sp.position.z);
+  for (const sp of sprites) sp.rotation.y = mode === "paint" || mode === "missionScroll" ? 0 :
+    Math.atan2(camPos.x - sp.position.x, camPos.z - sp.position.z);
+  if (mode === "mission") mission.prepare();
   renderer.render(scene, cam);
 });
 const counts = {};
@@ -289,7 +383,8 @@ for (const o of L.objects) counts[o.label] = (counts[o.label] || 0) + 1;
 document.getElementById("status").textContent =
   `${L.objects.length} 个物体 · ` + Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(" · ") +
   ` · 段 x=${L.x0}–${L.x1}px · 仰角 ${L.camera.elev_deg}°`;
-window.__scene = { L, setMode, startFly, setModels, models, renderer, scene, persp, orbit, walk };
+window.__scene = { L, setMode, startFly, setModels, models, renderer, scene, persp, orbit, walk,
+  mission: () => mission?.inspect() };
 </script>
 </body>
 </html>
