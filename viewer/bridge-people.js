@@ -28,16 +28,17 @@ function robePleats(theta,y) {
   const fall=1-THREE.MathUtils.smoothstep(y,.54,1.01);
   const bias=.38*Math.sin(theta*2-.55)+.63*Math.sin((y-.67)*5.9);
   const folds=Math.cos(theta*6+bias);
-  return fall*(.143*folds-.082*Math.max(0,-folds)**5+.032*Math.sin(theta*11+bias));
+  return fall*(.107*folds-.053*Math.max(0,-folds)**5+.027*Math.sin(theta*11+bias));
 }
 
 function robeVolume(theta,y) {
   const front=Math.max(0,-Math.cos(theta));
   const chest=THREE.MathUtils.smoothstep(y,1.03,1.20)*(1-THREE.MathUtils.smoothstep(y,1.26,1.36));
   const tuck=Math.exp(-(((y-.94)/.083)**2));
+  const kneeRoom=.22*front*(1-THREE.MathUtils.smoothstep(y,.60,.88));
   const diagonal=Math.exp(-(((y-1.071+.075*Math.sin(theta))/.102)**2))*front;
   const folds=.027*Math.sin(theta*5+y*5)-.015*Math.cos(theta*9-y*11);
-  return 1+folds+robePleats(theta,y)+.082*chest*front-.041*tuck+
+  return 1+folds+robePleats(theta,y)+kneeRoom+.082*chest*front-.041*tuck+
     diagonal*(.040*Math.cos(theta*4+y*33)-.026*Math.sin(theta*7+y*23));
 }
 
@@ -115,6 +116,43 @@ function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
   shape.setIndex(indices);
   shape.computeVertexNormals();
   piece(parent,shape,material,0,0,0).name="Fitted robe binding";
+}
+
+function wrapSkirt(figure,robe,cloth,binding,hem,sash,lowDetail) {
+  const positions=[],uv=[],colors=[],index=[];
+  const rows=lowDetail ? 7 : 16, columns=lowDetail ? 7 : 15;
+  function edges(t) {
+    return [2.43-.55*t-.24*t*t,3.74+.17*t];
+  }
+  for(let row=0;row<=rows;row++) {
+    const t=row/rows;
+    const [opening,side]=edges(t);
+    for(let col=0;col<=columns;col++) {
+      const u=col/columns, theta=THREE.MathUtils.lerp(opening,side,u);
+      const y=THREE.MathUtils.lerp(sash,hem+.013*Math.sin(u*Math.PI),t);
+      const overlap=.009+.010*t*(1-u)**2;
+      positions.push(...surfacePoint(robe,theta,y,overlap));
+      uv.push(u*.37,t*(sash-hem));
+      const crease=.075*Math.cos(u*19.8-t*2.2)*t;
+      const worn=t**3*.12;
+      colors.push(.88+crease+worn,.88+crease+worn*.7,.87+crease+worn*.36);
+      if(!row || !col) continue;
+      const a=row*(columns+1)+col,b=a-columns-1;
+      index.push(b-1,a-1,b,b,a-1,a);
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+  geometry.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  piece(figure,geometry,cloth,0,0,0).name="Overlapping skirt panel";
+  const flap=Array.from({length:6},(_,i)=>{
+    const t=i/5;
+    return [edges(t)[0],THREE.MathUtils.lerp(sash,hem+.007,t)];
+  });
+  robeSeam(figure,robe,flap,binding,.017,!lowDetail,.021);
 }
 
 function apron(figure,profile,material,edge,hem=.609) {
@@ -238,7 +276,7 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   const hip=new THREE.Vector3(side*legRig.separation,legRig.hip,0);
   const kneeY=-legRig.upper;
   const geometry=fabric([[.076,kneeY-.179],[.077,kneeY-.091],[.071,kneeY-.038],[.073,kneeY],
-    [.078,kneeY+.043],[.093,-.23],[.103,-.126],[.102,.032]],.93,0,40);
+    [.077,kneeY+.043],[.083,-.23],[.088,-.126],[.089,.032]],.93,0,40);
   const vertices=geometry.attributes.position;
   const indices=new Uint16Array(vertices.count*4), weights=new Float32Array(vertices.count*4);
   for(let i=0;i<vertices.count;i++) {
@@ -376,13 +414,13 @@ function waterStain(material, moisture) {
 
 const residentProfiles=[
   {skin:0xb08264,hair:0x372e26,head:[.87,.91,.83],jaw:.12,nose:1.10,shoulders:1.15,armWidth:1.05,sleeve:1.01,
-    bun:.166,hem:-.035,skirt:1.14,waist:1.12,cuff:.19,binding:0x74614c,cord:0xc8a880,apron:0xc0a275,smile:.006,sash:.955,hairPart:.14,trousers:0x888b76},
+    bun:.166,hem:-.035,skirt:1.14,waist:1.12,cuff:.19,cheek:1.19,chin:1.12,binding:0x74614c,cord:0xc8a880,apron:0xc0a275,smile:.006,sash:.955,hairPart:.14,trousers:0x888b76},
   {skin:0xc1a084,hair:0x615a50,head:[.74,1.00,.85],jaw:.30,nose:1.31,shoulders:.86,armWidth:.95,sleeve:1.06,
-    bun:.151,beard:true,coat:0x93957f,binding:0x62513d,cord:0xad8b63,hem:-.137,skirt:1.01,waist:.96,cuff:.12,eyes:.69,smile:-.003,sash:1.00,hairPart:-.19,trousers:0x817965},
+    bun:.151,beard:true,cheek:.65,chin:1.32,coat:0x93957f,binding:0x62513d,cord:0xad8b63,hem:-.137,skirt:1.01,waist:.96,cuff:.12,eyes:.69,smile:-.003,sash:1.00,hairPart:-.19,trousers:0x817965},
   {skin:0xd2ad90,hair:0x362c28,head:[.74,.89,.81],jaw:.40,nose:.77,shoulders:.86,armWidth:.82,sleeve:.96,
-    bun:.151,hem:-.115,skirt:.81,waist:.86,cuff:-.12,binding:0x4b6870,cord:0xaeb5a3,eyes:1.03,smile:.007,sash:1.033,hairPart:.23,trousers:0x74838c},
+    bun:.151,cheek:.87,chin:.63,hem:-.102,skirt:.97,waist:.86,cuff:-.12,binding:0x4b6870,cord:0xaeb5a3,eyes:1.03,smile:.007,sash:1.033,hairPart:.23,trousers:0x74838c},
   {skin:0xa87f62,hair:0x3d3228,head:[.85,.87,.91],jaw:.15,nose:.96,shoulders:1.09,armWidth:.88,sleeve:.88,
-    bun:.145,wrap:true,coat:0x947e63,hem:.137,skirt:.88,waist:1.02,cuff:-.16,binding:0xa7906d,cord:0xc0ab89,eyes:.88,smile:-.001,sash:.911,hairPart:-.03,trousers:0xab9878},
+    bun:.145,wrap:true,cheek:1.32,chin:.96,coat:0x947e63,hem:.137,skirt:.88,waist:1.02,cuff:-.16,binding:0xa7906d,cord:0xc0ab89,eyes:.88,smile:-.001,sash:.911,hairPart:-.03,trousers:0xab9878},
 ];
 
 function shoulderSatchel(figure,robe,cloth,edge,lowDetail) {
@@ -421,10 +459,11 @@ function sculptedEye(feature,side,opening,slant,look,lowDetail) {
     const r=Math.hypot(x-.053-look,(y-.011)*1.07);
     const iris=smoothstep(r,.0048,.0069);
     const pupil=smoothstep(r,.0027,.0041);
-    const wetEdge=1-.16*smoothstep(v,.53,.98);
-    colors.push(lerp(lerp(.055,.144,pupil),.57*wetEdge,iris),
-      lerp(lerp(.042,.093,pupil),.48*wetEdge,iris),
-      lerp(lerp(.032,.060,pupil),.36*wetEdge,iris));
+    const wetEdge=1-.22*smoothstep(v,.53,.98);
+    const glint=.15*Math.exp(-((x-.051-look)**2+(y-.0126)**2)/.000004);
+    colors.push(lerp(lerp(.039,.168,pupil),.62*wetEdge,iris)+glint,
+      lerp(lerp(.033,.105,pupil),.54*wetEdge,iris)+glint,
+      lerp(lerp(.027,.070,pupil),.43*wetEdge,iris)+glint);
     if(i && j) {
       const d=j*(strips+1)+i, a=d-strips-2;
       if(side>0) indices.push(a,d-1,a+1,a+1,d-1,d);
@@ -461,7 +500,7 @@ function sculptedEar(side,lowDetail) {
   return shape;
 }
 
-function faceDepth(x,y,z,nose) {
+function faceDepth(x,y,z,nose,cheekbone,chin) {
   const patch=(cx,cy,dx,dy)=>Math.exp(-((x-cx)**2/dx+(y-cy)**2/dy));
   const cheek=patch(.076,-.023,.0014,.0012);
   const lowerCheek=patch(.080,-.073,.00077,.00091);
@@ -469,12 +508,40 @@ function faceDepth(x,y,z,nose) {
   const socket=patch(.053,.012,.00043,.00025);
   const jaw=patch(0,-.114,.0031,.00065);
   const muzzle=patch(0,-.052,.0023,.0010);
+  const upperLip=patch(0,-.057,.00095,.000055);
+  const lowerLip=patch(0,-.065,.00112,.000061);
+  const chinFold=patch(0,-.077,.0011,.000077);
+  const alar=patch(.013,-.037,.000075,.000070);
   const bridge=patch(0,.005,.00040,.0019);
   const noseTip=patch(0,-.026,.00064,.00031);
   const nostril=patch(.015,-.041,.000065,.00009);
   const front=THREE.MathUtils.smoothstep(-z,.047,.118);
-  return z*.87-front*(.022*cheek-.009*lowerCheek-.013*socket+.008*supraorbital+.015*jaw+.010*muzzle+
-    (.017*bridge+.030*noseTip)*nose-.005*nostril);
+  return z*.87-front*(.026*cheek*cheekbone-.012*lowerCheek-.016*socket+
+    .010*supraorbital+.019*jaw*chin+.009*muzzle+
+    .006*upperLip+.007*lowerLip-.005*chinFold+
+    (.020*bridge+.028*noseTip+.006*alar)*nose-.008*nostril);
+}
+
+// The sparse skull can cross the analytic face between vertices. Attach the
+// low-detail eyelids and lips to its actual triangles at their projected x/y.
+function projectedFaceDepth(skull,x,y) {
+  const {position}=skull.attributes;
+  const indices=skull.index.array;
+  let depth=Infinity;
+  for(let i=0;i<indices.length;i+=3) {
+    const a=indices[i],b=indices[i+1],c=indices[i+2];
+    const az=position.getZ(a),bz=position.getZ(b),cz=position.getZ(c);
+    if(az>=0 && bz>=0 && cz>=0) continue;
+    const ax=position.getX(a),ay=position.getY(a);
+    const bx=position.getX(b)-ax,by=position.getY(b)-ay;
+    const cx=position.getX(c)-ax,cy=position.getY(c)-ay;
+    const area=bx*cy-by*cx;
+    if(Math.abs(area)<1e-8) continue;
+    const u=((x-ax)*cy-(y-ay)*cx)/area,v=(bx*(y-ay)-by*(x-ax))/area;
+    if(u<0 || v<0 || u+v>1) continue;
+    depth=Math.min(depth,az+u*(bz-az)+v*(cz-az));
+  }
+  return depth;
 }
 
 export function riverWorker(parent, surface, role, residentHat=false, variant=0,lowDetail=false) {
@@ -517,7 +584,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const facePaint=skin.clone();
   facePaint.vertexColors=true;
   const lips = plain(0x785245, .80);
-  const eyeSurface=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.46});
+  const eyeSurface=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.32});
   const brow = plain(0x363128, .84);
   const footwear = plain(profile ? [0x493a2c,0x393836,0x3e4442,0x4f4233][variant] : 0x3a332a, .89);
   const hem = plain(0x554c3b, .84);
@@ -550,6 +617,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     [2.48,1.115],[2.35,sashBottom+sashHeight*.77]],binding,lapel,detail,.018);
   robeSeam(figure,robe,[[2.47,1.329],[2.64,1.281],[2.86,1.25],[2.99,1.236]],
     dyed,.032,detail,.018);
+  if(role==="player" || role==="helper" || (role==="resident" && variant===2)) {
+    wrapSkirt(figure,robe,bodyLinen,binding,.685+hemOffset,sashBottom,lowDetail);
+  }
   const tailSide=profile?.beard ? 3.82 : 2.47;
   if(role!=="merchant") {
     const knotHeight=sashBottom+.028;
@@ -562,10 +632,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     knot.scale.set(.043,.019,.022);
     knot.rotation.z=-.24;
   }
-  if(profile?.beard || variant===2) {
-    const edge=profile?.beard ? 2.38 : 3.88;
+  if(profile?.beard) {
+    const edge=2.38;
     robeSeam(figure,robe,[[edge,1.059],[edge-.04,.94],[edge-.14,.78+hemOffset*.39],
-      [edge-.22,.665+hemOffset]],binding,.021,!lowDetail,variant===2 ? .032 : .010);
+      [edge-.22,.665+hemOffset]],binding,.021,!lowDetail,.010);
   }
   if (apronLinen) {
     apronLinen.side=THREE.DoubleSide;
@@ -582,6 +652,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   head.scale.set(...(profile?.head??[.81,.89,.84]));
   figure.add(head);
   const skullRadius=.149, nose=profile?.nose??(role==="merchant" ? 1.18 : role==="helper" ? .93 : 1);
+  const cheekbone=profile?.cheek??(role==="merchant" ? .81 : 1);
+  const chin=profile?.chin??1;
   const eyeOpening=(profile?.eyes??(role==="merchant" ? .76 : 1))*.016;
   const jawWidth=y=>{
     const lower=THREE.MathUtils.smoothstep(-y,.022,.128);
@@ -604,7 +676,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const underlip=.072*Math.exp(-(x*x/.0015+(y+.078)**2/.00013));
     const temples=THREE.MathUtils.smoothstep(Math.abs(x),.078,.143);
     const throat=Math.exp(-((y+.124)**2/.0013))*front;
-    position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose));
+    position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose,cheekbone,chin));
     const stubble=(profile?.beard || role==="merchant") ?
       .095*THREE.MathUtils.smoothstep(-y,.060,.126)*front : 0;
     const cheekLight=.077*Math.exp(-((Math.abs(x)-.072)**2/.00058+(y+.013)**2/.00039));
@@ -620,7 +692,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   function feature(x,y,clearance) {
     const fy=y/1.105, fx=x/jawWidth(fy);
     const z=-Math.sqrt(Math.max(0,skullRadius**2-fx**2-fy**2));
-    return new THREE.Vector3(x,y,faceDepth(Math.abs(fx),fy,z,nose)-clearance);
+    const analytic=faceDepth(Math.abs(fx),fy,z,nose,cheekbone,chin);
+    const projected=lowDetail ? projectedFaceDepth(skull,x,y) : analytic;
+    const surface=Number.isFinite(projected) ? projected : analytic;
+    return new THREE.Vector3(x,y,surface-clearance);
   }
   function faceLine(points,mat,radius,segments) {
     const path=new THREE.CatmullRomCurve3(points.map(point=>feature(...point)));
@@ -644,7 +719,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const strands=Math.sin(az*31+Math.sin(az*3+hairPart*8)-length*(7+4*sin));
     const radius=skullRadius+.005+.0027*growth*(1+.85*strands);
     const sx=radius*Math.sin(angle)*sin, sy=radius*Math.cos(angle), sz=radius*Math.sin(angle)*cos;
-    hairVertices.setXYZ(i,sx*jawWidth(sy),sy*1.105,faceDepth(Math.abs(sx),sy,sz,nose));
+    hairVertices.setXYZ(i,sx*jawWidth(sy),sy*1.105,faceDepth(Math.abs(sx),sy,sz,nose,cheekbone,chin));
     const tone=.84+.104*strands*growth+.105*Math.cos(az*7-length*5)*growth;
     hairTones.push(tone,tone*.97,tone*.91);
   }
@@ -698,7 +773,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   faceLine([[-mouthWidth,mouthCorner,.0007],[-mouthWidth*.43,-.064,.0015],
     [0,-.066,.002],[mouthWidth*.39,-.064,.0016],[mouthWidth,mouthCorner-.002,.0007]],lips,.0017,18);
   if(!lowDetail) {
-    const lowerLip=plain(0xaa7866,.76);
+    const lowerLip=plain(profile?.beard ? 0x946b59 : 0xa87362,.70);
     faceLine([[-.017,-.069,.0007],[0,-.072,.0012],[.017,-.069,.0007]],lowerLip,.0016,10);
   }
   if(role==="merchant" || profile?.beard) {
@@ -730,7 +805,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   }
   // The courier and player reuse their gait phase to drive the loose cloth.
   const clothPanels=role==="player" || role==="helper"
-    ? figure.children.filter(part=>["Outer robe shell","Bound robe hem","Fitted robe binding"].includes(part.name))
+    ? figure.children.filter(part=>["Outer robe shell","Bound robe hem","Fitted robe binding","Overlapping skirt panel"].includes(part.name))
         .map(({geometry})=>({geometry,rest:geometry.attributes.position.array.slice()}))
     : [];
   let clothMotion=0;
@@ -895,7 +970,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   }
   function stand(floor,x,y,z,yaw) {
     const cos=Math.cos(yaw), sin=Math.sin(yaw);
-    const stagger=profile ? [.048,-.063,.079,-.096][variant] : 0;
+    const stagger=profile ? [.048,-.057,.048,-.071][variant] : 0;
     const spread=profile ? [1.17,1.27,.84,1.12][variant] : 1;
     const feet=[-1,1].map(side=>{
       const advance=side*stagger;

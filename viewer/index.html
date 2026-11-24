@@ -47,13 +47,21 @@
     padding:9px 16px; color:#fff7e1; font-size:14px; font-weight:700; background:#733a2d;
     border:1px solid #e3bd82; box-shadow:0 3px 15px #38271c66; }
   #missionRestart:hover, #missionRestart:focus-visible { background:#9a4635; }
-  #missionIntro { position:fixed; z-index:5; top:clamp(84px,16vh,168px); left:50%;
-    transform:translateX(-50%); width:min(445px,calc(100vw - 32px)); box-sizing:border-box;
+  #missionIntro { position:fixed; z-index:7; top:clamp(84px,17vh,178px); left:50%;
+    transform:translateX(-50%); width:min(485px,calc(100vw - 32px)); box-sizing:border-box;
     padding:24px 27px 20px; color:#fff6e4; background:#502821f8;
     border:1px solid #d5a76d; border-top:4px solid #e5bd82;
     box-shadow:0 14px 60px #28171099; border-radius:5px; }
+  #missionIntroShade { position:fixed; inset:0; z-index:4; pointer-events:none;
+    background:linear-gradient(180deg,#21191291 0%,#2119123c 40%,transparent 76%); }
+  body.scene-loading #missionIntroShade { visibility:hidden; }
+  #missionIntroStatus { margin:0 0 6px; font-size:13px; font-weight:700; color:#f6ca83; }
   #missionIntroTitle { margin:0; font-size:27px; font-weight:700; letter-spacing:.035em; }
   #missionIntroDetail { margin:8px 0 17px; font-size:15px; line-height:1.5; color:#f7e4c1; }
+  #missionIntroRoute { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:0 0 17px;
+    color:#ffe7b4; font-size:13px; }
+  #missionIntroRoute[hidden] { display:none; }
+  #missionIntroRoute span:not([aria-hidden]) { padding:4px 8px; border:1px solid #bb8e63; border-radius:3px; }
   #missionIntro .entry-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
   #missionIntro button { min-height:44px; padding:8px 17px; font-weight:700; }
   #missionBegin { background:#f3d398; color:#54251f; border-color:#e9c38b; }
@@ -85,12 +93,14 @@
   #missionWaypoint[data-start="true"] { color:#4f2719; background:#ffdfa2; border-color:#6b412b; }
   #missionWaypoint[data-start="true"][data-offscreen="false"]::after { border-top-color:#ffdfa2; }
   body.scene-loading #missionWaypoint { visibility:hidden; }
+  #missionWaypoint[data-start="true"] { z-index:6; }
   @media (max-width:760px), (max-height:525px) {
     #questEntry { top:auto; bottom:12px; right:12px; }
     #missionHud { top:auto; bottom:10px; left:10px; padding:8px 12px; }
     #missionHud h1 { font-size:19px; margin-bottom:4px; }
     #missionIntro { top:66px; padding:15px 16px 13px; }
     #missionIntroTitle { font-size:21px; }
+    #missionIntroRoute { margin-bottom:11px; }
     #missionIntroDetail { font-size:13px; }
     #missionTools { top:10px; right:10px; }
     #missionNotice:not(:empty) { top:62px; }
@@ -99,6 +109,7 @@
     #missionIntro { top:10px; left:12px; transform:none; width:min(420px,calc(100vw - 200px)); padding:9px 12px; }
     #missionIntroTitle { font-size:18px; }
     #missionIntroDetail { margin:4px 0 8px; }
+    #missionIntroRoute { display:none; }
     #missionHud .mission-controls { display:none; }
     #missionIntro button { min-height:42px; padding:6px 10px; }
   }
@@ -137,7 +148,7 @@
   }
   @media(max-width:760px), (max-height:525px) {
     body.mission-open #scene-background { top:10px; bottom:auto; left:10px; right:auto;
-      width:min(150px, calc(100vw - 135px)); padding:6px 8px; }
+      width:min(150px, calc(100vw - 196px)); padding:6px 8px; }
     body.mission-open #scene-background p { margin-bottom:4px; }
     body.mission-open #scene-background progress { margin:0; }
     body.mission-open #scene-background .loading-status { display:none; }
@@ -150,14 +161,14 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=113",
+  "./bridge-look.js": "./bridge-look.js?v=114",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=113",
+  "./bridge-mission.js": "./bridge-mission.js?v=114",
   "./bridge-quests.js": "./bridge-quests.js?v=113",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=113",
+  "./bridge-people.js": "./bridge-people.js?v=114",
   "./bridge-street.js": "./bridge-street.js?v=113",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=113"
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=114"
 } }
 </script>
 </head>
@@ -194,7 +205,7 @@
 <nav id="questEntry" aria-label="桥畔茶铺任务">
   <strong>桥畔茶铺任务</strong>
   <div class="entry-actions">
-    <button id="bMission" type="button">开始送茶</button>
+    <button id="bMission" type="button">去送茶</button>
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
@@ -320,12 +331,18 @@ for (const o of L.objects) {
   });
   inst.renderOrder = -1; scene.add(inst); offPainting.push(inst);
 }
-// Soft light, used only by synthesised house faces (everything else is unlit).
-// (three.js r155+ lighting is physical: Lambert divides albedo by π, so intensities carry a π.)
-const ambient = new THREE.AmbientLight(0xffffff, 0.62 * Math.PI);
-const sun = new THREE.DirectionalLight(0xfff4e0, 0.49 * Math.PI);
-sun.position.set(-0.68, .91, .61);
-scene.add(ambient, sun);
+// The walk view uses a local shadow map centred on the camera. The mission has its own lights.
+const ambient = new THREE.HemisphereLight(0xfff6e8, 0x8c806b, 1.23);
+const sun = new THREE.DirectionalLight(0xffefd9, 2.04);
+const streetSunDirection = new THREE.Vector3(-.56,.91,.42).multiplyScalar(22);
+sun.position.copy(streetSunDirection);
+sun.castShadow=true;
+Object.assign(sun.shadow.camera,{left:-17,right:17,top:15,bottom:-15,near:.5,far:58});
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.normalBias=.019;
+sun.shadow.bias=-.00015;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+scene.add(ambient, sun, sun.target);
 // Atmospheric haze for the perspective views (the scroll's own paper colour); off in the painting view.
 const haze = new THREE.Fog(0xEDE6D6, 45, 260);
 // 3D models (pipeline/mesh.py): drawn unlit like the cards (their texture is the painting itself).
@@ -471,6 +488,7 @@ function setMode(m) {
   cam = m === "paint" ? paintCam : m === "missionScroll" ? missionCam : persp;
   setPaintingExact(m === "paint" || m === "missionScroll");
   mission?.setView(m);
+  renderer.shadowMap.enabled = m === "mission" || m === "walk" || m === "fly";
   if (m === "mission") {
     persp.fov = 58; persp.updateProjectionMatrix();
     renderer.domElement.focus({ preventScroll: true });
@@ -572,7 +590,7 @@ function resize() {
   if (mode === "paint") placePaintCam();
   if (mode === "missionScroll") placeMissionCam();
 }
-addEventListener("resize", resize); resize(); setMode(params.has("mission") ? "mission" : "paint");
+addEventListener("resize", resize); resize(); setMode(startInMission ? "mission" : "paint");
 
 let firstFrame=false, firstAssets=false;
 prepareFirstFrame().then(()=>{firstAssets=true;});
@@ -611,6 +629,12 @@ renderer.setAnimationLoop(now => {
     applyWalk();
   }
   const camPos = cam.position;
+  if (mode === "walk" || mode === "fly") {
+    const texel=34/sun.shadow.mapSize.x;
+    const ahead=sun.target.position;
+    ahead.set(Math.round(camPos.x/texel)*texel,0,Math.round(camPos.z/texel)*texel);
+    sun.position.copy(ahead).add(streetSunDirection);
+  }
   for (const sp of sprites) sp.rotation.y = mode === "paint" || mode === "missionScroll" ? 0 :
     Math.atan2(camPos.x - sp.position.x, camPos.z - sp.position.z);
   if (mode === "mission") mission.prepare();
@@ -618,6 +642,12 @@ renderer.setAnimationLoop(now => {
   if(!firstFrame) {
     firstFrame=true;
     showFirstFrame();
+    if(startInMission && params.has("restart")) {
+      const url=new URL(location.href);
+      url.searchParams.delete("restart");
+      history.replaceState(history.state,"",url);
+      mission.requestRestart(document.getElementById("missionRestart"));
+    }
   }
 });
 const counts = {};

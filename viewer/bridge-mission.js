@@ -283,13 +283,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const progress=byId("missionProgress");
   document.body.appendChild(restartDialog);
   const journal=createQuestJournal();
+  const introShade=document.createElement("div");
+  introShade.id="missionIntroShade";
+  introShade.hidden=true;
+  introShade.setAttribute("aria-hidden","true");
+  document.body.appendChild(introShade);
   const intro=document.createElement("section");
   intro.id="missionIntro";
   intro.hidden=true;
   intro.setAttribute("aria-labelledby","missionIntroTitle");
   intro.innerHTML=`
+    <p id="missionIntroStatus"></p>
     <h2 id="missionIntroTitle"></h2>
     <p id="missionIntroDetail"></p>
+    <div id="missionIntroRoute"><span>1　桥头取箱</span><span aria-hidden="true">→</span><span>2　过桥交货</span></div>
     <div class="entry-actions">
       <button id="missionBegin" type="button">开始送茶</button>
       <button id="missionIntroReset" type="button" aria-haspopup="dialog"
@@ -297,6 +304,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     </div>`;
   document.body.appendChild(intro);
   panels.observe(intro);
+  const introStatus=intro.querySelector("#missionIntroStatus");
+  const introRoute=intro.querySelector("#missionIntroRoute");
   const introTitle=intro.querySelector("#missionIntroTitle");
   const introDetail=intro.querySelector("#missionIntroDetail");
   const begin=intro.querySelector("#missionBegin");
@@ -479,7 +488,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function startMission() {
     if(showStart) {
       notice.textContent=state.started ? "已继续送茶" : "任务已开始";
-      noticeTimer=setTimeout(clearNotice,4400);
+      noticeTimer=setTimeout(clearNotice,6000);
     }
     showStart=false;
     hasRestarted=false;
@@ -670,18 +679,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const kind=state.phase==="delivered" ? "finished" : state.started ? "resume" : "new";
     const briefing=hasRestarted && kind==="new" ? "reset" : kind;
     if(briefing!==introduced) {
-      const [title,detail,action]={
-        new:["任务开始 · 桥畔茶铺","跟随金色标记，在桥头取一箱茶叶，再过桥送到对岸茶铺。","开始送茶"],
-        reset:["任务已重置 · 桥畔茶铺","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
-        resume:["继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
-        finished:["茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
+      const [status,title,detail,action]={
+        new:["任务待开始","桥畔茶铺","跟随金色标记，把一箱茶送给对岸的掌柜。","开始送茶"],
+        reset:["任务待开始","任务已重置","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
+        resume:["已有进度","继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
+        finished:["任务完成","茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
       }[briefing];
+      introStatus.textContent=status;
+      introRoute.hidden=briefing==="finished";
       introTitle.textContent=title;
       introDetail.textContent=detail;
       begin.textContent=action;
       introduced=briefing;
     }
-    intro.hidden=view!=="mission" || !showStart || restartDialog.open;
+    introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
   }
 
   function ui() {
@@ -767,7 +778,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if (mode !== "mission") stopTeaShot();
     if (!["mission","missionScroll"].includes(mode) && restartDialog.open) restartDialog.close();
     waypoint.hidden=true;
-    intro.hidden=true;
+    introShade.hidden=intro.hidden=true;
     const active = mode === "mission" || mode === "missionScroll";
     for(const collider of localColliders) collider.enabled=mode==="mission";
     syncActors();
@@ -790,7 +801,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function frame(dt, keys) {
     if (!root.visible) return;
     if(restartDialog.open) {
-      waypoint.hidden=intro.hidden=true;
+      waypoint.hidden=introShade.hidden=intro.hidden=true;
       beacon.visible=false;
       return;
     }
@@ -976,7 +987,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     clearNotice();
     clearInput();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
-    intro.hidden=waypoint.hidden=true;
+    introShade.hidden=intro.hidden=waypoint.hidden=true;
     groundMarker.visible=beacon.visible=false;
     restartDialog.showModal();
   }

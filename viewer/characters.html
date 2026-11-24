@@ -27,8 +27,8 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-people.js": "./bridge-people.js?v=113",
-  "./bridge-look.js": "./bridge-look.js?v=113"
+  "./bridge-people.js": "./bridge-people.js?v=114",
+  "./bridge-look.js": "./bridge-look.js?v=114"
 } }
 </script>
 </head>
@@ -73,7 +73,9 @@ key.position.set(-4,7,6);
 key.castShadow=true;
 key.shadow.mapSize.set(2048,2048);
 Object.assign(key.shadow.camera,{left:-7,right:7,top:4,bottom:-4});
-scene.add(key);
+const fill=new THREE.DirectionalLight(0xfaf1e6,.76);
+fill.position.set(1.8,1.9,5);
+scene.add(key,fill);
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,14),new THREE.MeshStandardMaterial({color:0xd9cfb8,roughness:.95}));
 floor.rotation.x=-Math.PI/2;
 floor.receiveShadow=true;

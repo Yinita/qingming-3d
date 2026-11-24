@@ -83,7 +83,7 @@ export function createSurfaceLibrary() {
       detail.finishReady.value=1;
       material.userData.surfaceReady=true;
     },err=>console.warn("Projected material could not be loaded",id,err.message));
-    material.customProgramCacheKey=()=>street ? "packed-clay-and-stone-dust" :
+    material.customProgramCacheKey=()=>street ? "weathered-market-earth" :
       floor ? "projected-floor-finish" : "projected-building-finish";
     material.onBeforeCompile=shader=>{
       Object.assign(shader.uniforms,detail);
@@ -173,7 +173,17 @@ export function createSurfaceLibrary() {
         float wash=soilNoise(swale*vec2(2.62,1.71)+7.9);
         float dampClay=smoothstep(.38,.76,clay*.60+wash*.40)*(1.-.56*looseDust);
         soil*=mix(vec3(1.02,1.00,.95),vec3(.74,.78,.79),dampClay*.64);
-        soil*=mix(.85,1.09,relief.r)*mix(1.,.70,compressed);
+        soil*=mix(.81,1.11,relief.r)*mix(1.,.58,compressed);
+        float washSilt=soilNoise(swale*vec2(.68,1.09)+vec2(-5.,12.));
+        float dustEdge=smoothstep(.38,.74,washSilt+.13*mottling)*looseDust;
+        soil*=mix(vec3(.85,.77,.67),vec3(1.18,1.18,1.13),smoothstep(.23,.69,washSilt));
+        soil*=1.+.18*dustEdge;
+        vec2 prints=soilPoint+vec2(.12*soilNoise(soilPoint*1.7),0.);
+        float alongTrack=mix(prints.y,-prints.x,approach);
+        float hoof=(1.-smoothstep(.36,.95,length(vec2(
+          (abs(track)-(.46+.09*sin(floor(alongTrack*2.27)*2.4)))/.069,
+          (fract(alongTrack*2.27+.24*step(0.,track))-.5)*5.4))))*route;
+        soil*=1.-.14*hoof*(.3+.7*compaction);
         float grainWidth=max(length(dFdx(swale)),length(dFdy(swale)));
         float gritMask=1.-smoothstep(.018,.077,grainWidth);
         float fineGrit=soilNoise(swale*22.7+17.)*soilNoise(swale*31.6);
@@ -201,7 +211,7 @@ export function createSurfaceLibrary() {
         reliefVector=mix(reliefVector,vec3(aggregateNormal.x,0.,aggregateNormal.y)*.68,gravelMix*.74);
         vec2 stoneNormal=(texture2D(shoulderNormal,shoulderUV).xy*2.-1.)*soilTurn;
         reliefVector=mix(reliefVector,vec3(stoneNormal.x,0.,stoneNormal.y)*.44,silt*shoulderReady);
-        reliefVector=reliefVector*(1.-.56*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.51;
+        reliefVector=reliefVector*(1.-.48*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.65;
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;
