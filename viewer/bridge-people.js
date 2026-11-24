@@ -303,6 +303,8 @@ export function riverWorker(parent, surface, role, residentHat=false) {
 
   const limbs = { legs: [], arms: [] };
   const straps = new THREE.Group();
+  straps.name="Cargo harness";
+  straps.visible=false;
   figure.add(straps);
   if(role==="helper" || role==="player"){
     piece(straps,detailedBox(.345,.385,.040,strapPaint,.011),strapPaint,0,1.012,.229);
@@ -343,8 +345,10 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const thumb = piece(arm,new THREE.SphereGeometry(.025,10,8),skin, -.033 * side, -.405, -.034);
     thumb.scale.set(.74,1.17,.74);
     limbs.arms.push(arm);
-    ribbon(straps,[side*.10,1.340,.085],[side*.15,1.237,-.151],.049,strapPaint,.025);
-    ribbon(straps,[side*.15,1.237,-.151],[side*.116,.956,-.17],.043,strapPaint,.02);
+    if(role==="helper" || role==="player"){
+      ribbon(straps,[side*.10,1.340,.085],[side*.15,1.237,-.151],.049,strapPaint,.025);
+      ribbon(straps,[side*.15,1.237,-.151],[side*.116,.956,-.17],.043,strapPaint,.02);
+    }
   }
   let reachWithRightHand;
   if (role === "merchant") {
