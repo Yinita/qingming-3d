@@ -150,9 +150,10 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   piece(figure, new THREE.CylinderGeometry(.072, .084, .105, 16), skin, 0, 1.382, -.005);
   piece(figure, fabric([[.232,.948],[.238,.961],[.236,1.008],[.229,1.015]], .72), hem, 0, 0, 0);
   piece(figure, fabric([[.274,.618],[.294,.634],[.296,.657],[.287,.668]],.708,[.012]),binding,0,0,0);
-  ribbon(figure, [-.115, 1.329, -.105], [.145, 1.164, -.169], .042, binding);
-  ribbon(figure, [.145, 1.164, -.169], [-.067, .986, -.166], .043, binding);
-  ribbon(figure, [.103, 1.332, -.099], [.043, 1.248, -.155], .035, dyed);
+  ribbon(figure,[-.115,1.329,-.114],[.014,1.257,-.190],.037,binding);
+  ribbon(figure,[.014,1.257,-.190],[.145,1.164,-.173],.037,binding);
+  ribbon(figure,[.145,1.164,-.173],[-.067,.986,-.172],.039,binding);
+  ribbon(figure,[.103,1.332,-.106],[.047,1.247,-.183],.031,dyed);
   ribbon(figure, [.179,.978,-.126],[.153,.803,-.171],.030,dyed);
   const knot=piece(figure,new THREE.SphereGeometry(1,12,8),dyed,.147,.982,-.165);
   knot.scale.set(.048,.025,.026);
@@ -196,8 +197,6 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const iris=piece(head,new THREE.SphereGeometry(.0084,10,7),brow,side*.047,.012,-.116);
     iris.scale.set(.87,.71,.74);
     ribbon(head,[side*.029,.040,-.125],[side*.071,.040,-.113],.007,brow,.005);
-    const cheek=piece(head,new THREE.SphereGeometry(.035,12,9),skin,side*.080,-.030,-.102);
-    cheek.scale.set(.91,.68,.51);
   }
   const nose=piece(head,new THREE.SphereGeometry(.031,14,10),skin,0,-.013,-.119);
   nose.scale.set(.62,1.26,.87);
