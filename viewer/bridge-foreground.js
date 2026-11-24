@@ -315,16 +315,26 @@ export function willowSites(center) {
   ];
 }
 
+const bridgeWalkways=[
+  [-72.64,0,6.24,2.84,1457],
+  [-43.68,-.29,9.58,3.29,835],
+];
+
+export function walkwayHeight(center,x,z) {
+  let height=0;
+  for(const [px,offset,width,depth] of bridgeWalkways) {
+    const edge=Math.min(width*.5-Math.abs(x-px),depth*.5-Math.abs(z-center.z-offset));
+    height=Math.max(height,.048*THREE.MathUtils.smoothstep(edge,0,.2));
+  }
+  return height;
+}
+
 export function buildForeground(parent, center, surface) {
   const foreground = new THREE.Group();
   foreground.name = "Bridge-head near field";
   parent.add(foreground);
-  const walkways = [
-    [-72.64, center.z, 6.24, 2.84, 1457],
-    [-43.68, center.z - .29, 9.58, 3.29, 835],
-  ];
-  for (const [x, z, width, depth, seed] of walkways) {
-    flagstones(foreground, x, z, width, depth, surface, seed);
+  for (const [x, offset, width, depth, seed] of bridgeWalkways) {
+    flagstones(foreground, x, center.z+offset, width, depth, surface, seed);
   }
   const windTime = { value: 0 };
   bank(foreground, center, surface, windTime);
@@ -335,14 +345,7 @@ export function buildForeground(parent, center, surface) {
     setVisible(visible) { foreground.visible = visible; },
     shedLeaf:canopies[0].release,
     inspect() { return { time: windTime.value, leafCounts: canopies.map(({ leaves }) => leaves.count) }; },
-    floor(x, z) {
-      let height = 0;
-      for (const [px, pz, width, depth] of walkways) {
-        const edge = Math.min(width / 2 - Math.abs(x - px), depth / 2 - Math.abs(z - pz));
-        height = Math.max(height, .048 * THREE.MathUtils.smoothstep(edge, 0, .2));
-      }
-      return height;
-    },
+    floor:(x,z)=>walkwayHeight(center,x,z),
     update(camera, time) {
       windTime.value = time;
       for (const { tree, leaves, highDetail, twigCount, recover } of canopies) {

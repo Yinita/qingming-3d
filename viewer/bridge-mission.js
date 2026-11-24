@@ -1,11 +1,13 @@
 import * as THREE from "three";
-import { buildBridgeLook, createPlayLighting, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
+import { bridgeDeckHeight, bridgeRailOffset, buildBridgeLook, createPlayLighting, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { buildForeground, willowSites } from "./bridge-foreground.js";
 import { counterCeramics, riverWorker } from "./bridge-people.js";
 import { buildTea } from "./bridge-tea.js";
 import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { createGroundedGait } from "./bridge-gait.js";
+import { circleTouchesBox, workerHeight, workerRadius } from "./bridge-collision.js";
+import { tileRoof } from "./bridge-architecture.js";
 
 const SAVE = "qingming-bridge-mission-v1";
 export const bridgeAnchor = { x: -59.014, z: -41.422 };
@@ -14,20 +16,19 @@ const pickup = { x: -71.0, z: center.z, yaw: -Math.PI / 2 };
 const counter = { x: -43.15, z: center.z - 1.35 };
 const routeZ = center.z;
 const deliveryReach=2.35;
-const playerRadius=.32;
 const laneHalf=.63;
+const cargoWidth=.385, cargoDepth=.351, cargoHeight=.616;
+const harnessBack=.596, harnessHeight=.79;
 const riverOrigin=canalOrigin(center);
 const trees=willowSites(center);
 const trail = [[-70, routeZ], [-48.2, routeZ], [-44, routeZ], [counter.x, counter.z + .82]];
 
 function deck(x) {
-  const u = x - center.x;
-  if (u < -10.61 || u > 10.61) return 0;
-  return Math.max(0, Math.min(2.593, .3247 * (u + 10.607), .3711 * (10.606 - u)));
+  return bridgeDeckHeight(center,x);
 }
 
 function onBridge(x,z) {
-  return Math.abs(x-center.x)<10.62 && Math.abs(z-routeZ)<=1.02;
+  return Math.abs(x-center.x)<10.62 && Math.abs(z-routeZ)<=bridgeRailOffset-.06;
 }
 
 function depthAt(x,z) {
@@ -39,7 +40,7 @@ function depthAt(x,z) {
 function walkable(x,z) {
   if (x<-76 || x>-37 || Math.abs(z-routeZ)>8.4) return false;
   if (onBridge(x,z)) return Math.abs(z-routeZ)<=laneHalf;
-  if (Math.abs(x-center.x)<10.62 && Math.abs(z-routeZ)<1.29) return false;
+  if (Math.abs(x-center.x)<10.62 && Math.abs(z-routeZ)<bridgeRailOffset+.21) return false;
   const hitsTrunk=trees.some(tree=>Math.hypot(x-tree.x,z-tree.z)<.27+.41*tree.scale);
   return !hitsTrunk && depthAt(x,z)<.56;
 }
@@ -72,7 +73,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
   const material = createSurfaceLibrary();
-  const bridgeLook = buildBridgeLook(root, center, deck, material, ground, apron);
+  const bridgeLook = buildBridgeLook(root, center, material, ground, apron);
   const stones = buildPebbleToss(root,depthAt,bridgeLook.hit,bridgeLook.field.height);
   const light = createPlayLighting(scene, renderer, center, ambient, sun);
   const wood = material("tea-wood", 0xf1dbc1, .88);
@@ -125,7 +126,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   stall.name="Tea stall";
   stall.position.set(counter.x, .01, counter.z - 1.04);
   root.add(stall);
-  box(stall, stone, 4.55, .1, 2.6, 0, .03, .34);
+  const stonePlatform=box(stall,stone,4.55,.1,2.6,0,.03,.34);
   function stallSolid(name,mat,w,h,d,x,y,z) {
     const part=box(stall,mat,w,h,d,x,y,z);
     localColliders.push(city.meshBox(name,part));
@@ -140,18 +141,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     for (const z of [-.78, 1.48]) box(stall, stone, .26, .16, .25, x, .08, z);
   }
   for (const z of [1.55, -.85]) box(stall, timber, 4.48, .18, .16, 0, 2.65, z);
-  const tileEnds = [0x6d6655, 0x827765, 0x746e60, 0x817865].map(plain);
   for (const side of [-1, 1]) {
-    const roof = box(stall, tile, 4.87, .13, 1.58, 0, 2.95, .33 + side * .69);
-    roof.rotation.x = side * .31;
-    const edgeTile = new THREE.CylinderGeometry(.074, .065, .27, 10);
-    edgeTile.rotateX(Math.PI / 2);
-    edgeTile.rotateX(side * .31);
-    for (let i = 0; i < 29; i++) {
-      mesh(edgeTile, tileEnds[i % 4], stall, -2.31 + i * .165, 2.755, .33 + side * 1.448);
-    }
+    for(let i=0;i<23;i++)
+      box(stall,timber,.068,.094,.46,-2.32+i*.211,2.693,.33+side*1.25);
   }
-  box(stall, ink, 4.9, .12, .15, 0, 3.22, .33);
+  tileRoof(stall,tile,4.87,1.49,2.72,.33,.323);
+  box(stall, ink, 4.9, .13, .17, 0, 3.255, .33);
   counterCeramics(stall);
   const tea = buildTea(stall);
   const counterFill = new THREE.PointLight(0xffdeb0, 2.3, 4.5, 2);
@@ -177,8 +172,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
        stall, 0, 2.25, 1.59);
   const foreground = buildForeground(root, center, material);
   bridgeLook.leafSource(foreground.shedLeaf);
+  const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
   function floor(x,z) {
     if (onBridge(x,z)) return deck(x);
+    if(x>=stallFloor.min.x && x<=stallFloor.max.x && z>=stallFloor.min.z && z<=stallFloor.max.z) {
+      return stallFloor.max.y;
+    }
     const depth=depthAt(x,z);
     const ground=foreground.floor(x,z);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
@@ -188,7 +187,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
   const railSections=[-10.606,-2.62,3.62,10.606];
   for(const side of [-1,1]) {
-    const z=routeZ+side*1.08;
+    const z=routeZ+side*bridgeRailOffset;
     for(let i=0;i<railSections.length-1;i++){
       const a=center.x+railSections[i], b=center.x+railSections[i+1];
       localColliders.push(city.box("bridge rail",a,b,z-.073,z+.073,
@@ -201,16 +200,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const mooring=bridgeLook.mooring;
   localColliders.push(city.cylinder("mooring post",mooring.x,mooring.z,0,.62,.104));
   const shipSolid=city.box("skiff hull",0,0,0,0,-.14,.46);
-  const looseCargo=city.box("crate",0,0,0,0,0,0);
-  const courierSolid=city.cylinder("courier",0,0,0,0,.28);
-  courierSolid.camera=false;
-  localColliders.push(looseCargo,courierSolid,shipSolid);
+  const looseCargo=city.orientedBox("crate",cargoWidth,cargoDepth,cargoHeight);
+  const courierSolid=city.cylinder("courier",0,0,0,0,workerRadius);
+  const merchantSolid=city.cylinder("merchant",0,0,0,0,workerRadius);
+  const courierCargo=city.orientedBox("courier cargo",cargoWidth,cargoDepth,cargoHeight);
+  localColliders.push(looseCargo,courierSolid,merchantSolid,courierCargo,shipSolid);
   const playerBody = riverWorker(root, material, "player");
+  playerBody.figure.name="Player body";
   playerBody.figure.traverse(part => part.layers.enable(1));
   const merchant = riverWorker(root, material, "merchant");
+  merchant.figure.name="Tea merchant";
   merchant.figure.position.set(counter.x + 1.16, .09, counter.z - .78);
   merchant.figure.rotation.y = Math.PI;
   const helper = riverWorker(root, material, "helper");
+  helper.figure.name="Bridge courier";
   helper.figure.position.set(pickup.x - .5, floor(pickup.x - .5, routeZ + 1.03), routeZ + 1.03);
 
   const labels = document.createElement("section");
@@ -273,24 +276,26 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const beam=.52*Math.abs(hull.w)+1.21*Math.abs(hull.z);
     const length=1.21*Math.abs(hull.w)+.52*Math.abs(hull.z);
     Object.assign(shipSolid,{minX:hull.x-beam,maxX:hull.x+beam,minZ:hull.y-length,maxZ:hull.y+length});
-    const p=helper.figure.position;
-    courierSolid.x=p.x;
-    courierSolid.z=p.z;
-    courierSolid.bottom=p.y;
-    courierSolid.top=p.y+1.74;
+    for(const [body,solid] of [[helper,courierSolid],[merchant,merchantSolid]]) {
+      const p=body.figure.position;
+      Object.assign(solid,{x:p.x,z:p.z,bottom:p.y,top:p.y+workerHeight});
+    }
+    courierCargo.enabled=view==="mission" && state.phase==="courier";
+    if(courierCargo.enabled) {
+      const {x,y,z}=helper.figure.position, yaw=helper.figure.rotation.y;
+      Object.assign(courierCargo,{...cargoPose(x,z,y+harnessHeight,yaw),bottom:y+harnessHeight,top:y+harnessHeight+cargoHeight});
+    }
     looseCargo.enabled=view==="mission" && state.phase==="waiting";
     if(looseCargo.enabled) {
       const b=state.crate, y=floor(b.x,b.z);
-      const s=Math.abs(Math.sin(b.yaw)), c=Math.abs(Math.cos(b.yaw));
-      const dx=.367*c+.337*s, dz=.367*s+.337*c;
-      Object.assign(looseCargo,{minX:b.x-dx,maxX:b.x+dx,minZ:b.z-dz,maxZ:b.z+dz,bottom:y,top:y+.63});
+      Object.assign(looseCargo,{x:b.x,z:b.z,yaw:b.yaw,bottom:y,top:y+cargoHeight});
     }
   }
 
-  function canStep(x,z,radius=playerRadius,ignored=null) {
-    return walkable(x,z) && !city.blocking(x,z,floor(x,z),radius,1.59,ignored);
+  function canStep(x,z,radius=workerRadius,ignored=null,height=workerHeight,ignoredCargo=null) {
+    return walkable(x,z) && !city.blocking(x,z,floor(x,z),radius,height,ignored,ignoredCargo);
   }
-  const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.11),(x,y,z,time,vx,vz)=>{
+  const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
     const depth=bridgeLook.field.height(x,z,time)-y;
     if(onBridge(x,z) || depth<.032 || depthAt(x,z)<.024 || Math.hypot(vx,vz)<.22) return false;
     const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
@@ -349,6 +354,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function useCargo() {
     if (view !== "mission") return;
     if (state.phase === "waiting" && distance(player, state.crate) < 1.9) {
+      if (cargoObstacle(player.x,player.z,bodyYaw,looseCargo)) {
+        hint.textContent="这里太窄。挪开半步再背货箱。";
+        return;
+      }
       remember();
       state.phase = "carrying";
       hint.textContent = "茶叶已取。沿桥走到对岸的茶铺。";
@@ -358,7 +367,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       } else {
         const x = player.x - Math.sin(player.yaw) * .74;
         const z = player.z - Math.cos(player.yaw) * .74;
-        if (!canStep(x,z,.49) || wadeDepth(x,z)>.046) {
+        if (!walkable(x,z) || wadeDepth(x,z)>.046 ||
+          city.boxBlocking(x,z,floor(x,z),cargoWidth,cargoDepth,cargoHeight,player.yaw) ||
+          circleTouchesBox(player.x,player.z,workerRadius,x,z,cargoWidth,cargoDepth,player.yaw)) {
           hint.textContent = "这儿放不稳。到干地再放下货箱。";
           return;
         }
@@ -377,11 +388,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function hire() {
     if (view !== "mission" || state.phase !== "waiting" || state.coins < 3 ||
         distance(player, pickup) > 3 || distance(state.crate, pickup) > .9) return;
+    const start=cargoPose(pickup.x,routeZ,floor(pickup.x,routeZ)+harnessHeight,pickup.yaw);
+    if(distance(player,pickup)<workerRadius*2 || courierBoxHitsPlayer(start)) {
+      hint.textContent="请给伙计让一步，他要在货箱旁起身。";
+      return;
+    }
     remember();
     state.coins -= 3;
     state.phase = "courier";
     courierLeg = 0;
     helper.figure.position.set(pickup.x, floor(pickup.x, routeZ), routeZ);
+    helper.figure.rotation.y=pickup.yaw;
     hint.textContent = "付给伙计三文。他会沿桥把箱子送到茶铺。";
     positionCrate();
     ui();
@@ -495,31 +512,36 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       (walking ? Math.sin(phase + (i + 1) * Math.PI) * .25 : 0); });
   }
 
-  function crateAlongZ(x,z,yaw) {
-    const proposed=z+Math.cos(yaw)*.43;
-    if(!onBridge(x,z)) return proposed;
-    const edge=.987-.373*Math.abs(Math.sin(yaw))-.336*Math.abs(Math.cos(yaw));
-    return THREE.MathUtils.clamp(proposed,routeZ-edge,routeZ+edge);
+  function cargoPose(x,z,y,yaw) {
+    return {x:x+Math.sin(yaw)*harnessBack,y,z:z+Math.cos(yaw)*harnessBack,yaw};
+  }
+
+  function courierBoxHitsPlayer(p) {
+    const feet=floor(player.x,player.z);
+    return feet<p.y+cargoHeight && feet+workerHeight>p.y &&
+      circleTouchesBox(player.x,player.z,workerRadius,p.x,p.z,cargoWidth,cargoDepth,p.yaw);
+  }
+
+  function cargoObstacle(x,z,yaw,ignored=null,footroom=.135,ignoredCargo=null) {
+    const p=cargoPose(x,z,floor(x,z)+harnessHeight,yaw);
+    return city.boxBlocking(p.x,p.z,p.y-footroom,cargoWidth,cargoDepth,cargoHeight+footroom+.014,p.yaw,ignored,ignoredCargo);
   }
 
   function cargoCollision(x,z,yaw){
-    if(state.phase!=="carrying") return null;
-    return city.boxBlocking(x+Math.sin(yaw)*.43,crateAlongZ(x,z,yaw),
-      floor(x,z)+.655,.373,.336,.765,yaw);
+    return state.phase==="carrying" ? cargoObstacle(x,z,yaw) : null;
   }
 
   function positionCrate() {
     if (state.phase === "carrying") {
-      const cx=player.x+Math.sin(bodyYaw)*.43;
-      const cz=crateAlongZ(player.x,player.z,bodyYaw);
-      crateMesh.position.set(cx,
-        (view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z))+.79,cz);
-      crateMesh.rotation.y=bodyYaw;
+      const y=view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z);
+      const p=cargoPose(player.x,player.z,y+harnessHeight,bodyYaw);
+      crateMesh.position.set(p.x,p.y,p.z);
+      crateMesh.rotation.y=p.yaw;
     } else if (state.phase === "courier") {
-      const p = helper.figure.position;
-      const yaw = helper.figure.rotation.y;
-      crateMesh.position.set(p.x + Math.sin(yaw) * .43, p.y + .79, p.z + Math.cos(yaw) * .43);
-      crateMesh.rotation.y = yaw;
+      const {x,y,z}=helper.figure.position;
+      const p=cargoPose(x,z,y+harnessHeight,helper.figure.rotation.y);
+      crateMesh.position.set(p.x,p.y,p.z);
+      crateMesh.rotation.y=p.yaw;
     } else {
       crateMesh.position.set(state.crate.x, state.phase === "delivered" ? .89 : floor(state.crate.x, state.crate.z), state.crate.z);
       crateMesh.rotation.y = state.crate.yaw;
@@ -643,6 +665,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       playerBody.limbs.arms[0].rotation.z=gesture*.32;
     }
 
+    let courierWalking=false;
     if (state.phase === "courier") {
       const [x, z] = trail[courierLeg];
       const p = helper.figure.position;
@@ -654,16 +677,23 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const step = Math.min(dist, dt * 3.15);
         const dirX = (x - p.x) / dist, dirZ = (z - p.z) / dist;
         const nx=p.x+dirX*step, nz=p.z+dirZ*step;
-        const separated=Math.hypot(nx-player.x,nz-player.z)>.57;
-        if(separated && canStep(nx,nz,.24,courierSolid)){
+        const yaw=Math.atan2(-dirX,-dirZ), ny=floor(nx,nz);
+        const cargo=cargoPose(nx,nz,ny+harnessHeight,yaw);
+        const playerY=floor(player.x,player.z);
+        const separated=ny>=playerY+workerHeight || playerY>=ny+workerHeight ||
+          Math.hypot(nx-player.x,nz-player.z)>=2*workerRadius;
+        if(separated && !courierBoxHitsPlayer(cargo) &&
+           canStep(nx,nz,workerRadius,courierSolid,workerHeight,courierCargo) &&
+           !cargoObstacle(nx,nz,yaw,courierSolid,0,courierCargo)){
           p.x=nx;
           p.z=nz;
-          p.y=floor(p.x,p.z);
+          p.y=ny;
+          helper.figure.rotation.y=yaw;
+          courierWalking=true;
         }
-        helper.figure.rotation.y = Math.atan2(-dirX, -dirZ);
       }
     }
-    animate(helper, elapsed * 10, state.phase === "courier", state.phase === "courier");
+    animate(helper, elapsed * 10, courierWalking, state.phase === "courier");
     const nod = THREE.MathUtils.clamp((elapsed - deliveryTime) / 1.18, 0, 1);
     const greeting = state.phase === "delivered" ? Math.sin(Math.PI * nod) : 0;
     merchant.head.rotation.x = .028 * Math.sin(elapsed * 1.7) - .21 * greeting;
@@ -679,6 +709,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     merchant.reachWithRightHand(tea.grip(teaGrip), reach);
     helper.head.rotation.y = state.phase === "waiting" ? .16 * Math.sin(elapsed * .91) : 0;
     positionCrate();
+    if(view==="mission") syncActors();
     if (walking) ui();
   }
 
@@ -738,7 +769,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
-        bodyOverlap:city.blocking(player.x,player.z,floor(player.x,player.z),playerRadius,1.59)?.name??null},
+        bodyOverlap:city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }

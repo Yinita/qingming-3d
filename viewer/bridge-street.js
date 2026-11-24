@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riverWorker } from "./bridge-people.js";
-import { createSurfaceLibrary, detailedBox } from "./bridge-look.js";
+import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
-import { createStreetCollision } from "./bridge-collision.js";
+import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
+import { walkwayHeight, willowSites } from "./bridge-foreground.js";
+import { tileRoof } from "./bridge-architecture.js";
 
 const robes=[0x7b8777,0xa08a67,0x687c87,0xa78067,0xb2a283,0x758268,0x716570,0x979482];
 const houseIds=new Set(["o0260","o0315","o0430","o0291","o0551"]);
@@ -47,7 +49,7 @@ function characterParts(surface,hatted) {
   return result;
 }
 
-function residents(root,entries,surface,collisions) {
+function residents(root,entries,surface) {
   const pose=new THREE.Object3D();
   for(const hatted of [false,true]) {
     const chunks=new Map();
@@ -77,10 +79,33 @@ function residents(root,entries,surface,collisions) {
       }
     }
   }
-  for(const p of entries) {
-    const body=collisions.cylinder("resident",p.x,p.z,p.y,p.y+standingY*p.scale,.27*p.width);
-    body.camera=false;
+}
+
+function placeResidents(entries,collisions,anchor,origin) {
+  const landmarks=willowSites(anchor);
+  const placed=[];
+  for(const resident of entries) {
+    const radius=workerRadius*resident.width, height=workerHeight*resident.scale;
+    for(let attempt=0;attempt<25;attempt++) {
+      if(resident.bridge && attempt>0) break;
+      const step=attempt ? .44*Math.ceil(attempt/8) : 0;
+      const angle=(attempt%8)*Math.PI*.25+resident.yaw;
+      const x=resident.x+step*Math.cos(angle), z=resident.z+step*Math.sin(angle);
+      const y=resident.bridge ? resident.y : Math.max(resident.y,walkwayHeight(anchor,x,z));
+      if(!resident.bridge) {
+        const along=x-anchor.x, across=Math.abs(z-anchor.z);
+        if(along>-15.6 && along<20.1 && across<1.38+radius) continue;
+        if(x>-46 && x<-40.2 && z>anchor.z-3.4-radius && z<anchor.z+.7+radius) continue;
+        if(canalDepth(origin,x,z)>.056 ||
+           landmarks.some(t=>Math.hypot(x-t.x,z-t.z)<radius+.42*t.scale)) continue;
+      }
+      if(collisions.blocking(x,z,y,radius+.022,height)) continue;
+      collisions.cylinder("resident",x,z,y,y+height,radius);
+      placed.push({...resident,x,y,z,shift:step});
+      break;
+    }
   }
+  return placed;
 }
 
 function timberHouse(root,collisions,surface,x,z,w,d,story,shade) {
@@ -88,11 +113,11 @@ function timberHouse(root,collisions,surface,x,z,w,d,story,shade) {
   shell.name="Brick and timber riverside house";
   shell.position.set(x,0,z);
   root.add(shell);
-  const plaster=surface("lime-plaster",shade,.64,.96);
-  const timber=surface("tea-wood",0x9a8261,.74,.87);
-  const masonry=surface("worn-stone",0xc6b99c,.66,.91);
-  const roof=surface("gray-roof-tile",0x8b8680,.88,.82);
-  const opening=new THREE.MeshStandardMaterial({color:0x3b3227,roughness:.95});
+  const plaster=surface("lime-plaster",shade,.67,.96);
+  const timber=surface("tea-wood",0xa88c6e,.82,.85);
+  const masonry=surface("worn-stone",0xc6b99c,.75,.91);
+  const roof=surface("gray-roof-tile",0xb4ada0,.90,.82);
+  const opening=surface("rail-wood",0x6d5941,.56,.92);
   const parts=new Map();
   function put(mat,width,height,depth,x,y,z,tilt=0) {
     const part=detailedBox(width,height,depth,mat,.018,0);
@@ -101,28 +126,75 @@ function timberHouse(root,collisions,surface,x,z,w,d,story,shade) {
     if(!parts.has(mat)) parts.set(mat,[]);
     parts.get(mat).push(part);
   }
-  const eave=story+.22, slope=.39, span=d*.5+.48;
-  put(masonry,w+.26,.27,d+.21,0,.12,0);
-  put(plaster,w,story,d,0,story*.5+.23,0);
-  for(const end of [-1,1]) {
-    put(timber,w+.27,.18,.20,0,eave-.05,end*d*.5);
-    put(timber,.18,story,.19,end*(w*.5-.05),story*.5+.22,d*.5+.045);
-    put(roof,w+.83,.18,span/Math.cos(slope),0,eave+span*.5*Math.tan(slope),end*span*.5,end*slope);
-    for(let i=0;i<Math.ceil(w/.23);i++){
-      const tx=(i/(Math.ceil(w/.23)-1)-.5)*(w+.45);
-      put(roof,.078,.072,span/Math.cos(slope),tx,eave+span*.5*Math.tan(slope)+.12,end*span*.5,end*slope);
+  const plinth=.29, eave=story+plinth, slope=.36, run=d*.5+.53;
+  const clear=.42, bays=[-w/3,0,w/3], bayWidth=w/3;
+  put(masonry,w+.19,.21,d+.16,0,.12,0);
+  put(masonry,w+.31,.088,d+.27,0,.242,0);
+  for(const side of [-1,1]) {
+    const wallZ=side*(d*.5-.09), faceZ=side*d*.5;
+    put(timber,w+.25,.22,.23,0,eave-.08,faceZ);
+    put(plaster,w,story*.27,.18,0,eave-story*.135,wallZ);
+    for(let i=0;i<=3;i++) {
+      const x=(i/3-.5)*w;
+      put(timber,.15,story,.225,x,plinth+story*.5,faceZ);
+      put(masonry,.21,.20,.26,x,plinth+.053,faceZ);
+      put(timber,.115,.136,.54,x,eave-.22,side*(d*.5+.112));
+    }
+    for(const [i,x] of bays.entries()) {
+      const door=i===1&&side===1;
+      const sill=door ? plinth : plinth+story*.31;
+      const lintel=plinth+story*.73;
+      const insetWidth=door ? Math.min(1.24,bayWidth*.78) : Math.min(1.12,bayWidth*.74);
+      const pierWidth=(bayWidth-insetWidth)*.5;
+      if(!door) put(plaster,bayWidth,sill-plinth,.18,x,(sill+plinth)*.5,wallZ);
+      for(const edge of [-1,1]) {
+        put(plaster,pierWidth,lintel-sill,.18,x+edge*(bayWidth-pierWidth)*.5,(sill+lintel)*.5,wallZ);
+        put(timber,.071,lintel-sill,.105,x+edge*insetWidth*.5,(sill+lintel)*.5,faceZ);
+      }
+      put(opening,insetWidth+.06,lintel-sill+.04,.09,x,(sill+lintel)*.5,faceZ-side*clear);
+      for(const h of [sill,lintel]) put(timber,insetWidth+.073,.081,.231,x,h,faceZ);
+      if(door) {
+        for(const edge of [-1,1]) {
+          put(timber,.37,lintel-sill-.09,.067,x+edge*.33,(sill+lintel)*.5,faceZ-side*.17);
+          put(masonry,.045,.07,.044,x+edge*.18,sill+.78,faceZ-side*.124);
+        }
+        put(masonry,insetWidth+.19,.15,.37,x,.095,faceZ+side*.08);
+      } else {
+        for(let bar=-2;bar<=2;bar++)
+          put(timber,.036,lintel-sill,.065,x+insetWidth*bar/6,(sill+lintel)*.5,faceZ-side*.057);
+        put(timber,insetWidth,.04,.065,x,(sill+lintel)*.5,faceZ-side*.047);
+      }
+    }
+    const ends=Math.ceil(w/.28);
+    for(let i=0;i<ends;i++) {
+      const x=(i/(ends-1)-.5)*(w+.31);
+      put(timber,.067,.091,.54,x,eave-.016,side*(run-.27),side*.12);
     }
   }
-  put(roof,w+.94,.23,.20,0,eave+span*Math.tan(slope)+.16,0);
-  put(opening,.95,story*.73,.043,0,story*.365+.20,d*.5+.012);
   for(const side of [-1,1]) {
-    put(timber,.09,story*.76,.077,side*.50,story*.38+.18,d*.5+.068);
-    const px=side*w*.29;
-    put(opening,1.00,.79,.049,px,story*.60,d*.5+.017);
-    for(let i=-2;i<=2;i++) put(timber,.052,.87,.079,px+i*.19,story*.60,d*.5+.070);
-    for(let i=-1;i<=1;i++) put(timber,1.07,.055,.081,px,story*.60+i*.24,d*.5+.075);
+    const wallX=side*(w*.5-.067);
+    put(plaster,.14,story,d,wallX,story*.5+plinth,0);
+    put(masonry,.17,.48,d-.12,wallX+side*.015,plinth+.24,0);
+    for(const z of [-d*.48,0,d*.48]) put(timber,.17,story,.124,wallX+side*.058,story*.5+plinth,z);
+    const gabled=new THREE.Shape();
+    gabled.moveTo(-run,0);
+    gabled.lineTo(run,0);
+    gabled.lineTo(0,run*slope+.02);
+    gabled.closePath();
+    const g=new THREE.ExtrudeGeometry(gabled,{depth:.138,bevelEnabled:false});
+    g.setIndex(Array.from({length:g.attributes.position.count},(_,i)=>i));
+    g.rotateY(Math.PI/2);
+    g.translate(wallX-.069,eave-.032,0);
+    parts.get(plaster).push(g);
+    const angle=Math.atan(slope);
+    for(const z of [-1,1]) {
+      put(timber,.17,.13,Math.hypot(run,run*slope),wallX+side*.027,
+        eave+run*slope*.5,z*run*.5,z*angle);
+    }
   }
-  put(timber,1.12,.09,.085,0,story*.73+.23,d*.5+.075);
+  put(opening,w+.81,.16,.18,0,eave+run*slope+.057,0);
+  for(const x of [-1,1]) put(timber,.18,.25,.21,x*(w+.80)*.5,eave+run*slope+.106,0);
+  tileRoof(shell,roof,w+.78,run,eave,0,slope);
   batch(shell,parts,"Textured masonry and glazed tile");
   collisions.box("house",x-w*.5,x+w*.5,z-d*.5,z+d*.5,0,eave+.65);
 }
@@ -281,10 +353,15 @@ export function createStreetScene(scene,objects,anchor) {
   root.name="Volumetric perspective streets";
   root.visible=false;
   scene.add(root);
+  const bridge=new THREE.Group();
+  bridge.name="Timber bridge for perspective exploration";
+  root.add(bridge);
+  buildWoodenBridge(bridge,anchor,surface);
   const origin=canalOrigin(anchor);
   const replacements=new Set();
   const people=[], treeObjects=[];
-  const rail=[[-66.3,.72],[-63.7,-.72],[-60.1,.72],[-57.8,-.72],[-54.3,.72],[-50.7,-.72]];
+  const curb=bridgeRailOffset-.365;
+  const rail=[[-66.3,curb],[-63.7,-curb],[-60.1,curb],[-57.8,-curb],[-54.3,curb],[-50.7,-curb]];
   const closeBridge=(x,z)=>Math.abs(x-anchor.x)<10.7 && Math.abs(z-anchor.z)<1.75;
   objects.forEach(o=>{
     if(o.label==="person"){
@@ -306,15 +383,12 @@ export function createStreetScene(scene,objects,anchor) {
     }
   });
   for(const [i,[x,z]] of rail.entries()){
-    const u=x-anchor.x;
-    const y=Math.min(2.593,.3247*(u+10.607),.3711*(10.606-u));
-    people.push({x,z:z+anchor.z,y,yaw:i%2===0 ? -.16 : Math.PI+.15,scale:.98,
-      width:.85,robe:robes[i],hatted:i%3===0});
+    people.push({x,z:z+anchor.z,y:bridgeDeckHeight(anchor,x),yaw:i%2===0 ? -.16 : Math.PI+.15,scale:.98,
+      width:.82,robe:robes[i],hatted:i%3===0,bridge:true});
   }
   const bank=[[-74.28,1.52],[-69.75,2.18],[-47.35,2.0],[-44.95,2.56],[-40.20,2.05]];
   for(const [i,[x,z]] of bank.entries())
     people.push({x,z:z+anchor.z,y:0,yaw:1.26+i*.44,scale:.99,width:.88,robe:robes[(i+3)%robes.length],hatted:i%2===0});
-  residents(root,people,surface,collisions);
   trees(root,treeObjects,surface,collisions);
   const props=marketProps(root,objects,surface,collisions,anchor,origin);
   const buildings=[
@@ -325,5 +399,9 @@ export function createStreetScene(scene,objects,anchor) {
     [71.79,-57.14,5.87,3.21,2.49,0xe1cbaa],
   ];
   for(const spec of buildings) timberHouse(root,collisions,surface,...spec);
-  return {root,replacements,collisions,inspect:()=>({people:people.length,trees:treeObjects.length,houses:buildings.length,props,colliders:collisions.inspect()})};
+  const placed=placeResidents(people,collisions,anchor,origin);
+  residents(root,placed,surface);
+  return {root,bridge,replacements,collisions,inspect:()=>({people:placed.length,relocated:placed.filter(p=>p.shift>0).length,
+    bridgePeople:placed.filter(p=>p.bridge).length,trees:treeObjects.length,houses:buildings.length,props,
+    colliders:collisions.inspect()})};
 }

@@ -59,12 +59,12 @@
     <button id="bOrbit" aria-pressed="false">俯瞰</button>
     <button id="bMission" type="button">试玩桥畔茶铺</button>
   </div>
-  <div class="row"><button id="bModels" aria-pressed="false" hidden>房屋：纸片</button></div>
+  <div class="row"><button id="bModels" aria-pressed="false" hidden>远处房屋：原画裁片</button></div>
   <div id="help"></div>
   <div id="status">加载中…</div>
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1.2</div>
+<div id="seal">入卷 v1.3</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -187,23 +187,24 @@ const cardOf = new Map(swapCards.map(c => [c.userData.id, c]));
 // models take over as soon as the camera leaves it.
 function applyModelVisibility() {
   const bridgeCard = swapCards.find(c => c.userData.label === "bridge");
+  street.bridge.visible=mode!=="mission";
   for(const card of swapCards) {
     const bridge=card===bridgeCard;
     const revised=street.replacements.has(card.userData.id);
     card.visible=(!street.root.visible || (!showModels && mode!=="mission")) &&
       !(street.root.visible && revised);
-    if(bridge && mode==="mission") card.visible=false;
+    if(bridge && street.root.visible) card.visible=false;
   }
   for (const m of models) {
     const bridge = m.userData.label === "bridge";
-    const use = !(mode === "mission" && bridge) && !street.replacements.has(m.userData.id) &&
+    const use = !(street.root.visible && bridge) && !street.replacements.has(m.userData.id) &&
       (((showModels || mode==="mission") && mode !== "paint" && mode !== "missionScroll") ||
        (mode === "missionScroll" && bridge));
     m.visible = use;
     const replacement=street.root.visible && street.replacements.has(m.userData.id);
     cardOf.get(m.userData.id).visible = !use && !replacement &&
       (!street.root.visible || (!showModels && mode!=="mission")) &&
-      !(mode === "mission" && bridge);
+      !(street.root.visible && bridge);
     for (const face of m.userData.finishFaces) {
       face.material = street.root.visible ? face.userData.nearbyMaterial : face.userData.archiveMaterial;
     }
@@ -215,7 +216,7 @@ function setModels(on) {
   const b = document.getElementById("bModels");
   b.hidden = !withMesh.length;
   b.setAttribute("aria-pressed", String(on));
-  b.textContent = (on ? `房屋：3D 模型（${models.length}）` : "房屋：纸片") + (pending ? ` · 加载中 ${withMesh.length - pending}/${withMesh.length}` : "");
+  b.textContent = (on ? "远处房屋：3D 模型" : "远处房屋：原画裁片") + (pending ? ` · 加载中 ${withMesh.length - pending}/${withMesh.length}` : "");
 }
 // Start downloading models only once the ground and card textures are in (or after 8 s),
 // so the painting appears first instead of competing with ~45 MB of models for bandwidth.

@@ -5,6 +5,11 @@ import { buildCanalBed, canalOrigin } from "./bridge-canal-bed.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const materialRoot = "../data/bridge-finish/";
+export const bridgeRailOffset=1.23;
+export function bridgeDeckHeight(anchor,x) {
+  const u=x-anchor.x;
+  return Math.max(0,Math.min(2.593,.3247*(u+10.607),.3711*(10.606-u)));
+}
 const materialScale = {
   "tea-wood": 1.4, "rail-wood": 2.0, "stone-paving": 3.8,
   "gray-roof-tile": 2.4, "lime-plaster": 2.5, "indigo-linen": 1.0,
@@ -89,9 +94,11 @@ export function detailedBox(w, h, d, material, radius = .013, phase = 0) {
   return geometry;
 }
 
-function buildBridge(group, center, height, timber, fascia) {
+export function buildWoodenBridge(group,center,surface) {
+  const timber=surface("rail-wood",0xf7e7cf,.91);
+  const fascia=surface("rail-wood",0xe4ceb1,.76);
   const boards = [], trim = [], piers = [];
-  const q = local => height(center.x + local);
+  const q = local => bridgeDeckHeight(center,center.x+local);
   const add = (list, mat, widths, x, y, z, angle, shade) => {
     const part = detailedBox(...widths, mat, .014, Math.sin(x * 1.73 + z * .91) * 5);
     part.rotateZ(angle);
@@ -109,20 +116,20 @@ function buildBridge(group, center, height, timber, fascia) {
     const angle = Math.atan2(q(b) - q(a), b - a);
     for (let i = 0; i < intervals[k]; i++) {
       const x = a + (i + .5) * gap;
-      add(boards, timber, [gap / Math.cos(angle) - .009, .123, 2.14], x, q(x) - .06, 0,
+      add(boards, timber, [gap / Math.cos(angle) - .009, .123, bridgeRailOffset*2-.02], x, q(x) - .06, 0,
           angle, .70 + .25 * (.5 + .5 * Math.sin((i + k * 29) * 26.57)));
     }
     for (const side of [-1, 1]) {
       for (const [y, depth] of [[-.09, .19], [.49, .105], [1.0, .13]]) {
         add(trim, fascia, [Math.hypot(b - a, q(b) - q(a)), depth, .12],
-            (a + b) / 2, (q(a) + q(b)) / 2 + y, side * 1.08, angle, .86);
+            (a + b) / 2, (q(a) + q(b)) / 2 + y, side * bridgeRailOffset, angle, .86);
       }
     }
   }
   const postXs = [-10.52, -8.48, -6.51, -4.55, -2.62, -.58, 1.55, 3.62, 5.55, 7.42, 9.35, 10.52];
   for (const x of postXs) {
     const y = q(x);
-    for (const z of [-1.08, 1.08]) {
+    for (const z of [-bridgeRailOffset,bridgeRailOffset]) {
       add(trim, fascia, [.143, 1.15, .145], x, y + .51, z, 0, .86 + .09 * Math.sin(x * 4.6));
       add(trim, fascia, [.189, .09, .184], x, y + 1.08, z, 0, .95);
       if (y > .6 && Math.abs(x) > 3) {
@@ -176,13 +183,11 @@ export function walkPath(w, depth, mat) {
   return model;
 }
 
-export function buildBridgeLook(parent, center, height, surface, ground, apron) {
+export function buildBridgeLook(parent, center, surface, ground, apron) {
   const model = new THREE.Group();
   model.name = "Close-range bridge and canal";
   parent.add(model);
-  const deck = surface("rail-wood", 0xf7e7cf, .91);
-  const rail = surface("rail-wood", 0xe4ceb1, .76);
-  const piers = buildBridge(model, center, height, deck, rail);
+  const piers = buildWoodenBridge(model,center,surface);
   const skiffBoards = surface("tea-wood",0xbfb29a,.87,.75);
   const skiffRail = surface("rail-wood",0xe6cfab,.70,.82);
   const skiff = mooredSkiff(model, center, skiffBoards, skiffRail, detailedBox);
