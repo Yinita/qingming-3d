@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riverWorker } from "./bridge-people.js";
-import { buildStreetGround } from "./bridge-street-ground.js";
+import { buildStreetGround, streetSurfaceHeight } from "./bridge-street-ground.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
@@ -33,16 +33,19 @@ function batch(root,parts,name,receive=true) {
 function characterParts(surface,hatted,variant,slope,yaw) {
   const temp=new THREE.Group();
   const worker=riverWorker(temp,surface,"resident",hatted,variant);
-  const height=slope===0 ? .021 : 0;
+  const height=slope===0 ? .009 : 0;
   worker.figure.position.y=height;
   worker.stand(x=>x*slope,0,height,0,yaw);
-  worker.head.rotation.set([.01,-.04,.05,-.02][variant],[.14,-.17,.23,-.11][variant],.017*variant);
+  worker.torsoPivot.rotation.set([-.028,.071,-.025,.039][variant],
+    [.09,-.19,.10,-.14][variant],[.029,-.04,.021,-.036][variant]);
+  worker.head.rotation.set([.042,-.081,.10,-.068][variant],
+    [.23,-.31,.35,-.20][variant],[-.03,.049,-.051,.041][variant]);
   const [left,right]=worker.limbs.arms;
   const [leftElbow,rightElbow]=worker.limbs.elbows;
-  left.rotation.set([-.28,-.16,.15,-.12][variant],0,[.12,.08,.09,.19][variant]);
-  right.rotation.set([-.19,.02,-.34,-.32][variant],0,[-.16,-.06,-.14,-.11][variant]);
-  leftElbow.rotation.x=[-.40,-.49,-.09,-.84][variant];
-  rightElbow.rotation.x=[-.38,-.64,-.45,-.17][variant];
+  left.rotation.set([-.17,-.10,-.24,-.37][variant],0,[.08,.19,.03,.15][variant]);
+  right.rotation.set([-.24,-.09,-.17,-.02][variant],0,[-.11,-.075,-.22,-.05][variant]);
+  leftElbow.rotation.set([-.56,-.34,-.76,-.41][variant],0,[-.14,-.04,-.20,-.12][variant]);
+  rightElbow.rotation.set([-.35,-.81,-.35,-.32][variant],0,[.07,.20,.02,.09][variant]);
   worker.figure.updateMatrixWorld(true);
   const parts=new Map(), point=new THREE.Vector3();
   worker.figure.traverse(node=>{
@@ -159,7 +162,7 @@ function placeResidents(entries,collisions,anchor,origin) {
       const step=attempt ? .44*Math.ceil(attempt/8) : 0;
       const angle=(attempt%8)*Math.PI*.25+resident.yaw;
       const x=resident.source.x+step*Math.cos(angle), z=resident.source.z+step*Math.sin(angle);
-      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,walkwayHeight(anchor,x,z));
+      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,walkwayHeight(anchor,x,z),streetSurfaceHeight(x,z));
       if(!resident.bridge) {
         const along=x-anchor.x, across=Math.abs(z-anchor.z);
         if(along>-15.6 && along<20.1 && across<1.38+radius) continue;

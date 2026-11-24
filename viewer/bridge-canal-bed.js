@@ -71,7 +71,7 @@ export function buildCanalBed(parent,origin,paintedGround,apron) {
   const geometry = new THREE.PlaneGeometry(2,2,acrossSamples,alongSamples);
   const positions = geometry.attributes.position;
   const uv = geometry.attributes.uv;
-  const { width, height } = paintedGround.geometry.parameters;
+  const { width, height } = paintedGround.userData.archiveGeometry.parameters;
   for (let row=0; row<=alongSamples; row++) {
     const along = canalHalfLength*(1-2*row/alongSamples);
     for (let col=0; col<=acrossSamples; col++) {

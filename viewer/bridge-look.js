@@ -132,7 +132,7 @@ export function createSurfaceLibrary() {
         float crossTrack=mix(soilPoint.x-25.06-(soilPoint.y+26.6)*.08,soilPoint.y+41.42,approach);
         float track=crossTrack-.29*wander;
         float rutDist=abs(track);
-        float rutCentre=rutDist-(.78+.069*sin(soilPoint.x*.51+soilPoint.y*.77));
+        float rutCentre=rutDist-(.83+.085*sin(mix(soilPoint.y+26.3,soilPoint.x+71.8,approach)*.56));
         float route=max(market,approach);
         float wheel=(1.-smoothstep(.034,.23,abs(rutCentre)))*route;
         float tread=(1.-smoothstep(.92,2.36,rutDist))*route;
@@ -143,7 +143,11 @@ export function createSurfaceLibrary() {
         vec3 stoneDust=grains*vec3(1.61,1.79,2.09);
         soil=diffuseColor.rgb*mix(earth,stoneDust,.35*drift+.17);
         soil*=mix(.72,1.19,smoothstep(.12,.82,districts+.24*coarse));
-        soil*=mix(.81,1.02,relief.r)*mix(1.,.71,compressed);
+        soil*=mix(.70,1.05,relief.r)*mix(1.,.64,compressed);
+        float fineGrit=soilNoise(soilPoint*19.7+17.)*soilNoise(soilPoint*27.6);
+        float packedSkin=smoothstep(.12,.52,coarse+.2*compaction)*tread;
+        soil*=mix(vec3(1.),vec3(.82,.87,.94),packedSkin*.39);
+        soil*=1.+(smoothstep(.29,.67,fineGrit)-.28)*(.24+.18*drift);
         soil*=mix(vec3(1.),vec3(1.16,1.10,.97),drift);
         soil=mix(soil,soil*vec3(.74,.84,.78),smoothstep(.58,.84,coarse)*.53*(1.-.5*tread));
         ` : ""}
@@ -164,7 +168,7 @@ export function createSurfaceLibrary() {
         ${street ? `
         float bank=exp(-31.*rutCentre*rutCentre)*rutCentre*sign(track)*route;
         vec2 crossSlope=mix(vec2(1.,-.08),vec2(0.,1.),approach);
-        reliefVector=reliefVector*(1.-.37*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*1.42;
+        reliefVector=reliefVector*(1.-.48*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.54;
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;
