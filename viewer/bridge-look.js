@@ -173,7 +173,7 @@ export function createSurfaceLibrary() {
         float wash=soilNoise(swale*vec2(2.62,1.71)+7.9);
         float dampClay=smoothstep(.38,.76,clay*.60+wash*.40)*(1.-.56*looseDust);
         soil*=mix(vec3(1.02,1.00,.95),vec3(.74,.78,.79),dampClay*.64);
-        soil*=mix(.81,1.11,relief.r)*mix(1.,.58,compressed);
+        soil*=mix(.89,1.08,relief.r)*mix(1.,.68,compressed);
         float washSilt=soilNoise(swale*vec2(.68,1.09)+vec2(-5.,12.));
         float dustEdge=smoothstep(.38,.74,washSilt+.13*mottling)*looseDust;
         soil*=mix(vec3(.85,.77,.67),vec3(1.18,1.18,1.13),smoothstep(.23,.69,washSilt));
@@ -188,6 +188,14 @@ export function createSurfaceLibrary() {
         float gritMask=1.-smoothstep(.018,.077,grainWidth);
         float fineGrit=soilNoise(swale*22.7+17.)*soilNoise(swale*31.6);
         soil*=1.+(smoothstep(.23,.61,fineGrit)-.27)*(.26+.16*looseDust)*gritMask;
+        // Long streaks follow traffic, with gaps where loose dirt settles back in.
+        vec2 alongAcross=vec2(alongTrack,track);
+        float abrasion=soilNoise(alongAcross*vec2(3.1,31.)+vec2(19.,4.));
+        float wheelScrape=smoothstep(.42,.75,abrasion)*wheel*(.60+.40*washSilt)*gritMask;
+        float shoulderChips=smoothstep(.37,.72,mottling+.24*aggregate)
+          *smoothstep(.26,.68,gravelMix)*(1.-.71*tread);
+        soil*=mix(vec3(1.),vec3(.79,.81,.80),wheelScrape*.53);
+        soil=mix(soil,soil*vec3(.84,.89,.93)+stoneDust*.052,shoulderChips*.52);
         soil*=mix(vec3(1.),vec3(1.10,1.09,1.04),looseDust);
         ` : ""}
         diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
@@ -211,7 +219,7 @@ export function createSurfaceLibrary() {
         reliefVector=mix(reliefVector,vec3(aggregateNormal.x,0.,aggregateNormal.y)*.68,gravelMix*.74);
         vec2 stoneNormal=(texture2D(shoulderNormal,shoulderUV).xy*2.-1.)*soilTurn;
         reliefVector=mix(reliefVector,vec3(stoneNormal.x,0.,stoneNormal.y)*.44,silt*shoulderReady);
-        reliefVector=reliefVector*(1.-.48*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.65;
+        reliefVector=reliefVector*(1.-.53*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.91;
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;

@@ -37,9 +37,14 @@ function robeVolume(theta,y) {
   const tuck=Math.exp(-(((y-.94)/.083)**2));
   const kneeRoom=.22*front*(1-THREE.MathUtils.smoothstep(y,.60,.88));
   const diagonal=Math.exp(-(((y-1.071+.075*Math.sin(theta))/.102)**2))*front;
-  const folds=.027*Math.sin(theta*5+y*5)-.015*Math.cos(theta*9-y*11);
-  return 1+folds+robePleats(theta,y)+kneeRoom+.082*chest*front-.041*tuck+
-    diagonal*(.040*Math.cos(theta*4+y*33)-.026*Math.sin(theta*7+y*23));
+  const shoulder=Math.exp(-(((y-1.245)/.075)**2))*Math.abs(Math.sin(theta))**3;
+  const back=Math.max(0,Math.cos(theta));
+  const waistGather=tuck*Math.max(0,Math.cos(theta*9+y*10))**4;
+  const pull=theta*6+y*38+.9*Math.sin(theta*2);
+  const folds=.016*Math.sin(theta*5+y*5)-.011*Math.cos(theta*9-y*11);
+  return 1+folds+robePleats(theta,y)+kneeRoom+.079*chest*front+
+    shoulder*(.054+.037*back)-.057*tuck+.029*waistGather+
+    diagonal*(.036*Math.sin(pull)-.032*Math.max(0,Math.cos(pull))**5);
 }
 
 function robeClothGeometry(profile,segments) {
@@ -453,17 +458,19 @@ function sculptedEye(feature,side,opening,slant,look,lowDetail) {
     const x=.053+(u-.5)*.041;
     const openingAtX=Math.sin(Math.PI*u)**.76;
     const y=.011+slant*(u-.5)+(v-.43)*openingAtX*opening;
-    const lift=.0022+.0064*openingAtX*Math.sin(Math.PI*v);
+    const lift=.0017+.0035*openingAtX*Math.sin(Math.PI*v);
     points.push(...feature(side*x,y,lift).toArray());
     uv.push(u,v);
-    const r=Math.hypot(x-.053-look,(y-.011)*1.07);
-    const iris=smoothstep(r,.0048,.0069);
-    const pupil=smoothstep(r,.0027,.0041);
-    const wetEdge=1-.22*smoothstep(v,.53,.98);
-    const glint=.15*Math.exp(-((x-.051-look)**2+(y-.0126)**2)/.000004);
-    colors.push(lerp(lerp(.039,.168,pupil),.62*wetEdge,iris)+glint,
-      lerp(lerp(.033,.105,pupil),.54*wetEdge,iris)+glint,
-      lerp(lerp(.027,.070,pupil),.43*wetEdge,iris)+glint);
+    const r=Math.hypot(x-.053-look,y-.0122);
+    const iris=smoothstep(r,.0060,.0077);
+    const pupil=smoothstep(r,.0029,.0043);
+    const irisRim=1-.42*smoothstep(r,.005,.0068);
+    const corner=smoothstep(openingAtX,0,.52);
+    const lidShade=(.69+.31*corner)*(1-.31*smoothstep(v,.59,1));
+    const glint=.29*Math.exp(-((x-.051-look)**2+(y-.0134)**2)/.0000014);
+    colors.push(lerp(lerp(.021,.107,pupil)*irisRim,lerp(.26,.43,corner)*lidShade,iris)+glint,
+      lerp(lerp(.016,.066,pupil)*irisRim,lerp(.14,.36,corner)*lidShade,iris)+glint,
+      lerp(lerp(.014,.042,pupil)*irisRim,lerp(.112,.29,corner)*lidShade,iris)+glint);
     if(i && j) {
       const d=j*(strips+1)+i, a=d-strips-2;
       if(side>0) indices.push(a,d-1,a+1,a+1,d-1,d);
@@ -502,28 +509,30 @@ function sculptedEar(side,lowDetail) {
 
 function faceDepth(x,y,z,nose,cheekbone,chin) {
   const patch=(cx,cy,dx,dy)=>Math.exp(-((x-cx)**2/dx+(y-cy)**2/dy));
-  const cheek=patch(.076,-.023,.0014,.0012);
-  const lowerCheek=patch(.080,-.073,.00077,.00091);
-  const supraorbital=patch(.055,.034,.00145,.00023);
-  const socket=patch(.053,.012,.00043,.00025);
-  const jaw=patch(0,-.114,.0031,.00065);
-  const muzzle=patch(0,-.052,.0023,.0010);
+  const cheek=patch(.077,-.017,.00085,.00057);
+  const lowerCheek=patch(.077,-.069,.00113,.00064);
+  const supraorbital=patch(.051,.033,.00148,.00025);
+  const socket=patch(.053,.014,.00070,.00023);
+  const lowerLid=patch(.052,-.005,.00078,.000081);
+  const jaw=patch(.017,-.105,.0027,.00037);
+  const muzzle=patch(0,-.053,.0023,.00068);
   const upperLip=patch(0,-.057,.00095,.000055);
   const lowerLip=patch(0,-.065,.00112,.000061);
   const chinFold=patch(0,-.077,.0011,.000077);
-  const alar=patch(.013,-.037,.000075,.000070);
-  const bridge=patch(0,.005,.00040,.0019);
-  const noseTip=patch(0,-.026,.00064,.00031);
-  const nostril=patch(.015,-.041,.000065,.00009);
+  const alar=patch(.015,-.034,.000082,.000052);
+  const bridge=patch(0,.011,.00030,.00155);
+  const noseTip=patch(0,-.026,.00023,.00019);
+  const nostril=patch(.015,-.041,.000061,.000057);
   const front=THREE.MathUtils.smoothstep(-z,.047,.118);
-  return z*.87-front*(.026*cheek*cheekbone-.012*lowerCheek-.016*socket+
-    .010*supraorbital+.019*jaw*chin+.009*muzzle+
-    .006*upperLip+.007*lowerLip-.005*chinFold+
-    (.020*bridge+.028*noseTip+.006*alar)*nose-.008*nostril);
+  // Keep the facial planes broad and reserve steep relief for the nose and eyelids.
+  const facePlane=z*.87+front*(.011+.014*Math.max(0,-y)/.149);
+  return facePlane-front*(.018*cheek*cheekbone-.011*lowerCheek-.011*socket+
+    .009*supraorbital+.004*lowerLid+.023*jaw*chin+.006*muzzle+
+    .005*upperLip+.006*lowerLip-.004*chinFold+
+    (.027*bridge+.032*noseTip+.012*alar)*nose-.011*nostril);
 }
 
-// The sparse skull can cross the analytic face between vertices. Attach the
-// low-detail eyelids and lips to its actual triangles at their projected x/y.
+// Attach low-detail eyelids and lips to the actual skull triangles at their projected x/y.
 function projectedFaceDepth(skull,x,y) {
   const {position}=skull.attributes;
   const indices=skull.index.array;
@@ -583,8 +592,12 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const skin=plain(profile?.skin??{player:0xcfab8c,merchant:0xb7896b,helper:0xc09576}[role],.72);
   const facePaint=skin.clone();
   facePaint.vertexColors=true;
-  const lips = plain(0x785245, .80);
-  const eyeSurface=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.32});
+  const lips = plain(0x80554a, .86);
+  const strokeMaterial=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.95,
+    transparent:true,alphaTest:.035,depthWrite:false,side:THREE.DoubleSide,forceSinglePass:true});
+  const eyeSurface=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.58});
+  const lidTint=skin.clone();
+  lidTint.color.multiplyScalar(.77);
   const brow = plain(0x363128, .84);
   const footwear = plain(profile ? [0x493a2c,0x393836,0x3e4442,0x4f4233][variant] : 0x3a332a, .89);
   const hem = plain(0x554c3b, .84);
@@ -604,7 +617,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const robeSegments=lowDetail ? garmentSections : 64;
   piece(figure,robeClothGeometry(robe.slice(2),robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
   piece(figure,fabric(robe.slice(0,3),.70,.012,robeSegments,0,robeVolume),binding,0,0,0).name="Bound robe hem";
-  piece(figure, new THREE.CylinderGeometry(.072,.084,.105,lowDetail ? 8 : 16), skin, 0, 1.382, -.005);
+  piece(figure,fabric([[.084,1.327],[.077,1.356],[.067,1.389],[.068,1.421],
+    [.085,1.447],[.087,1.462]],.86,.006,garmentSections,0,()=>1),skin,0,0,0).name="Tapered neck";
   const sashBottom=profile?.sash??.948;
   const sash=profile?.beard ? binding : hem;
   const sashHeight=profile?.beard ? .077 : .053;
@@ -654,13 +668,14 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const skullRadius=.149, nose=profile?.nose??(role==="merchant" ? 1.18 : role==="helper" ? .93 : 1);
   const cheekbone=profile?.cheek??(role==="merchant" ? .81 : 1);
   const chin=profile?.chin??1;
-  const eyeOpening=(profile?.eyes??(role==="merchant" ? .76 : 1))*.016;
+  const eyeOpening=(profile?.eyes??(role==="merchant" ? .76 : 1))*.0132;
   const jawWidth=y=>{
-    const lower=THREE.MathUtils.smoothstep(-y,.022,.128);
+    const lower=THREE.MathUtils.smoothstep(-y,.035,.137);
     const temple=THREE.MathUtils.smoothstep(y,.061,.133);
-    return 1-lower*(profile?.jaw??.29)-temple*(profile?.beard ? .075 : .027);
+    return 1-lower*(profile?.jaw??.34)-temple*(profile?.beard ? .075 : .027);
   };
-  const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : detail ? 52 : 40,lowDetail ? 13 : detail ? 36 : 28);
+  const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : role==="resident" ? 56 : 64,
+    lowDetail ? 13 : role==="resident" ? 40 : 48);
   const position = skull.attributes.position;
   const faceColours=[];
   for (let i = 0; i < position.count; i++) {
@@ -675,11 +690,11 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const chinLight=.035*Math.exp(-(x*x/.0022+(y+.102)**2/.00043));
     const underlip=.072*Math.exp(-(x*x/.0015+(y+.078)**2/.00013));
     const temples=THREE.MathUtils.smoothstep(Math.abs(x),.078,.143);
-    const throat=Math.exp(-((y+.124)**2/.0013))*front;
+    const throat=Math.exp(-((y+.141)**2/.00055))*front;
     position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose,cheekbone,chin));
     const stubble=(profile?.beard || role==="merchant") ?
       .095*THREE.MathUtils.smoothstep(-y,.060,.126)*front : 0;
-    const cheekLight=.077*Math.exp(-((Math.abs(x)-.072)**2/.00058+(y+.013)**2/.00039));
+    const cheekLight=.042*Math.exp(-((Math.abs(x)-.072)**2/.00058+(y+.013)**2/.00039));
     const laughLine=Math.exp(-((Math.abs(x)-.039+.51*(y+.057))**2/.000048+(y+.056)**2/.00055));
     const faceVolume=front*(chinLight+cheekLight-underlip-templeCreases-(profile?.beard ? .13 : .065)*laughLine);
     faceColours.push(1+faceVolume-front*(.17*socket+.25*nostril)+pores-stubble-.10*throat-.055*temples,
@@ -701,7 +716,35 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const path=new THREE.CatmullRomCurve3(points.map(point=>feature(...point)));
     return piece(head,new THREE.TubeGeometry(path,lowDetail ? 5 : segments,radius,lowDetail ? 3 : 5,false),mat,0,0,0);
   }
-  const cap = new THREE.SphereGeometry(skullRadius,lowDetail ? 16 : 40,lowDetail ? 9 : 20,0,Math.PI*2,0,Math.PI*.62);
+  function faceStroke(points,pigment,width,opacity) {
+    const path=new THREE.CatmullRomCurve3(points.map(([x,y])=>new THREE.Vector3(x,y,0)));
+    const position=[],color=[],uv=[],indices=[];
+    const divisions=lowDetail ? 7 : 24;
+    for(let i=0;i<=divisions;i++) {
+      const t=i/divisions;
+      const {x,y}=path.getPoint(t);
+      const fade=Math.sin(Math.PI*t)**.6;
+      for(let row=0;row<3;row++) {
+        const dy=(row-1)*width*(.16+.84*fade);
+        position.push(...feature(x,y+dy,.0011).toArray());
+        color.push(pigment.r,pigment.g,pigment.b,row===1 ? opacity*(.13+.87*fade) : 0);
+        uv.push(t,row*.5);
+      }
+      if(i) for(let row=0;row<2;row++) {
+        const a=(i-1)*3+row;
+        indices.push(a,a+1,a+3,a+3,a+1,a+4);
+      }
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setIndex(indices);
+    geometry.setAttribute("position",new THREE.Float32BufferAttribute(position,3));
+    geometry.setAttribute("color",new THREE.Float32BufferAttribute(color,4));
+    geometry.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+    geometry.computeVertexNormals();
+    const stroke=piece(head,geometry,strokeMaterial,0,0,0);
+    stroke.castShadow=false;
+  }
+  const cap = new THREE.SphereGeometry(skullRadius,lowDetail ? 16 : 56,lowDetail ? 9 : 24,0,Math.PI*2,0,Math.PI*.62);
   const hairVertices=cap.attributes.position;
   const hairTones=[];
   const hairPart=profile?.hairPart??.09;
@@ -711,7 +754,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const front=THREE.MathUtils.smoothstep(-cos,.25,.96);
     const back=THREE.MathUtils.smoothstep(cos,.05,.92);
     const temple=Math.exp(-((Math.abs(sin)-.93)**2/.015))*THREE.MathUtils.smoothstep(-cos,.05,.39);
-    const edge=.58+.15*back-.175*front+.048*temple+.026*cos*Math.sin(az+hairPart*7)
+    const edge=.57+.15*back-.212*front+.042*temple+.034*cos*Math.sin(az+hairPart*7)
+      +.015*front*Math.sin(az*5+hairPart*12)
       -(profile?.wrap && !residentHat ? .064*(1-back) : 0);
     const length=Math.acos(clamp(y/skullRadius,-1,1))/(Math.PI*.62);
     const angle=length*edge*Math.PI;
@@ -720,7 +764,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const radius=skullRadius+.005+.0027*growth*(1+.85*strands);
     const sx=radius*Math.sin(angle)*sin, sy=radius*Math.cos(angle), sz=radius*Math.sin(angle)*cos;
     hairVertices.setXYZ(i,sx*jawWidth(sy),sy*1.105,faceDepth(Math.abs(sx),sy,sz,nose,cheekbone,chin));
-    const tone=.84+.104*strands*growth+.105*Math.cos(az*7-length*5)*growth;
+    const sweep=Math.sin(az*12-length*5+1.4*Math.sin(az*2+hairPart*12));
+    const tone=.99+.087*strands*growth+.18*sweep*growth;
     hairTones.push(tone,tone*.97,tone*.91);
   }
   cap.setAttribute("color",new THREE.Float32BufferAttribute(hairTones,3));
@@ -762,20 +807,24 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     piece(head,sculptedEye(feature,side,eyeOpening,slant,side*(profile?.hairPart??.09)*.012,lowDetail),
       eyeSurface,0,0,0).name="Sculpted eyelid opening and iris";
     const upper=eyeOpening*.57;
-    faceLine([[side*.032,.011-slant*.5,.0021],[side*.045,.012+upper*.87,.0059],
-      [side*.057,.011+upper,.0068],[side*.073,.011+slant*.5,.0021]],lips,.0015,14);
+    faceLine([[side*.0325,.011-slant*.5,.0010],[side*.044,.011+upper*.92,.0029],
+      [side*.057,.011+upper*.96,.0032],[side*.0735,.011+slant*.5,.0010]],lidTint,.00135,16);
+    if(!lowDetail) {
+      const lower=eyeOpening*.43;
+      faceLine([[side*.0325,.011-slant*.5,.0009],[side*.045,.011-lower*.88,.0025],
+        [side*.059,.011-lower*.90,.0024],[side*.0735,.011+slant*.5,.0009]],skin,.00126,16);
+    }
     const lift=profile?.beard ? -.004 : profile?.wrap ? .003 : 0;
-    faceLine([[side*.030,.033+lift,.001],[side*.046,.040+lift,.002],
-      [side*.061,.041+lift,.002],[side*.077,.035+lift,.0015]],hairPigment,.0022,12);
+    faceStroke([[side*.029,.033+lift],[side*.044,.039+lift],
+      [side*.060,.040+lift],[side*.080,.034+lift]],hairPigment.color,.0051,.93);
   }
   const mouthWidth=profile ? [.032,.026,.023,.030][variant] : .028;
   const mouthCorner=-.065+(profile?.smile??.002);
-  faceLine([[-mouthWidth,mouthCorner,.0007],[-mouthWidth*.43,-.064,.0015],
-    [0,-.066,.002],[mouthWidth*.39,-.064,.0016],[mouthWidth,mouthCorner-.002,.0007]],lips,.0017,18);
-  if(!lowDetail) {
-    const lowerLip=plain(profile?.beard ? 0x946b59 : 0xa87362,.70);
-    faceLine([[-.017,-.069,.0007],[0,-.072,.0012],[.017,-.069,.0007]],lowerLip,.0016,10);
-  }
+  const lowerLip=new THREE.Color(profile?.beard ? 0x946b59 : 0xa87362);
+  faceStroke([[-mouthWidth,mouthCorner],[-mouthWidth*.39,-.067],[0,-.070],
+    [mouthWidth*.39,-.067],[mouthWidth,mouthCorner-.002]],lowerLip,.0072,.62);
+  faceStroke([[-mouthWidth,mouthCorner],[-mouthWidth*.43,-.064],[0,-.066],
+    [mouthWidth*.39,-.064],[mouthWidth,mouthCorner-.002]],lips.color,.0031,.90);
   if(role==="merchant" || profile?.beard) {
     const beardTint=profile ? hairPigment : lips;
     const beard=piece(head,fabric([[0,-.170],[.015,-.145],[.039,-.115],[.048,-.094],

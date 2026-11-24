@@ -247,6 +247,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionHire">委托伙计</button>
       <button id="missionCamera">切换第一人称</button>
       <button id="missionTea" hidden>看掌柜斟茶</button>
+      <button id="missionReplay" type="button" hidden aria-haspopup="dialog"
+        aria-controls="missionRestartDialog">再玩一次</button>
       <button id="missionPebble" hidden title="朝向河面投掷小石子">投石 F</button>
       <button id="missionMooring" hidden>拉缆绳 R</button>
     </div>
@@ -281,6 +283,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const restartCancel=byId("missionRestartCancel");
   const restartConfirm=byId("missionRestartConfirm");
   const progress=byId("missionProgress");
+  const tools=byId("missionTools");
+  const journalButton=tools.querySelector("#missionJournal");
+  document.body.appendChild(tools);
   document.body.appendChild(restartDialog);
   const journal=createQuestJournal();
   const introShade=document.createElement("div");
@@ -301,6 +306,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionBegin" type="button">开始送茶</button>
       <button id="missionIntroReset" type="button" aria-haspopup="dialog"
         aria-controls="missionRestartDialog">重置进度</button>
+      <button id="missionIntroExit" type="button">返回画卷</button>
     </div>`;
   document.body.appendChild(intro);
   panels.observe(intro);
@@ -336,6 +342,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let deliveryTime = -10;
   let view = "outside";
   let showStart=true;
+  const awaitingStart=()=>view==="mission" && showStart && state.phase!=="delivered";
   let introduced=null;
   let restartTrigger;
   let noticeTimer, hasRestarted=false;
@@ -511,7 +518,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function useCargo() {
-    if (view !== "mission") return;
+    if (view !== "mission" || awaitingStart()) return;
     if (state.phase === "waiting" && distance(player, state.crate) < 1.9) {
       if (cargoObstacle(player.x,player.z,bodyYaw,looseCargo)) {
         hint.textContent="这里太窄。挪开半步再背货箱。";
@@ -549,7 +556,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function hire() {
-    if (view !== "mission" || state.phase !== "waiting" || state.coins < TEA_QUEST.economy.courierFee ||
+    if (view !== "mission" || awaitingStart() || state.phase !== "waiting" || state.coins < TEA_QUEST.economy.courierFee ||
         distance(player, pickup) > 3 || distance(state.crate, pickup) > .9) return;
     const start=cargoPose(pickup.x,routeZ,floor(pickup.x,routeZ)+harnessHeight,pickup.yaw);
     if(distance(player,pickup)<workerRadius*2 || courierBoxHitsPlayer(start)) {
@@ -680,7 +687,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const briefing=hasRestarted && kind==="new" ? "reset" : kind;
     if(briefing!==introduced) {
       const [status,title,detail,action]={
-        new:["任务待开始","桥畔茶铺","跟随金色标记，把一箱茶送给对岸的掌柜。","开始送茶"],
+        new:["任务待开始","桥畔茶铺 · 送茶任务","跟随金色标记，把一箱茶送给对岸的掌柜。","开始送茶"],
         reset:["任务待开始","任务已重置","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
         resume:["已有进度","继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
         finished:["任务完成","茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
@@ -693,6 +700,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       introduced=briefing;
     }
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
+    introShade.dataset.pending=String(awaitingStart());
+    labels.inert=awaitingStart() && !restartDialog.open;
+    // Restart stays accessible while the initial briefing owns the gameplay controls.
+    journalButton.disabled=awaitingStart();
   }
 
   function ui() {
@@ -706,12 +717,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     economy.textContent = `铜钱 ${state.coins} 文　·　茶铺库存 ${state.phase === "delivered" ? "1 箱" : "0 箱"}`;
     interactButton.textContent = state.phase === "carrying"
       ? (distance(player, counter) < deliveryReach ? "交货 E" : "放下 E") : "拿取 E";
-    interactButton.disabled = view !== "mission" || ["delivered", "courier"].includes(state.phase) ||
+    interactButton.disabled = view !== "mission" || awaitingStart() || ["delivered", "courier"].includes(state.phase) ||
       (state.phase === "waiting" && distance(player, state.crate) >= 1.9);
-    hireButton.disabled = view !== "mission" || state.phase !== "waiting" ||
+    hireButton.disabled = view !== "mission" || awaitingStart() || state.phase !== "waiting" ||
       state.coins < TEA_QUEST.economy.courierFee || distance(player, pickup) > 3 || distance(state.crate, pickup) > .9;
     const teaShot = Number.isFinite(teaShotStart);
     teaButton.hidden = state.phase !== "delivered";
+    byId("missionReplay").hidden = state.phase !== "delivered";
     teaButton.disabled = view !== "mission" || (!teaShot && distance(player, counter) >= 2.75);
     teaButton.textContent = teaShot ? "返回街道" : "看掌柜斟茶";
     byId("missionUndo").disabled = !previous;
@@ -787,7 +799,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     bridgeLook.setVisible(mode === "mission");
     counterFill.visible = mode === "mission";
     light(mode === "mission");
-    labels.hidden = !active;
+    labels.hidden = tools.hidden = !active;
     if(!active) journal.toggle(state,false);
     document.body.classList.toggle("mission-open", active);
     groundMarker.visible = mode === "mission" && state.phase !== "delivered";
@@ -798,6 +810,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
   }
 
+  const noInput=new Set();
   function frame(dt, keys) {
     if (!root.visible) return;
     if(restartDialog.open) {
@@ -811,10 +824,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     let walking = false;
     stones.update(elapsed);
     if (view === "mission") {
-      const dx = Number(keys.has("d") || keys.has("arrowright")) -
-                 Number(keys.has("a") || keys.has("arrowleft"));
-      const dz = Number(keys.has("w") || keys.has("arrowup")) -
-                 Number(keys.has("s") || keys.has("arrowdown"));
+      const input=awaitingStart() ? noInput : keys;
+      const dx = Number(input.has("d") || input.has("arrowright")) -
+                 Number(input.has("a") || input.has("arrowleft"));
+      const dz = Number(input.has("w") || input.has("arrowup")) -
+                 Number(input.has("s") || input.has("arrowdown"));
       fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
       side.set(-fwd.z, 0, fwd.x);
       const beforeDepth=wadeDepth(player.x,player.z);
@@ -822,7 +836,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const carrying=state.phase==="carrying";
       const backpedaling=dz<0;
       const pace=backpedaling ? (carrying ? 1.03 : 1.21) :
-        keys.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
+        input.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
       const v = pace * dt * drag / (Math.hypot(dx, dz) || 1);
       syncActors();
       const oldX = player.x;
@@ -967,12 +981,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       requestRestart(begin);
       return;
     }
+    clearInput();
     startMission();
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
     ui();
     canvas.focus({preventScroll:true});
   }
   begin.onclick=beginMission;
+  intro.querySelector("#missionIntroExit").onclick=()=>setMode("paint");
+  byId("missionReplay").onclick=event=>requestRestart(event.currentTarget);
   interactButton.onclick = useCargo;
   hireButton.onclick = hire;
   byId("missionCamera").onclick = toggleCamera;
@@ -991,7 +1008,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     groundMarker.visible=beacon.visible=false;
     restartDialog.showModal();
   }
-  byId("missionRestart").onclick=event=>requestRestart(event.currentTarget);
+  const restartButton=tools.querySelector("#missionRestart");
+  restartButton.onclick=event=>requestRestart(event.currentTarget);
   restartDialog.addEventListener("close",()=>{
     clearInput();
     ui();
@@ -1007,12 +1025,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restart();
   };
   byId("missionExit").onclick = () => setMode("paint");
-  byId("missionJournal").onclick=()=>journal.toggle(state);
+  journalButton.onclick=()=>{if(!awaitingStart()) journal.toggle(state);};
   window.addEventListener("keydown", e => {
     if (!root.visible || restartDialog.open || e.repeat || e.defaultPrevented) return;
     if (e.code === "Escape" && !journal.panel.hidden) {
       journal.toggle(state,false);
-      byId("missionJournal").focus({preventScroll:true});
+      journalButton.focus({preventScroll:true});
       return;
     }
     if (e.code==="Enter" && document.activeElement===canvas && !intro.hidden) {
@@ -1020,14 +1038,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       beginMission();
       return;
     }
+    if (e.code === "KeyR" && e.shiftKey) {
+      e.preventDefault();
+      requestRestart(restartButton);
+      return;
+    }
+    if(awaitingStart()) return;
     if (e.code === "KeyE") useCargo();
     if (e.code === "KeyV") toggleCamera();
     if (e.code === "KeyJ") journal.toggle(state);
     if (e.code === "KeyF") tossStone();
-    if (e.code === "KeyR" && e.shiftKey) {
-      e.preventDefault();
-      requestRestart(byId("missionRestart"));
-    } else if (e.code === "KeyR") pullMooring();
+    if (e.code === "KeyR") pullMooring();
     if (e.code === "Tab" && document.activeElement === canvas) {
       e.preventDefault();
       toggleScroll();
@@ -1050,7 +1071,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       bridgeLook.prepare(renderer,scene,camera);
     },
     turn(dx, dy) {
-      if (view !== "mission" || restartDialog.open) return;
+      if (view !== "mission" || restartDialog.open || awaitingStart()) return;
       if (Number.isFinite(teaShotStart)) {
         stopTeaShot();
         ui();

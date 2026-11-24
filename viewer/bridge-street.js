@@ -95,7 +95,7 @@ function residents(root,entries,surface,floor) {
     for(const {material,geometry,colored} of templates.get(group.shape).parts) {
       const mesh=new THREE.InstancedMesh(geometry,material,group.entries.length);
       mesh.name="Volumetric street residents";
-      mesh.castShadow=true;
+      mesh.castShadow=!material.transparent;
       mesh.receiveShadow=true;
       group.entries.forEach((o,i)=>{
         const place=()=>{

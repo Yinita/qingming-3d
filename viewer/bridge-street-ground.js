@@ -33,10 +33,12 @@ export function streetSurfaceHeight(x,z) {
     const erosion=.014*Math.sin(along*1.4+side*.58)+.007*Math.cos(along*3.1+side*1.2);
     const wash=.016*smoothstep(cross,1.48,3.65)*Math.sin(along*.81+side*1.79);
     const shoulder=(.034+erosion)*smoothstep(cross,1.05,2.33);
-    const ridge=(.011+erosion*.45)*Math.exp(-(((rut-.24)/.18)**2));
+    const wheelWear=.66+.34*Math.sin(along*.52+1.2)*Math.cos(along*1.1);
+    const rutBank=(.009+.016*wheelWear)*Math.exp(-(((rut-.205)/.153)**2));
     const grit=.008*Math.sin(x*3.7+z*1.1)*Math.sin(z*4.2+x*.87)+
       .006*Math.sin(z*2.3-x*2.1);
-    height+=fade*(crown+shoulder+ridge+wash+(.021+grit)*smoothstep(rut,.08,.36));
+    const roadBed=(.022+.012*wheelWear+grit)*smoothstep(rut,.055,.31);
+    height+=fade*(crown+shoulder+rutBank+wash+roadBed);
   }
   return height;
 }
@@ -81,9 +83,9 @@ function paving(lane,origin,material,addSurface) {
   const position=[],uv=[],color=[],indices=[];
   const joints=[],jointColor=[],jointIndices=[];
   const pigment=new THREE.Color();
-  const palette=[0xadb2ae,0x89928e,0xb1bbb6,0xc5b59d,0x909e9f,0xa5a99c,0xb8a88d];
+  const palette=[0xabb0a2,0x969a88,0xb6b9aa,0xbcac90,0x929c97,0xa6a795,0xb6a185];
   const sediment=new THREE.Color(0xaa9575);
-  const seam=new THREE.Color(0x635441);
+  const seam=new THREE.Color(0x78694e);
   const c=Math.cos(lane.angle),s=Math.sin(lane.angle);
   const point=(u,v)=>[lane.x+c*u+s*v,lane.z-s*u+c*v];
 
@@ -106,7 +108,7 @@ function paving(lane,origin,material,addSurface) {
     const mapU=random(),mapV=random();
     const grainAngle=random()*Math.PI;
     const grainX=Math.cos(grainAngle)/.89,grainY=Math.sin(grainAngle)/.89;
-    const wear=THREE.MathUtils.lerp(.13,.44,Math.abs(Math.sin(x*.83+z*.57)));
+    const wear=THREE.MathUtils.lerp(.22,.57,Math.abs(Math.sin(x*.83+z*.57)));
     const lip=gravel ? .72 : .96;
     function vertex(du,dv,y,shade,dust=0) {
       const [px,pz]=point(u+du,v+dv);
@@ -136,12 +138,12 @@ function paving(lane,origin,material,addSurface) {
     }
     if(gravel) return;
     const start=joints.length/3;
-    for(const spread of [0,.025,.064]) for(const [du,dv,chip] of rim) {
+    for(const spread of [0,.034,.092]) for(const [du,dv,chip] of rim) {
       const radius=Math.max(.01,Math.hypot(du,dv));
       const r=1+spread*(.72+chip*.67)/radius;
       const [px,pz]=point(u+du*r,v+dv*r);
       joints.push(px,streetSurfaceHeight(px,pz)+.005,pz);
-      jointColor.push(seam.r,seam.g,seam.b,spread===0 ? .53 : spread<.03 ? .25 : 0);
+      jointColor.push(seam.r,seam.g,seam.b,spread===0 ? .43 : spread<.04 ? .13+.07*chip : 0);
     }
     for(let i=0;i<8;i++) {
       const a=start+i,b=start+(i+1)%8;
@@ -201,6 +203,19 @@ function paving(lane,origin,material,addSurface) {
         stone(edge+Math.sin(v*.48)*.29,v,.13+random()*.17,length,.027+random()*.02);
       }
       v+=length+.06+random()*.17;
+    }
+  }
+  // Hooves and wheels scatter small fragments just inside each shoulder.
+  // They sit on the dirt surface and do not affect the walking height.
+  for(let cluster=0;cluster<lane.length*1.7;cluster++) {
+    const v=(random()-.5)*lane.length;
+    const u=(.43+random()*.20)*lane.width*(random()<.5 ? -1 : 1);
+    for(let i=0;i<11;i++) {
+      const angle=random()*Math.PI*2;
+      const spread=.31*random()**1.7;
+      const size=.015+.069*random()**2;
+      stone(u+Math.cos(angle)*spread,v+Math.sin(angle)*spread*1.95,
+        size,size*(.58+random()*.62),size*(.19+random()*.10),true);
     }
   }
   const geometry=new THREE.BufferGeometry();
@@ -286,7 +301,7 @@ export function buildStreetGround(root,origin,surface) {
         float mineral=shale.x*20.+shale.y*12.;
         float relief=pow(max(0.,sin(laminations)),8.)*(1.-smoothstep(.31,1.85,fwidth(laminations)));
         float weathering=.52+.29*sin(mineral)+.17*sin(shale.x*28.-shale.y*22.);
-        diffuseColor.rgb*=mix(vec3(.77,.79,.75),vec3(1.14,1.11,1.01),weathering)-relief*.105;
+        diffuseColor.rgb*=mix(vec3(.86,.88,.82),vec3(1.15,1.10,1.01),weathering)-relief*.079;
       #endif`);
   };
   stone.customProgramCacheKey=()=>"weathered-street-paving";
