@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { detailedBox } from "./bridge-look.js";
+import { legRig } from "./bridge-gait.js";
 
 function piece(parent, shape, material, x, y, z) {
   const mesh = new THREE.Mesh(shape, material);
@@ -130,11 +131,14 @@ function ribbon(parent, from, to, width, material, depth = .017) {
 }
 
 function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
-  const upper=piece(figure,fabric([[.072,-.357],[.085,-.29],[.102,-.17],[.106,-.063],[.102,.028]],.94),
-    trousers,side*.119,.68,0);
-  const knee=piece(figure,new THREE.SphereGeometry(.075,14,9),trousers,0,0,0);
-  const calf=piece(figure,fabric([[.057,-.301],[.065,-.25],[.074,-.17],[.076,-.085],[.075,.03]],.92),
+  const upper=piece(figure,fabric([[.069,-.377],[.076,-.324],[.093,-.23],[.103,-.126],[.102,.032]],.94),
+    trousers,side*legRig.separation,legRig.hip,0);
+  const knee=piece(figure,new THREE.SphereGeometry(.070,18,12),trousers,0,0,0);
+  knee.scale.set(.94,1,.94);
+  const calf=piece(figure,fabric([[.056,-.325],[.062,-.27],[.076,-.181],[.077,-.091],[.071,.043]],.93),
     trousers,0,0,0);
+  upper.name=side<0 ? "Left thigh" : "Right thigh";
+  calf.name=side<0 ? "Left shin" : "Right shin";
   const linen=piece(calf,new THREE.CylinderGeometry(.071,.060,.14,18),dyed,0,-.232,0);
   linen.rotation.z=.025;
   for (const y of [-.28,-.25,-.218,-.183]) {
@@ -147,7 +151,11 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
   const shoe=piece(ankle,new THREE.SphereGeometry(1,22,13),footwear,0,-.023,-.034);
   shoe.scale.set(.079,.041,.127);
   shoe.name=side<0 ? "Left boot" : "Right boot";
-  const sole=piece(ankle,new THREE.SphereGeometry(1,20,9),hem,0,-.052,-.039);
+  const soleShape=new THREE.SphereGeometry(1,24,13);
+  const soleVertices=soleShape.attributes.position;
+  for(let i=0;i<soleVertices.count;i++) soleVertices.setY(i,Math.max(-.57,soleVertices.getY(i)));
+  soleShape.computeVertexNormals();
+  const sole=piece(ankle,soleShape,hem,0,-.05845,-.039);
   sole.scale.set(.081,.015,.132);
   sole.name=side<0 ? "Left sole" : "Right sole";
   const footprint=[];
@@ -156,7 +164,10 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
     if(vertices.getY(i)>0) continue;
     footprint.push(new THREE.Vector3().fromBufferAttribute(vertices,i).multiply(sole.scale).add(sole.position));
   }
-  return { upper,knee,calf,ankle,footprint,hip:new THREE.Vector3(side*.119,.68,0) };
+  const stitch=new THREE.CatmullRomCurve3([[-.068,-.030,-.093],[-.044,-.010,-.127],
+    [0,-.004,-.138],[.044,-.010,-.127],[.068,-.030,-.093]].map(p=>new THREE.Vector3(...p)));
+  piece(ankle,new THREE.TubeGeometry(stitch,20,.0022,5,false),hem,0,0,0);
+  return { upper,knee,calf,ankle,footprint,hip:new THREE.Vector3(side*legRig.separation,legRig.hip,0) };
 }
 
 function waterStain(material, moisture) {
@@ -217,6 +228,7 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   const facePaint=skin.clone();
   facePaint.vertexColors=true;
   const lips = plain(0x785245, .80);
+  const sclera=plain(0xc5ae93,.67);
   const brow = plain(0x363128, .84);
   const footwear = plain(0x3a332a, .89);
   const hem = plain(0x554c3b, .84);
@@ -245,8 +257,9 @@ export function riverWorker(parent, surface, role, residentHat=false) {
 
   const head = new THREE.Group();
   head.position.set(0, 1.50, -.016);
+  head.scale.set(.81,.89,.84);
   figure.add(head);
-  const skull = new THREE.SphereGeometry(.149, 26, 18);
+  const skull = new THREE.SphereGeometry(.149, detail ? 52 : 30, detail ? 36 : 22);
   const position = skull.attributes.position;
   const faceColours=[];
   for (let i = 0; i < position.count; i++) {
@@ -257,9 +270,14 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const socket=Math.exp(-((Math.abs(x)-.053)**2/.00037+(y-.017)**2/.00026));
     const jaw=Math.exp(-(x*x/.0043+(y+.109)**2/.0010));
     const muzzle=Math.exp(-(x*x/.0023+(y+.049)**2/.0010));
+    const bridge=Math.exp(-(x*x/.00042+(y-.005)**2/.0022));
+    const noseTip=Math.exp(-(x*x/.00078+(y+.026)**2/.00024));
+    const nostril=Math.exp(-((Math.abs(x)-.017)**2/.00010+(y+.042)**2/.00010));
     const pores=.013*Math.sin(331*x+192*y)*Math.sin(259*y-138*z);
-    position.setXYZ(i,x*chin,y*1.105,z*.87-front*(.021*cheek-.012*socket+.014*jaw+.008*muzzle));
-    faceColours.push(1-.14*socket+pores,.97-.18*socket-.10*cheek+pores,.93-.18*socket-.12*cheek+pores);
+    position.setXYZ(i,x*chin,y*1.105,z*.87-front*(.021*cheek-.012*socket+.014*jaw+.008*muzzle+
+      .019*bridge+.035*noseTip-.004*nostril));
+    faceColours.push(1-.14*socket-.23*nostril+pores,.97-.18*socket-.10*cheek-.28*nostril+pores,
+      .93-.18*socket-.12*cheek-.29*nostril+pores);
   }
   skull.setAttribute("color",new THREE.Float32BufferAttribute(faceColours,3));
   skull.computeVertexNormals();
@@ -272,17 +290,21 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   for (const side of [-1, 1]) {
     const ear = piece(head, new THREE.SphereGeometry(.026, 10, 8), skin, side * .136, -.014, -.004);
     ear.scale.set(.55, 1, .67);
-    const eye=piece(head,new THREE.SphereGeometry(.017,12,8),lips,side*.050,.013,-.120);
-    eye.scale.set(1.18,.36,.28);
+    const eye=piece(head,new THREE.SphereGeometry(.017,14,10),sclera,side*.050,.013,-.120);
+    eye.scale.set(1.12,.34,.25);
     eye.rotation.z=side*.07;
-    const iris=piece(head,new THREE.SphereGeometry(.007,10,7),brow,side*.047,.013,-.125);
-    iris.scale.set(.70,.63,.43);
-    ribbon(head,[side*.029,.040,-.125],[side*.071,.040,-.113],.007,brow,.005);
+    const iris=piece(head,new THREE.SphereGeometry(.0082,12,8),brow,side*.047,.013,-.125);
+    iris.scale.set(.70,.62,.31);
+    const lid=new THREE.CatmullRomCurve3([[side*.031,.014,-.120],[side*.049,.019,-.125],
+      [side*.060,.018,-.124],[side*.070,.013,-.117]].map(x=>new THREE.Vector3(...x)));
+    piece(head,new THREE.TubeGeometry(lid,12,.0025,5,false),lips,0,0,0);
+    const arch=new THREE.CatmullRomCurve3([[side*.028,.034,-.123],[side*.044,.039,-.122],
+      [side*.060,.041,-.114],[side*.074,.036,-.105]].map(x=>new THREE.Vector3(...x)));
+    piece(head,new THREE.TubeGeometry(arch,12,.0028,5,false),brow,0,0,0);
   }
-  const nose=piece(head,new THREE.SphereGeometry(.031,14,10),skin,0,-.013,-.119);
-  nose.scale.set(.62,1.26,.87);
-  nose.rotation.x=.29;
-  ribbon(head,[-.022,-.064,-.111],[.022,-.063,-.111],.006,lips,.005);
+  const mouth=new THREE.CatmullRomCurve3([[-.024,-.061,-.108],[-.012,-.063,-.121],
+    [0,-.064,-.125],[.012,-.063,-.121],[.024,-.061,-.108]].map(x=>new THREE.Vector3(...x)));
+  piece(head,new THREE.TubeGeometry(mouth,16,.0027,5,false),lips,0,0,0);
   if (role === "merchant") {
     const beard = piece(head, new THREE.SphereGeometry(.054, 14, 9), lips, 0, -.096, -.091);
     beard.scale.set(.76, .90, .47);
@@ -301,7 +323,15 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     }
   }
 
-  const limbs = { legs: [], arms: [] };
+  const torsoPivot=new THREE.Group(), torso=role==="merchant" ? figure : new THREE.Group();
+  if(torso!==figure) {
+    for(const part of [...figure.children]) torso.add(part);
+    torsoPivot.position.y=.91;
+    torso.position.y=-.91;
+    torsoPivot.add(torso);
+    figure.add(torsoPivot);
+  }
+  const limbs = { legs: [], arms: [], elbows:[] };
   const straps = new THREE.Group();
   straps.name="Cargo harness";
   straps.visible=false;
@@ -336,15 +366,26 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     }
     const arm = new THREE.Group();
     arm.position.set(side * .247, 1.239, .012);
-    figure.add(arm);
-    piece(arm, fabric([[.075,-.371],[.085,-.34],[.083,-.23],[.106,-.12],[.098,-.01],[.061,.049],[0,.061]], .86),
-          cloth, 0, 0, 0);
-    piece(arm, new THREE.CylinderGeometry(.078,.073,.033,16), binding, 0, -.358, -.003);
-    const hand = piece(arm, new THREE.SphereGeometry(.059, 13, 9), skin, 0, -.412, -.009);
-    hand.scale.set(.69,1.16,.82);
-    const thumb = piece(arm,new THREE.SphereGeometry(.025,10,8),skin, -.033 * side, -.405, -.034);
+    torso.add(arm);
+    piece(arm, fabric([[.083,-.244],[.087,-.203],[.103,-.126],[.097,-.026],[.060,.045],[0,.053]],.86),
+      cloth,0,0,0);
+    const elbow=new THREE.Group();
+    elbow.position.set(0,-.212,-.005);
+    arm.add(elbow);
+    piece(elbow,fabric([[.070,-.166],[.081,-.139],[.085,-.081],[.085,-.030],[.082,.039]],.87),cloth,0,0,0);
+    piece(elbow,new THREE.CylinderGeometry(.077,.073,.033,20),binding,0,-.152,-.003);
+    const hand = piece(elbow, new THREE.SphereGeometry(.045, 16, 12), skin, 0, -.196, -.009);
+    hand.scale.set(.73,.96,.63);
+    if(detail) for(let finger=0;finger<4;finger++) {
+      const digit=piece(elbow,new THREE.CapsuleGeometry(.0086,.020-.002*Math.abs(1-finger),4,8),
+        skin,side*(.024-.015*finger),-.232,-.010-.005*finger);
+      digit.rotation.x=.21+.11*finger;
+      digit.rotation.z=side*(finger-1.5)*.082;
+    }
+    const thumb = piece(elbow,new THREE.SphereGeometry(.022,12,9),skin, -.031 * side, -.194, -.035);
     thumb.scale.set(.74,1.17,.74);
     limbs.arms.push(arm);
+    limbs.elbows.push(elbow);
     if(role==="helper" || role==="player"){
       ribbon(straps,[side*.10,1.340,.085],[side*.15,1.237,-.151],.049,strapPaint,.025);
       ribbon(straps,[side*.15,1.237,-.151],[side*.116,.956,-.17],.043,strapPaint,.02);
@@ -405,44 +446,49 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const down=new THREE.Vector3(0,-1,0), up=new THREE.Vector3(0,1,0);
     const anklePoint=new THREE.Vector3(), axis=new THREE.Vector3();
     const bend=new THREE.Vector3(), kneePoint=new THREE.Vector3(), direction=new THREE.Vector3();
-    const tilt=new THREE.Vector3(), solePoint=new THREE.Vector3();
-    const heading=new THREE.Quaternion();
-    const outer=.332, inner=.306;
-    function bone(mesh,start,end,rest) {
+    const tilt=new THREE.Vector3(), solePoint=new THREE.Vector3(), pivot=new THREE.Vector3(), flatPivot=new THREE.Vector3();
+    const heading=new THREE.Quaternion(), rock=new THREE.Quaternion(), flat=new THREE.Quaternion();
+    const pitchAxis=new THREE.Vector3(1,0,0);
+    const {upper:outer,lower:inner,ankle}=legRig;
+    function bone(mesh,start,end) {
       mesh.position.copy(start);
-      direction.copy(end).sub(start);
-      mesh.scale.y=direction.length()/rest;
-      mesh.quaternion.setFromUnitVectors(down,direction.normalize());
+      mesh.quaternion.setFromUnitVectors(down,direction.copy(end).sub(start).normalize());
     }
     poseFeet=(feet,floor,x,y,z,yaw)=>{
       const cos=Math.cos(yaw), sin=Math.sin(yaw);
       for(const [i,leg] of articulated.entries()){
         const foot=feet[i], gx=foot.x-x, gz=foot.z-z;
-        anklePoint.set(gx*cos-gz*sin,foot.y-y+.067,gx*sin+gz*cos);
+        anklePoint.set(gx*cos-gz*sin,foot.y-y+ankle,gx*sin+gz*cos);
         const delta=.075;
         const sx=clamp((floor(foot.x-delta,foot.z)-floor(foot.x+delta,foot.z))/(2*delta),-.6,.6);
         const sz=clamp((floor(foot.x,foot.z-delta)-floor(foot.x,foot.z+delta))/(2*delta),-.6,.6);
         tilt.set(sx*cos-sz*sin,1,sx*sin+sz*cos).normalize();
-        leg.ankle.quaternion.setFromUnitVectors(up,tilt)
+        flat.setFromUnitVectors(up,tilt)
           .multiply(heading.setFromAxisAngle(up,foot.yaw-yaw));
+        const pitch=foot.pitch || 0;
+        leg.ankle.quaternion.copy(flat).multiply(rock.setFromAxisAngle(pitchAxis,pitch));
+        pivot.set(0,-ankle,pitch>=0 ? .070 : -.149);
+        flatPivot.copy(pivot).applyQuaternion(flat);
+        anklePoint.add(flatPivot.sub(pivot.applyQuaternion(leg.ankle.quaternion)));
         let lift=0;
         for(const point of leg.footprint) {
-          solePoint.copy(point).applyQuaternion(leg.ankle.quaternion);
-          const sx=foot.x+solePoint.x*cos+solePoint.z*sin;
-          const sz=foot.z-solePoint.x*sin+solePoint.z*cos;
-          lift=Math.max(lift,floor(sx,sz)+.006-foot.y-.067-solePoint.y);
+          solePoint.copy(point).applyQuaternion(leg.ankle.quaternion).add(anklePoint);
+          const sx=x+solePoint.x*cos+solePoint.z*sin;
+          const sz=z-solePoint.x*sin+solePoint.z*cos;
+          lift=Math.max(lift,floor(sx,sz)+.006-y-solePoint.y);
         }
         anklePoint.y+=lift;
         axis.copy(anklePoint).sub(leg.hip);
         const span=Math.max(.045,axis.length());
         axis.normalize();
         const reach=Math.min(outer+inner-.002,span);
+        if(span>reach) anklePoint.copy(leg.hip).addScaledVector(axis,reach);
         const joint=(outer*outer-inner*inner+reach*reach)/(2*reach);
         bend.set(.085*foot.side,0,-1).addScaledVector(axis,-axis.dot(bend)).normalize();
         kneePoint.copy(leg.hip).addScaledVector(axis,joint)
           .addScaledVector(bend,Math.sqrt(Math.max(0,outer**2-joint**2)));
-        bone(leg.upper,leg.hip,kneePoint,outer);
-        bone(leg.calf,kneePoint,anklePoint,inner);
+        bone(leg.upper,leg.hip,kneePoint);
+        bone(leg.calf,kneePoint,anklePoint);
         leg.knee.position.copy(kneePoint);
         leg.ankle.position.copy(anklePoint);
       }
@@ -450,12 +496,28 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   }
   function stand(floor,x,y,z,yaw) {
     const feet=[-1,1].map(side=>{
-      const px=x+side*.119*Math.cos(yaw), pz=z-side*.119*Math.sin(yaw);
+      const px=x+side*legRig.separation*Math.cos(yaw), pz=z-side*legRig.separation*Math.sin(yaw);
       return {x:px,y:floor(px,pz),z:pz,yaw,side};
     });
     poseFeet(feet,floor,x,y,z,yaw);
   }
-  return { figure, limbs, straps, head, reachWithRightHand, poseFeet, stand, moisture:moisture.value };
+  let effort=0;
+  function walkBody(phase,walking,carrying,dt) {
+    effort=THREE.MathUtils.damp(effort,Number(walking),10,dt);
+    const balance=effort*(carrying ? .35 : 1);
+    if(torso!==figure) {
+      torsoPivot.position.x=.014*balance*Math.sin(phase);
+      torsoPivot.rotation.set(-effort*(carrying ? .065 : .033),.064*balance*Math.sin(phase+.32),
+        .043*balance*Math.sin(phase-.21),"YXZ");
+      head.rotation.z=-.029*balance*Math.sin(phase-.21);
+      head.rotation.x=.013*effort*Math.sin(phase*2+.45);
+    }
+    for(let i=0;i<limbs.elbows.length;i++) {
+      const forward=Math.max(0,Math.sin(phase+(i+1)*Math.PI));
+      limbs.elbows[i].rotation.x=carrying ? -.25*effort : -(.12+.35*forward)*effort;
+    }
+  }
+  return {figure,limbs,straps,head,reachWithRightHand,poseFeet,stand,walkBody,moisture:moisture.value};
 }
 
 export function counterCeramics(stall) {

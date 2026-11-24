@@ -508,11 +508,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     groundMarker.visible = view === "mission" && state.phase !== "delivered";
   }
 
-  function animate(person, phase, walking, carrying) {
+  function animate(person, phase, walking, carrying, dt) {
     person.straps.visible = carrying;
     person.limbs.legs.forEach((leg, i) => { leg.rotation.x = walking ? Math.sin(phase + i * Math.PI) * .49 : 0; });
     person.limbs.arms.forEach((arm, i) => { arm.rotation.x = carrying ? .88 :
       (walking ? Math.sin(phase + (i + 1) * Math.PI) * .25 : 0); });
+    person.walkBody(phase,walking,carrying,dt);
   }
 
   function cargoPose(x,z,y,yaw) {
@@ -588,7 +589,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       side.set(-fwd.z, 0, fwd.x);
       const beforeDepth=wadeDepth(player.x,player.z);
       const drag=1-.69*THREE.MathUtils.smoothstep(beforeDepth,.025,.51);
-      const v = (keys.has("shift") ? 6.2 : 3.35) * dt * drag / (Math.hypot(dx, dz) || 1);
+      const carrying=state.phase==="carrying";
+      const pace=keys.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
+      const v = pace * dt * drag / (Math.hypot(dx, dz) || 1);
       syncActors();
       const oldX = player.x;
       const oldZ = player.z;
@@ -648,7 +651,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
     footShadow.visible = playerBody.figure.visible && !wading;
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
-    animate(playerBody,gait.phase()-Math.PI*.5,walking,state.phase==="carrying");
+    animate(playerBody,gait.phase()-Math.PI*.5,walking,state.phase==="carrying",dt);
     if(view==="mission") playerBody.poseFeet(gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
     const throwAge=stones.age();
     playerBody.limbs.arms[0].rotation.z=0;
@@ -675,7 +678,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         courierLeg++;
         if (courierLeg === trail.length) finish("courier");
       } else {
-        const step = Math.min(dist, dt * 3.15);
+        const step = Math.min(dist, dt * 1.86);
         const dirX = (x - p.x) / dist, dirZ = (z - p.z) / dist;
         const nx=p.x+dirX*step, nz=p.z+dirZ*step;
         const yaw=Math.atan2(-dirX,-dirZ), ny=floor(nx,nz);
@@ -698,7 +701,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     courierGait.update(dt,elapsed,courier.x,courier.z,courierYaw,courierVX,courierVZ,0);
     courier.y=courierGait.rootHeight(courier.x,courier.z);
     helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
-    animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,state.phase==="courier");
+    animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,state.phase==="courier",dt);
     const nod = THREE.MathUtils.clamp((elapsed - deliveryTime) / 1.18, 0, 1);
     const greeting = state.phase === "delivered" ? Math.sin(Math.PI * nod) : 0;
     merchant.head.rotation.x = .028 * Math.sin(elapsed * 1.7) - .21 * greeting;
