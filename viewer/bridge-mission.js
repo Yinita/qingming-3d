@@ -270,7 +270,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const teaRotation = new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().lookAt(teaEye, teaFocus, camera.up));
   const player = { x: -73.18, z: routeZ, yaw: -Math.PI / 2, pitch: 0 };
-  let bodyYaw=player.yaw;
+  let bodyYaw=player.yaw, heading=player.yaw;
   function syncActors() {
     const hull=bridgeLook.hull;
     const beam=.52*Math.abs(hull.w)+1.21*Math.abs(hull.z);
@@ -511,8 +511,6 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function animate(person, phase, walking, carrying, dt) {
     person.straps.visible = carrying;
     person.limbs.legs.forEach((leg, i) => { leg.rotation.x = walking ? Math.sin(phase + i * Math.PI) * .49 : 0; });
-    person.limbs.arms.forEach((arm, i) => { arm.rotation.x = carrying ? .88 :
-      (walking ? Math.sin(phase + (i + 1) * Math.PI) * .25 : 0); });
     person.walkBody(phase,walking,carrying,dt);
   }
 
@@ -590,7 +588,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const beforeDepth=wadeDepth(player.x,player.z);
       const drag=1-.69*THREE.MathUtils.smoothstep(beforeDepth,.025,.51);
       const carrying=state.phase==="carrying";
-      const pace=keys.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
+      const backpedaling=dz<0;
+      const pace=backpedaling ? (carrying ? 1.03 : 1.21) :
+        keys.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
       const v = pace * dt * drag / (Math.hypot(dx, dz) || 1);
       syncActors();
       const oldX = player.x;
@@ -604,8 +604,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       wetLine=Math.max(depth,wetLine-dt*.013);
       dampness=wading ? Math.min(1,dampness+dt*3.0) : Math.max(0,dampness-dt*.041);
       const vx=(player.x-oldX)/dt, vz=(player.z-oldZ)/dt;
-      // In exploration the body follows the walk vector while the player's view can stay on the river.
-      const heading=walking ? Math.atan2(-vx,-vz) : player.yaw;
+      // Keep looking forward when backing away, and keep the last heading on release.
+      if (walking) heading=backpedaling ? player.yaw : Math.atan2(-vx,-vz);
       const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
       const nextYaw=bodyYaw+turn*(1-Math.exp(-(walking ? 17 : 6)*dt));
       if(!cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
@@ -766,6 +766,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         ui();
       }
       player.yaw -= dx * .0044;
+      if (dx) heading=player.yaw;
       player.pitch = THREE.MathUtils.clamp(player.pitch - dy * .0039, -.60, .46);
       ui();
     },

@@ -9,7 +9,7 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
     side,x:0,y:0,z:0,yaw:0,pitch:0,plantAge:0,
   }));
   let ready=false, swing=null, next=0, landings=0, wetLandings=0;
-  let cadence=0, bob=0, pause=0;
+  let cadence=0, pause=0, rise=0, height=0;
   let last=null;
 
   function nominal(foot,x,z,yaw) {
@@ -30,8 +30,10 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
 
   function update(dt,time,x,z,yaw,vx,vz,depth) {
     const speed=Math.hypot(vx,vz);
+    const moving=speed>.14;
     if (!ready) {
       ready=true;
+      height=floor(x,z);
       for (const foot of feet) {
         [foot.x,foot.z]=nominal(foot,x,z,yaw);
         foot.y=floor(foot.x,foot.z);
@@ -67,8 +69,9 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
       const lift=Math.sin(Math.PI*t)**1.32*(1.24-.46*t);
       foot.y=Math.max(ground,base)+lift*swing.clearance;
       foot.yaw=swing.yaw+angleDelta(swing.yaw,swing.targetYaw)*step;
-      foot.pitch=t<.42 ? MathUtils.lerp(swing.pitch,.12,MathUtils.smoothstep(t,0,.42)) :
-        MathUtils.lerp(.12,swing.heel,MathUtils.smoothstep(t,.62,1));
+      if (t<.17) foot.pitch=MathUtils.lerp(swing.pitch,swing.release,MathUtils.smoothstep(t,0,.17));
+      else if (t<.54) foot.pitch=MathUtils.lerp(swing.release,swing.clearPitch,MathUtils.smoothstep(t,.17,.54));
+      else foot.pitch=MathUtils.lerp(swing.clearPitch,swing.contact,MathUtils.smoothstep(t,.62,1));
       if (t>=1) {
         foot.y=swing.toY;
         foot.plantAge=0;
@@ -87,48 +90,54 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
         const [fx,fz]=nominal(foot,x,z,yaw);
         return Math.hypot(fx-foot.x,fz-foot.z)+.12*Math.abs(angleDelta(foot.yaw,yaw));
       });
-      const moving=speed>.14;
-      const lag=MathUtils.lerp(.14,.084,MathUtils.smoothstep(depth,.03,.48));
-      const shouldMove=moving ? Math.max(...feetOffset)>lag : Math.max(...feetOffset)>.125;
+      const shouldMove=Math.max(...feetOffset)>(moving ? .037 : .125);
       if (shouldMove) {
-        const index=feetOffset[next]>.069 ? next : 1-next;
-        const foot=feet[index];
+        const index=feetOffset[next]>(moving ? .029 : .069) ? next : 1-next;
+        const foot=feet[index], support=feet[1-index];
         const inWater=MathUtils.smoothstep(depth,.015,.48);
         const run=MathUtils.smoothstep(speed,1.72,3.42);
         const grade=moving ? Math.abs(floor(x+.42*vx/speed,z+.42*vz/speed)-floor(x,z))/.42 : 0;
         const incline=MathUtils.smoothstep(grade,.065,.32);
-        const duration=moving ? MathUtils.lerp(.348,.174,run)*(1-.24*incline)+.040*inWater : .24;
+        let duration=.24, exchange=.029;
+        const direction=vx*Math.sin(yaw)+vz*Math.cos(yaw)>0 ? -1 : 1;
+        if (moving) {
+          exchange=.037*(1-run)*(1-.52*incline);
+          const natural=MathUtils.lerp(.348,.174,run)*(1-.24*incline)+.040*inWater;
+          const lead=((support.x-x)*vx+(support.z-z)*vz)/speed;
+          const reach=.39+.11*run-.055*incline;
+          duration=MathUtils.clamp((lead+reach)/speed-exchange,.115,natural);
+        }
         const [toX,toZ]=destination(foot,x,z,yaw,vx,vz,duration*1.36);
         const stride=Math.hypot(toX-foot.x,toZ-foot.z);
         swing={ index,age:0,fromX:foot.x,fromY:foot.y,fromZ:foot.z,
           toX,toY:floor(toX,toZ),toZ,yaw:foot.yaw,targetYaw:yaw,duration,
           clearance:.030+.071*Math.min(stride,.67)+.053*inWater,
-          pitch:moving ? -.23-.18*run : 0,heel:moving ? (.21-.085*run)*(1-.61*inWater) : 0,
-          exchange:moving ? .046*(1-run)*(1-.52*incline) : .029,
+          pitch:foot.pitch,release:moving ? -direction*(.23+.18*run) : 0,
+          clearPitch:moving ? .12*direction : 0,
+          contact:moving ? direction*(.21-.085*run)*(1-.61*inWater) : 0,exchange,
           velocityX:vx,velocityZ:vz };
       }
     }
     const motion=MathUtils.smoothstep(speed,.10,.92);
     const amount=swing ? Math.sin(Math.PI*Math.min(1,swing.age/swing.duration)) : 0;
-    bob=MathUtils.damp(bob,(-.025+.027*amount)*motion,13,dt);
-  }
-
-  function rootHeight(x,z) {
+    rise=MathUtils.damp(rise,(-.025+.027*amount)*motion,13,dt);
     const ground=floor(x,z);
-    if (!ready) return ground;
-    let h=ground+bob;
+    let bound=Infinity;
     for (const [i,foot] of feet.entries()) {
       if (swing?.index===i) continue;
-      const reach=Math.hypot(foot.x-x,foot.z-z)+.076*Math.abs(foot.pitch);
+      const [hipX,hipZ]=nominal(foot,x,z,yaw);
+      const reach=Math.hypot(foot.x-hipX,foot.z-hipZ)+.076*Math.abs(foot.pitch);
       const upperBound=foot.y+ankleHeight+Math.sqrt(Math.max(.06,(upper+lower-.026)**2-reach*reach))-hip;
-      h=Math.min(h,upperBound);
+      bound=Math.min(bound,upperBound);
     }
-    return Math.max(ground-.244,h);
+    // The pelvis leaves a low support gradually after the other boot takes the load.
+    const target=Math.min(ground+rise,bound);
+    height=Math.max(ground-.244,Math.min(bound,MathUtils.damp(height,target,11,dt)));
   }
 
   return {
-    update,rootHeight,feet,
-    reset() { ready=false; swing=null; next=0; cadence=0; bob=0; pause=0; },
+    update,rootHeight:(x,z)=>ready ? height : floor(x,z),feet,
+    reset() { ready=false; swing=null; next=0; cadence=0; rise=0; pause=0; },
     phase:()=>cadence+(swing ? Math.PI*Math.min(1,swing.age/swing.duration) : 0),
     inspect:()=>({ feet:feet.map((foot,i)=>({...foot,planted:swing?.index!==i})),landings,wetLandings,last }),
   };

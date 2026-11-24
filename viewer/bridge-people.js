@@ -19,7 +19,7 @@ function foldFactor(theta,y) {
   return 1+.062*Math.sin(theta*7+y*4.2)+.026*Math.sin(theta*13-y*6.2)+.047*crease;
 }
 
-function fabric(points, depth, offset = 0, count = 32) {
+function fabric(points, depth, offset = 0, count = 32, foldOrigin = 0) {
   const contour=points.map(([radius,y])=>new THREE.Vector2(radius,y));
   const outline=count>32 ? contour.flatMap((p,i)=>i===0 ? [p] : [contour[i-1].clone().lerp(p,.5),p]) : contour;
   const g = new THREE.LatheGeometry(outline,count);
@@ -29,7 +29,7 @@ function fabric(points, depth, offset = 0, count = 32) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const theta = Math.atan2(x, z);
-    const fold=foldFactor(theta,y);
+    const fold=foldFactor(theta,y+foldOrigin);
     pos.setXYZ(i, x * fold, y + offset * Math.cos(theta), z * depth * fold);
     uv.setXY(i,uv.getX(i)*circumference,y);
   }
@@ -131,20 +131,45 @@ function ribbon(parent, from, to, width, material, depth = .017) {
 }
 
 function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
-  const upper=piece(figure,fabric([[.069,-.377],[.076,-.324],[.093,-.23],[.103,-.126],[.102,.032]],.94),
-    trousers,side*legRig.separation,legRig.hip,0);
-  const knee=piece(figure,new THREE.SphereGeometry(.070,18,12),trousers,0,0,0);
-  knee.scale.set(.94,1,.94);
-  const calf=piece(figure,fabric([[.056,-.325],[.062,-.27],[.076,-.181],[.077,-.091],[.071,.043]],.93),
-    trousers,0,0,0);
+  const hip=new THREE.Vector3(side*legRig.separation,legRig.hip,0);
+  const kneeY=-legRig.upper;
+  const geometry=fabric([[.076,kneeY-.179],[.077,kneeY-.091],[.071,kneeY-.038],[.073,kneeY],
+    [.078,kneeY+.043],[.093,-.23],[.103,-.126],[.102,.032]],.93,0,40);
+  const vertices=geometry.attributes.position;
+  const indices=new Uint16Array(vertices.count*4), weights=new Float32Array(vertices.count*4);
+  for(let i=0;i<vertices.count;i++) {
+    const blend=THREE.MathUtils.smoothstep(vertices.getY(i),kneeY-.075,kneeY+.085);
+    indices[4*i+1]=1;
+    weights[4*i]=blend;
+    weights[4*i+1]=1-blend;
+  }
+  geometry.setAttribute("skinIndex",new THREE.BufferAttribute(indices,4));
+  geometry.setAttribute("skinWeight",new THREE.BufferAttribute(weights,4));
+  const pants=new THREE.SkinnedMesh(geometry,trousers);
+  pants.position.copy(hip);
+  pants.castShadow=pants.receiveShadow=true;
+  pants.frustumCulled=false;
+  figure.add(pants);
+  const upper=new THREE.Bone(), calf=new THREE.Bone();
   upper.name=side<0 ? "Left thigh" : "Right thigh";
   calf.name=side<0 ? "Left shin" : "Right shin";
-  const linen=piece(calf,new THREE.CylinderGeometry(.071,.060,.14,18),dyed,0,-.232,0);
-  linen.rotation.z=.025;
-  for (const y of [-.28,-.25,-.218,-.183]) {
-    const r=.061+(y+.28)*.095;
-    const band=piece(calf,new THREE.TorusGeometry(r,.0042,5,16).rotateX(Math.PI/2),binding,0,y,0);
-    band.rotation.z=.069;
+  calf.position.y=kneeY;
+  pants.add(upper);
+  upper.add(calf);
+  pants.bind(new THREE.Skeleton([upper,calf]));
+  const wrap=[[.057,-.325],[.061,-.294],[.066,-.25],[.071,-.214],[.076,-.179]];
+  piece(calf,fabric(wrap,.93,0,40,kneeY),dyed,0,0,0).name="Linen boot wrap";
+  for (const y of [-.284,-.251,-.218,-.192]) {
+    const course=Array.from({length:32},(_,i)=>{
+      const theta=i*Math.PI/16;
+      const height=y+.005*Math.sin(theta+.4);
+      const row=wrap.findIndex(([,h])=>height<h);
+      const [start,low]=wrap[row-1], [end,high]=wrap[row];
+      const radius=THREE.MathUtils.lerp(start,end,(height-low)/(high-low))*foldFactor(theta,height+kneeY)+.0026;
+      return new THREE.Vector3(radius*Math.sin(theta),height,radius*.93*Math.cos(theta));
+    });
+    const cord=new THREE.CatmullRomCurve3(course,true);
+    piece(calf,new THREE.TubeGeometry(cord,36,.0034,5,true),binding,0,0,0);
   }
   const ankle=new THREE.Group();
   figure.add(ankle);
@@ -159,15 +184,14 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
   sole.scale.set(.081,.015,.132);
   sole.name=side<0 ? "Left sole" : "Right sole";
   const footprint=[];
-  const vertices=sole.geometry.attributes.position;
-  for(let i=0;i<vertices.count;i+=2){
-    if(vertices.getY(i)>0) continue;
-    footprint.push(new THREE.Vector3().fromBufferAttribute(vertices,i).multiply(sole.scale).add(sole.position));
+  for(let i=0;i<soleVertices.count;i+=2){
+    if(soleVertices.getY(i)>0) continue;
+    footprint.push(new THREE.Vector3().fromBufferAttribute(soleVertices,i).multiply(sole.scale).add(sole.position));
   }
   const stitch=new THREE.CatmullRomCurve3([[-.068,-.030,-.093],[-.044,-.010,-.127],
     [0,-.004,-.138],[.044,-.010,-.127],[.068,-.030,-.093]].map(p=>new THREE.Vector3(...p)));
   piece(ankle,new THREE.TubeGeometry(stitch,20,.0022,5,false),hem,0,0,0);
-  return { upper,knee,calf,ankle,footprint,hip:new THREE.Vector3(side*legRig.separation,legRig.hip,0) };
+  return { upper,calf,ankle,footprint,hip };
 }
 
 function waterStain(material, moisture) {
@@ -178,7 +202,7 @@ function waterStain(material, moisture) {
     shader.uniforms.wetCloth=moisture;
     shader.vertexShader=shader.vertexShader
       .replace("#include <common>","#include <common>\nvarying vec3 wetPoint;")
-      .replace("#include <begin_vertex>","#include <begin_vertex>\nwetPoint=(modelMatrix*vec4(position,1.)).xyz;");
+      .replace("#include <skinning_vertex>","#include <skinning_vertex>\nwetPoint=(modelMatrix*vec4(transformed,1.)).xyz;");
     shader.fragmentShader=shader.fragmentShader
       .replace("#include <common>",`#include <common>
         uniform vec3 wetCloth;
@@ -448,12 +472,9 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const bend=new THREE.Vector3(), kneePoint=new THREE.Vector3(), direction=new THREE.Vector3();
     const tilt=new THREE.Vector3(), solePoint=new THREE.Vector3(), pivot=new THREE.Vector3(), flatPivot=new THREE.Vector3();
     const heading=new THREE.Quaternion(), rock=new THREE.Quaternion(), flat=new THREE.Quaternion();
+    const shinRotation=new THREE.Quaternion();
     const pitchAxis=new THREE.Vector3(1,0,0);
     const {upper:outer,lower:inner,ankle}=legRig;
-    function bone(mesh,start,end) {
-      mesh.position.copy(start);
-      mesh.quaternion.setFromUnitVectors(down,direction.copy(end).sub(start).normalize());
-    }
     poseFeet=(feet,floor,x,y,z,yaw)=>{
       const cos=Math.cos(yaw), sin=Math.sin(yaw);
       for(const [i,leg] of articulated.entries()){
@@ -487,9 +508,9 @@ export function riverWorker(parent, surface, role, residentHat=false) {
         bend.set(.085*foot.side,0,-1).addScaledVector(axis,-axis.dot(bend)).normalize();
         kneePoint.copy(leg.hip).addScaledVector(axis,joint)
           .addScaledVector(bend,Math.sqrt(Math.max(0,outer**2-joint**2)));
-        bone(leg.upper,leg.hip,kneePoint);
-        bone(leg.calf,kneePoint,anklePoint);
-        leg.knee.position.copy(kneePoint);
+        leg.upper.quaternion.setFromUnitVectors(down,direction.copy(kneePoint).sub(leg.hip).normalize());
+        shinRotation.setFromUnitVectors(down,direction.copy(anklePoint).sub(kneePoint).normalize());
+        leg.calf.quaternion.copy(leg.upper.quaternion).invert().multiply(shinRotation);
         leg.ankle.position.copy(anklePoint);
       }
     };
@@ -502,19 +523,25 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     poseFeet(feet,floor,x,y,z,yaw);
   }
   let effort=0;
+  let carryWeight=0;
   function walkBody(phase,walking,carrying,dt) {
     effort=THREE.MathUtils.damp(effort,Number(walking),10,dt);
-    const balance=effort*(carrying ? .35 : 1);
+    carryWeight=THREE.MathUtils.damp(carryWeight,Number(carrying),15,dt);
+    const balance=effort*(1-.65*carryWeight);
     if(torso!==figure) {
       torsoPivot.position.x=.014*balance*Math.sin(phase);
-      torsoPivot.rotation.set(-effort*(carrying ? .065 : .033),.064*balance*Math.sin(phase+.32),
+      torsoPivot.rotation.set(-effort*(.033+.032*carryWeight),.064*balance*Math.sin(phase+.32),
         .043*balance*Math.sin(phase-.21),"YXZ");
       head.rotation.z=-.029*balance*Math.sin(phase-.21);
       head.rotation.x=.013*effort*Math.sin(phase*2+.45);
     }
+    for(let i=0;i<limbs.arms.length;i++) {
+      const swing=Math.sin(phase+(i+1)*Math.PI);
+      limbs.arms[i].rotation.x=THREE.MathUtils.lerp(.25*balance*swing,.88,carryWeight);
+    }
     for(let i=0;i<limbs.elbows.length;i++) {
       const forward=Math.max(0,Math.sin(phase+(i+1)*Math.PI));
-      limbs.elbows[i].rotation.x=carrying ? -.25*effort : -(.12+.35*forward)*effort;
+      limbs.elbows[i].rotation.x=-THREE.MathUtils.lerp(.12+.35*forward,.25,carryWeight)*effort;
     }
   }
   return {figure,limbs,straps,head,reachWithRightHand,poseFeet,stand,walkBody,moisture:moisture.value};
