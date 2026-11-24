@@ -8,6 +8,7 @@ import { buildPebbleToss } from "./bridge-pebbles.js";
 import { createGroundedGait } from "./bridge-gait.js";
 import { circleTouchesBox, sweepHorizontal, workerHeight, workerRadius } from "./bridge-collision.js";
 import { tileRoof } from "./bridge-architecture.js";
+import { TEA_QUEST, createQuestJournal, maxCoins, record, stageOf } from "./bridge-quests.js";
 
 const SAVE = "qingming-bridge-mission-v1";
 export const bridgeAnchor = { x: -59.014, z: -41.422 };
@@ -51,14 +52,14 @@ function distance(a, b) {
 
 const spawn={x:-73.18,z:routeZ,yaw:-Math.PI/2,pitch:0};
 function newMission() {
-  return { phase:"waiting", crate:{...pickup}, coins:6, method:null, started:false };
+  return { phase:"waiting", crate:{...pickup}, coins:TEA_QUEST.economy.startCoins, method:null, started:false, log:[] };
 }
 function loadSave() {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE));
     const crate = saved?.crate;
     if (crate && [crate.x, crate.z, crate.yaw].every(Number.isFinite) &&
-        Number.isInteger(saved.coins) && saved.coins >= 0 && saved.coins <= 11 &&
+        Number.isInteger(saved.coins) && saved.coins >= 0 && saved.coins <= maxCoins() &&
         ["waiting", "delivered"].includes(saved.phase) &&
         (saved.phase === "delivered" || walkable(crate.x, crate.z))) {
       return {...saved,started:saved.started===true || saved.phase==="delivered" || distance(crate,pickup)>=.04};
@@ -232,8 +233,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         <div id="missionStage" class="mission-kicker"></div>
         <h1>桥畔茶铺</h1>
       </div>
-      <button id="missionRestart" type="button" title="Shift + R" aria-keyshortcuts="Shift+R"
-        aria-haspopup="dialog" aria-controls="missionRestartDialog">重置任务</button>
+      <div class="mission-title-actions">
+        <button id="missionJournal" type="button" title="任务簿 J">任务簿</button>
+        <button id="missionRestart" type="button" title="Shift + R" aria-keyshortcuts="Shift+R"
+          aria-haspopup="dialog" aria-controls="missionRestartDialog">重置任务</button>
+      </div>
     </header>
     <progress id="missionProgress" max="2" value="0" aria-label="桥畔茶铺任务进度"></progress>
     <p id="missionObjective" aria-live="polite"></p>
@@ -252,7 +256,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionExit">回到全卷</button>
     </div>
     <p id="missionSpeech" aria-live="polite"></p>
-    <p class="mission-controls">WASD 移动 · 拖动转向 · E 拿取 / 放下 · V 切视角 · Tab 看画卷</p>
+    <p class="mission-controls">WASD 移动 · 拖动转向 · E 拿取 / 放下 · V 视角 · J 任务簿 · Tab 画卷</p>
     <dialog id="missionRestartDialog" aria-labelledby="missionRestartTitle">
       <h2 id="missionRestartTitle">重置桥畔茶铺任务？</h2>
       <p>回到桥头，茶叶箱归位，铜钱恢复为六文。当前进度将被清除。</p>
@@ -278,6 +282,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const restartConfirm=byId("missionRestartConfirm");
   const progress=byId("missionProgress");
   document.body.appendChild(restartDialog);
+  const journal=createQuestJournal();
   const intro=document.createElement("section");
   intro.id="missionIntro";
   intro.hidden=true;
@@ -481,7 +486,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function finish(method) {
     state.phase = "delivered";
     state.method = method;
-    state.coins += 5;
+    state.coins += TEA_QUEST.economy.deliveryReward;
+    record(state,method==="self" ? "亲手交货，掌柜付货款" : "伙计交货，掌柜付货款",TEA_QUEST.economy.deliveryReward);
     state.crate = { x: counter.x - .54, z: counter.z, yaw: 0 };
     deliveryTime = elapsed;
     hint.textContent = "掌柜递来五文钱。今晚的第一壶茶，可以煮了。";
@@ -501,6 +507,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       remember();
       startMission();
       state.phase = "carrying";
+      record(state,"在桥头背起茶叶箱");
       hint.textContent = "茶叶已取。沿桥走到对岸的茶铺。";
     } else if (state.phase === "carrying") {
       if (distance(player, counter) < deliveryReach) {
@@ -516,6 +523,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         }
         state.crate = { x, z, yaw: player.yaw };
         state.phase = "waiting";
+        record(state,"中途放下货箱");
         hint.textContent = "货箱已放下。走近可再拿起。";
         store();
       }
@@ -528,7 +536,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function hire() {
-    if (view !== "mission" || state.phase !== "waiting" || state.coins < 3 ||
+    if (view !== "mission" || state.phase !== "waiting" || state.coins < TEA_QUEST.economy.courierFee ||
         distance(player, pickup) > 3 || distance(state.crate, pickup) > .9) return;
     const start=cargoPose(pickup.x,routeZ,floor(pickup.x,routeZ)+harnessHeight,pickup.yaw);
     if(distance(player,pickup)<workerRadius*2 || courierBoxHitsPlayer(start)) {
@@ -537,7 +545,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
     remember();
     startMission();
-    state.coins -= 3;
+    state.coins -= TEA_QUEST.economy.courierFee;
+    record(state,"付给伙计，委托送货",-TEA_QUEST.economy.courierFee);
     state.phase = "courier";
     courierLeg = 0;
     courierGait.reset();
@@ -671,13 +680,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function ui() {
-    const objective = {
-      waiting: "任务起点 · 取茶叶箱，再送到对岸茶铺。",
-      carrying: "已拿到茶叶。过桥，到茶铺柜台交货。",
-      courier: "伙计正在送货。可以跟过去，也可以切到任务画卷。",
-      delivered: "茶已送到，茶铺开张。",
-    };
-    if(status.textContent!==objective[state.phase]) status.textContent=objective[state.phase];
+    const {objective}=stageOf(state.phase);
+    if(status.textContent!==objective) status.textContent=objective;
     const phaseTitle={waiting:showStart ? "任务待开始" : "任务进行中 · 桥头取箱",carrying:"任务进行中 · 送往茶铺",courier:"任务进行中 · 伙计送货",delivered:"任务完成"}[state.phase];
     if(stage.textContent!==phaseTitle) stage.textContent=phaseTitle;
     const step=state.phase==="delivered" ? 2 : state.phase==="waiting" ? 0 : 1;
@@ -689,7 +693,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     interactButton.disabled = view !== "mission" || ["delivered", "courier"].includes(state.phase) ||
       (state.phase === "waiting" && distance(player, state.crate) >= 1.9);
     hireButton.disabled = view !== "mission" || state.phase !== "waiting" ||
-      state.coins < 3 || distance(player, pickup) > 3 || distance(state.crate, pickup) > .9;
+      state.coins < TEA_QUEST.economy.courierFee || distance(player, pickup) > 3 || distance(state.crate, pickup) > .9;
     const teaShot = Number.isFinite(teaShotStart);
     teaButton.hidden = state.phase !== "delivered";
     teaButton.disabled = view !== "mission" || (!teaShot && distance(player, counter) >= 2.75);
@@ -701,6 +705,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     pebbleButton.hidden = !canAimStone();
     pebbleButton.disabled = !aimStone();
     mooringButton.hidden=!byMooring();
+    journal.update(state);
     labels.dataset.phase = state.phase;
     labels.dataset.wading = String(wading);
     labels.dataset.view = view;
@@ -767,6 +772,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     counterFill.visible = mode === "mission";
     light(mode === "mission");
     labels.hidden = !active;
+    if(!active) journal.toggle(state,false);
     document.body.classList.toggle("mission-open", active);
     groundMarker.visible = mode === "mission" && state.phase !== "delivered";
     beacon.visible=false;
@@ -984,6 +990,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restart();
   };
   byId("missionExit").onclick = () => setMode("paint");
+  byId("missionJournal").onclick=()=>journal.toggle(state);
   window.addEventListener("keydown", e => {
     if (!root.visible || restartDialog.open || e.repeat) return;
     if (e.code==="Enter" && document.activeElement===canvas && !intro.hidden) {
@@ -993,6 +1000,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
     if (e.code === "KeyE") useCargo();
     if (e.code === "KeyV") toggleCamera();
+    if (e.code === "KeyJ") journal.toggle(state);
     if (e.code === "KeyF") tossStone();
     if (e.code === "KeyR" && e.shiftKey) {
       e.preventDefault();

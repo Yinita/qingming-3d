@@ -1,14 +1,146 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
 <title>入卷 · 清明上河图</title>
-<meta http-equiv="refresh" content="0; url=viewer/?mission&amp;v=1.11">
-<style>body{margin:0;padding:24px 16px;background:#EDE6D6;color:#2A2620;font-family:"Noto Serif SC","Songti SC",serif}</style>
+<meta name="description" content="把清院本《清明上河图》的一段还原成可以走进去、改变它、再画回长卷的三维世界。网页试玩、人物与任务。">
+<meta property="og:title" content="入卷 · 清明上河图">
+<meta property="og:description" content="走进古画，改变物体，再把变化画回原来的长卷。">
+<meta property="og:image" content="docs/media/crossing.jpg">
+<style>
+  :root {
+    --paper:#EDE6D6; --paper-2:#F6F0E3; --ink:#2A2620; --muted:#6B6152; --line:#CDBFA4;
+    --seal:#843B30; --seal-ink:#FFF6E7; --leaf:#5C6B4E;
+    --serif:"Noto Serif SC","Source Han Serif SC","Songti SC","STSong",serif;
+  }
+  * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.75 var(--serif); }
+  a { color:var(--seal); }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 16px; }
+  header.top { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 0; }
+  .brand { font-size:20px; font-weight:700; letter-spacing:.18em; color:var(--ink); text-decoration:none; }
+  .brand small { font-weight:400; letter-spacing:.04em; color:var(--muted); margin-left:8px; font-size:14px; }
+  nav.top a { margin-left:16px; text-decoration:none; color:var(--ink); font-size:15px; }
+  nav.top a:hover { color:var(--seal); }
+  .hero { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:36px; align-items:center; padding:28px 0 40px; }
+  .hero h1 { font-size:clamp(30px,5vw,46px); line-height:1.25; margin:0 0 14px; letter-spacing:.06em; }
+  .hero p.lead { font-size:18px; color:var(--muted); margin:0 0 22px; }
+  .cta { display:flex; flex-wrap:wrap; gap:10px; }
+  .btn { display:inline-block; padding:10px 18px; border:1px solid var(--line); border-radius:4px; text-decoration:none;
+    color:var(--ink); background:var(--paper-2); font-size:15px; }
+  .btn.primary { background:var(--seal); border-color:var(--seal); color:var(--seal-ink); font-weight:600; }
+  .btn:hover { border-color:var(--seal); }
+  .hero figure { margin:0; }
+  .hero img { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:4px; box-shadow:0 10px 30px rgba(42,38,32,.16); }
+  .hero figcaption, .shots figcaption { font-size:13px; color:var(--muted); margin-top:6px; }
+  section { padding:34px 0; border-top:1px solid var(--line); }
+  section h2 { font-size:24px; margin:0 0 6px; letter-spacing:.08em; }
+  section > .wrap > p.sub { color:var(--muted); margin:0 0 20px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
+  .card { background:var(--paper-2); border:1px solid var(--line); border-radius:6px; padding:16px 18px; }
+  .card h3 { margin:0 0 6px; font-size:17px; }
+  .card p { margin:0; font-size:15px; color:#3d362c; }
+  .card .k { font-size:12px; letter-spacing:.12em; color:var(--seal); font-weight:700; }
+  .shots { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+  .shots figure { margin:0; }
+  .shots img { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:4px; aspect-ratio:16/9; object-fit:cover; }
+  table { width:100%; border-collapse:collapse; font-size:15px; min-width:640px; }
+  th, td { text-align:left; vertical-align:top; padding:9px 10px; border-bottom:1px solid var(--line); }
+  th { font-size:13px; color:var(--muted); font-weight:600; letter-spacing:.06em; }
+  td.when { white-space:nowrap; font-weight:600; }
+  .scroll-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .pill { display:inline-block; font-size:12px; padding:0 7px; border-radius:3px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .pill.done { background:var(--leaf); border-color:var(--leaf); color:var(--paper-2); }
+  .pill.part { border-color:var(--seal); color:var(--seal); }
+  .docs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .docs a.card { text-decoration:none; color:inherit; display:block; }
+  .docs a.card:hover { border-color:var(--seal); }
+  footer { padding:28px 0 40px; border-top:1px solid var(--line); color:var(--muted); font-size:14px; }
+  @media (max-width:820px) {
+    .hero { grid-template-columns:1fr; gap:22px; padding-top:8px; }
+    .grid3, .shots, .docs { grid-template-columns:1fr; }
+    nav.top { display:none; }
+  }
+</style>
 </head>
 <body>
-<p>正在打开桥畔茶铺。<a href="viewer/?mission&amp;v=1.11">进入 3D 试玩</a> · <a href="viewer/?v=1.11">展开原画</a></p>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./">入卷<small>清明上河图 · 一段</small></a>
+    <nav class="top">
+      <a href="#play">试玩</a><a href="#roadmap">进度</a><a href="#docs">文档</a>
+      <a href="https://github.com/Yinita/qingming-3d">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero" id="play">
+    <div>
+      <h1>走进古画，<br>改变物体，<br>再画回长卷。</h1>
+      <p class="lead">把清院本《清明上河图》中约 150 × 85 米的一段街区还原成可行走的三维世界。在桥畔茶铺送一箱茶，再回到画卷，看它出现在哪里。</p>
+      <div class="cta">
+        <a class="btn primary" href="viewer/?mission&amp;v=1.11">进入桥畔茶铺</a>
+        <a class="btn" href="viewer/?v=1.11">展开原画</a>
+        <a class="btn" href="viewer/characters.html">人物检视台</a>
+      </div>
+      <p style="font-size:13px;color:var(--muted);margin:14px 0 0">桌面 Chrome / Edge 体验最佳，手机可完成任务。WASD 移动 · E 拿取 · J 任务簿 · Tab 看画卷。</p>
+    </div>
+    <figure>
+      <img src="docs/media/crossing.jpg" alt="第三人称视角：玩家背着茶叶箱走上木桥，前方是对岸茶铺和柳树" width="1600" height="900">
+      <figcaption>背箱过桥。浏览器实时渲染，场景来自清院本 x = 17800–23800 px 一段。</figcaption>
+    </figure>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>同一个状态，两种画面</h2>
+    <p class="sub">街景和任务画卷读取同一份世界状态。茶叶箱送到后，画卷里的箱子也在柜台上。</p>
+    <div class="shots">
+      <figure><img src="docs/media/start.jpg" alt="桥头取箱的起点" loading="lazy" width="1600" height="900"><figcaption>桥头取箱：亲自背，或付三文请伙计。</figcaption></figure>
+      <figure><img src="docs/media/shop.jpg" alt="茶铺柜台上的茶叶箱" loading="lazy" width="1600" height="900"><figcaption>交货后茶铺开张，掌柜付五文。</figcaption></figure>
+      <figure><img src="docs/media/scroll.jpg" alt="任务画卷视角：原画中的桥与茶铺" loading="lazy" width="1600" height="900"><figcaption>切回任务画卷，箱子在对岸柜台。</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <h2>开发进度</h2>
+    <p class="sub">D1 = 2026-11-23。网页试玩按下面的顺序更新，每一项完成后会出现在上面的试玩链接里。</p>
+    <div class="scroll-x">
+    <table>
+      <thead><tr><th>时间</th><th>玩法与人物</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr><td class="when">D1–2</td><td>两条送货路线、存档与撤销、任务画卷；水、柳、雨；关节手与任务簿；人物检视台</td><td><span class="pill done">完成</span></td></tr>
+        <tr><td class="when">D3–5</td><td>四套居民的脸部差异；任务失败原因统一提示</td><td><span class="pill part">进行中</span></td></tr>
+        <tr><td class="when">D6–7</td><td>第三条路线「对岸货栈」；掌柜递物与注视</td><td><span class="pill">待开始</span></td></tr>
+        <tr><td class="when">D8–14</td><td>三条路线共用账本；NPC 对话；衣褶细节与远近过渡</td><td><span class="pill">待开始</span></td></tr>
+        <tr><td class="when">D15–21</td><td>第二片区灰盒；更多市井任务；语音与口型</td><td><span class="pill">待开始</span></td></tr>
+        <tr><td class="when">D22–30</td><td>外部试玩与修改；性能复测</td><td><span class="pill">待开始</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <h2>文档</h2>
+    <p class="sub">随仓库更新，在 GitHub 上也可直接阅读。</p>
+    <div class="docs">
+      <a class="card" href="docs/?f=quest-design.md"><h3>任务设计</h3><p>状态机、三条路线、存档字段、测试清单与后续任务草案。</p></a>
+      <a class="card" href="docs/?f=character-modeling.md"><h3>近景人物建模规格</h3><p>比例、关节手、识别度、表演与性能要求。</p></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    原画为国立故宫博物院藏清院本《清明上河图》，扫描来自 Wikimedia Commons。茶铺、货箱和任务角色为试玩补充内容，任务事件为虚构情境。源码与来源说明见 <a href="https://github.com/Yinita/qingming-3d">GitHub 仓库</a>。
+  </div>
+</footer>
 </body>
 </html>

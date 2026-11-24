@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>人物检视台 · 入卷</title>
+<style>
+  :root { --paper:#EDE6D6; --ink:#2A2620; --muted:#6E6453; --line:#C9BEA6; --accent:#8A3B2A; }
+  html,body { margin:0; height:100%; background:var(--paper); color:var(--ink);
+    font-family:"Noto Serif SC","Songti SC","Source Han Serif SC",serif; }
+  canvas { display:block; width:100%; height:100%; }
+  #panel { position:fixed; left:16px; top:16px; max-width:min(360px,calc(100vw - 32px)); padding:14px 16px;
+    background:rgba(237,230,214,.92); border:1px solid var(--line); border-radius:6px; font-size:14px; line-height:1.55; }
+  #panel h1 { font-size:17px; margin:0 0 4px; }
+  #panel p { margin:0 0 10px; color:var(--muted); }
+  #panel label { display:flex; gap:8px; align-items:center; margin:6px 0; }
+  #panel input[type=range] { flex:1; accent-color:var(--accent); }
+  #panel .row { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  button { font:inherit; font-size:13px; padding:4px 10px; border:1px solid var(--line); border-radius:4px;
+    background:#F6F1E6; color:var(--ink); cursor:pointer; }
+  button[aria-pressed=true] { background:var(--ink); color:var(--paper); }
+  a { color:var(--accent); }
+  #stats { font-variant-numeric:tabular-nums; color:var(--muted); font-size:12px; margin-top:8px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="panel">
+  <h1>人物检视台</h1>
+  <p>试玩中的程序化人物：玩家、掌柜、伙计和四套居民体型。上排为近景模型，下排为远景低模。拖动旋转，滚轮缩放。</p>
+  <label>握持 <input id="grip" type="range" min="0" max="1" step="0.01" value="0.08"><span id="gripValue">0.08</span></label>
+  <label>步态 <input id="phase" type="range" min="0" max="6.283" step="0.01" value="0"></label>
+  <div class="row">
+    <button id="walk" aria-pressed="false">行走</button>
+    <button id="carry" aria-pressed="false">背货</button>
+    <button id="spin" aria-pressed="false">转台</button>
+    <button data-view="full">全身</button>
+    <button data-view="hands">手部特写</button>
+    <button data-view="faces">面部特写</button>
+  </div>
+  <div id="stats"></div>
+  <p style="margin:10px 0 0"><a href="./?mission">返回试玩</a> · <a href="../docs/character-modeling.md">建模规格</a></p>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { riverWorker } from "./bridge-people.js";
+import { createSurfaceLibrary } from "./bridge-look.js";
+
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0xede6d6);
+const camera=new THREE.PerspectiveCamera(32,1,.02,80);
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true;
+scene.add(new THREE.HemisphereLight(0xf2f1d9,0x838068,1.2));
+const key=new THREE.DirectionalLight(0xffedd2,2.2);
+key.position.set(-4,7,6);
+key.castShadow=true;
+key.shadow.mapSize.set(2048,2048);
+Object.assign(key.shadow.camera,{left:-7,right:7,top:4,bottom:-4});
+scene.add(key);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(30,14),new THREE.MeshStandardMaterial({color:0xd9cfb8,roughness:.95}));
+floor.rotation.x=-Math.PI/2;
+floor.receiveShadow=true;
+scene.add(floor);
+
+const surface=createSurfaceLibrary();
+const cast=[
+  ["player",0],["merchant",0],["helper",0],
+  ["resident",0],["resident",1],["resident",2],["resident",3],
+];
+const people=[];
+const spacing=.95;
+for(const low of [false,true]) {
+  cast.forEach(([role,variant],i)=>{
+    const group=new THREE.Group();
+    scene.add(group);
+    const person=riverWorker(group,surface,role,role==="resident" && variant%2===0,variant,low);
+    const x=(i-(cast.length-1)/2)*spacing, z=low ? 1.6 : 0;
+    group.position.set(x,0,z);
+    if(person.poseFeet) person.stand(()=>0,0,0,0,0);
+    person.figure.rotation.y=Math.PI;
+    if(person.straps) person.straps.visible=false;
+    people.push({person,group,low});
+  });
+}
+renderer.domElement.addEventListener("dblclick",()=>{});
+
+const views={
+  full:{pos:[.6,2.4,12.6],target:[.6,.62,.4]},
+  hands:{pos:[-2.45,1.02,.62],target:[-2.68,.96,0]},
+  faces:{pos:[-2.62,1.56,1.05],target:[-2.85,1.48,0]},
+};
+function setView(name) {
+  if(name==="hands") {
+    // Frame the player's left hand from the outside front, where the palm and thumb read.
+    const hand=people[0].person.limbs.hands[0].group, at=new THREE.Vector3();
+    scene.updateMatrixWorld(true);
+    hand.getWorldPosition(at);
+    const outward=Math.sign(at.x-people[0].group.position.x)||1;
+    at.y-=.045;
+    controls.target.copy(at);
+    camera.position.set(at.x+outward*.40,at.y+.08,at.z+.50);
+    controls.update();
+    return;
+  }
+  const v=views[name];
+  camera.position.set(...v.pos);
+  controls.target.set(...v.target);
+  controls.update();
+}
+setView("full");
+document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
+
+const toggles={};
+for(const id of ["walk","carry","spin"]) {
+  const b=document.getElementById(id);
+  toggles[id]=false;
+  b.addEventListener("click",()=>{toggles[id]=!toggles[id];b.setAttribute("aria-pressed",String(toggles[id]));});
+}
+const grip=document.getElementById("grip"), gripValue=document.getElementById("gripValue");
+const phaseInput=document.getElementById("phase");
+let manualGrip=true;
+grip.addEventListener("input",()=>{manualGrip=true;});
+
+function resize() {
+  renderer.setSize(innerWidth,innerHeight,false);
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize",resize);
+resize();
+
+const clock=new THREE.Clock();
+let phase=0;
+function frame() {
+  const dt=Math.min(clock.getDelta(),.05);
+  if(toggles.walk) { phase=(phase+dt*5.2)%(Math.PI*2); phaseInput.value=phase; }
+  else phase=Number(phaseInput.value);
+  for(const {person} of people) {
+    person.walkBody(phase,toggles.walk,toggles.carry,dt);
+    if(person.straps) person.straps.visible=toggles.carry;
+    person.limbs.legs.forEach((leg,i)=>{ if(!leg.upper) leg.rotation.x=toggles.walk ? Math.sin(phase+i*Math.PI)*.49 : 0; });
+    if(manualGrip && !toggles.carry) for(const hand of person.limbs.hands??[]) hand.setGrip(Number(grip.value));
+    if(toggles.spin) person.figure.rotation.y+=dt*.6;
+  }
+  gripValue.textContent=Number(grip.value).toFixed(2);
+  controls.update();
+  renderer.render(scene,camera);
+  const info=renderer.info.render;
+  document.getElementById("stats").textContent=`绘制调用 ${info.calls} · 三角形 ${(info.triangles/1000).toFixed(1)}k`;
+  requestAnimationFrame(frame);
+}
+frame();
+window.__characters={people,scene,camera,controls,setView};
+</script>
+</body>
+</html>

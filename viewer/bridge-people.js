@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { detailedBox } from "./bridge-look.js";
 import { legRig } from "./bridge-gait.js";
+import { buildHand } from "./bridge-hands.js";
 
 function piece(parent, shape, material, x, y, z) {
   const mesh = new THREE.Mesh(shape, material);
@@ -701,7 +702,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     torsoPivot.add(torso);
     figure.add(torsoPivot);
   }
-  const limbs = { legs: [], arms: [], elbows:[] };
+  const limbs = { legs: [], arms: [], elbows:[], hands:[] };
   const straps = new THREE.Group();
   straps.name="Cargo harness";
   straps.visible=false;
@@ -738,19 +739,13 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const arm = new THREE.Group();
     arm.position.set(side*.247*shoulders,1.239,.012);
     arm.scale.set(profile?.armWidth??1,profile?.sleeve??1,profile?.armWidth??1);
+    // Hang the arm slightly away from the body so the hand clears the flared robe.
+    arm.rotation.z=side*.11;
     torso.add(arm);
     const elbow=tailoredSleeve(arm,cloth,binding,garmentSections,profile?.cuff??.04);
-    const hand=fabric([[0,-.244],[.026,-.231],[.034,-.209],[.031,-.189],[.022,-.167],[0,-.159]],
-      .58,0,lowDetail ? 10 : 20,0,(angle,y)=>1+.055*Math.sin(angle*3+y*12));
-    piece(elbow,hand,skin,0,0,-.009).name="Wrist and palm";
-    if(!lowDetail) for(let finger=0;finger<4;finger++) {
-      const digit=piece(elbow,new THREE.CapsuleGeometry(.0086,.020-.002*Math.abs(1-finger),4,8),
-        skin,side*(.023-.015*finger),-.234-.005*Math.sin(finger*.83),-.010-.005*finger);
-      digit.rotation.x=.21+.11*finger;
-      digit.rotation.z=side*(finger-1.5)*.082;
-    }
-    const thumb = piece(elbow,new THREE.SphereGeometry(.022,12,9),skin, -.031 * side, -.194, -.035);
-    thumb.scale.set(.74,1.17,.74);
+    const hand=buildHand(elbow,skin,side,{lowDetail,scale:profile?.hand??1});
+    hand.group.position.set(0,-.163,-.009);
+    limbs.hands.push(hand);
     limbs.arms.push(arm);
     limbs.elbows.push(elbow);
     if(role==="helper" || role==="player"){
@@ -891,6 +886,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       const forward=Math.max(0,Math.sin(phase+(i+1)*Math.PI));
       limbs.elbows[i].rotation.x=-THREE.MathUtils.lerp(.12+.35*forward,.25,carryWeight)*effort;
     }
+    // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
+    for(const hand of limbs.hands) hand.setGrip(.08+.12*effort+.74*carryWeight);
   }
   return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,poseFeet,stand,walkBody,moisture:moisture.value};
 }

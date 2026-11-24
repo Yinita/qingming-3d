@@ -1,6 +1,6 @@
 # 入卷 · 清明上河图（一段）
 
-[进入桥畔茶铺 3D 试玩](https://yinita.github.io/qingming-3d/) · [展开清院本原画](https://yinita.github.io/qingming-3d/viewer/)
+[项目主页](https://yinita.github.io/qingming-3d/) · [进入桥畔茶铺 3D 试玩](https://yinita.github.io/qingming-3d/viewer/?mission) · [展开清院本原画](https://yinita.github.io/qingming-3d/viewer/) · [人物检视台](https://yinita.github.io/qingming-3d/viewer/characters.html)
 
 - 近景的九座瓦顶由逐片弯曲的灰瓦、椽头和脊瓦构成。门窗有实际进深，人物外袍、斗笠和背箱架可绕着观察。背箱、过桥和靠近柜台时，人物与货箱各有独立的碰撞体。
 - 原画视角使用按 30° 斜投影对齐的原画裁片。透视视角的街道使用有体积的角色、车马和树木。
@@ -15,6 +15,8 @@
 - 点「开始送茶」后，画面上方显示「任务已开始」。直接取箱或委托伙计也可以开始。目标标牌显示方向和距离。
 - 开场卡有「重置进度」。试玩时点右上角「重置任务」或按 `Shift+R`。确认后回到桥头，茶箱归位，铜钱恢复为六文，开场卡显示「任务已重置」。漫游和画卷也可以重置。
 - 用 WASD 移动，E 拿放货箱，V 切换第一或第三人称。可以亲自过桥交货，也可以委托伙计。
+- 按 J 或点「任务簿」查看当前目标、可选路线和铜钱账目。任务数据在 `viewer/bridge-quests.js`，规则见[任务设计](docs/quest-design.md)。
+- 人物使用程序化体型、IK 贴地步态和可握持的关节手（`viewer/bridge-hands.js`），规格见[近景人物建模](docs/character-modeling.md)。
 - 交货后靠近柜台，点「看掌柜斟茶」。浅滩可以涉水和投石，到系船桩可以拉动小船。
 - 「查看任务画卷」会以卷面视角呈现当前货箱的位置。
 - 栏杆、柜台、树干、货箱和市民会阻挡角色。第三人称镜头接近障碍时会自动收近。
