@@ -275,7 +275,7 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   return { upper,calf,ankle,footprint,hip };
 }
 
-function tailoredSleeve(arm, cloth, binding, sections) {
+function tailoredSleeve(arm, cloth, binding, sections, cut) {
   const joint=-.212;
   const profile=[
     [0,-.381],[.055,-.382],[.062,-.373],[.065,-.351],[.071,-.332],
@@ -284,8 +284,11 @@ function tailoredSleeve(arm, cloth, binding, sections) {
   ];
   const contour=fabric(profile,.88,0,sections,0,(angle,y)=>{
     const elbow=Math.exp(-(((y-joint)/.092)**2));
-    const crease=angle*3.0+y*32.0;
-    return 1+.054*Math.cos(angle*4+y*16)+elbow*(.069*Math.sin(crease)-.047*Math.cos(crease*2));
+    const fullness=Math.sin(Math.PI*clamp((y+.376)/.426,0,1));
+    const fall=Math.max(0,Math.cos(angle-.4))*fullness;
+    const crease=angle*3+y*35;
+    return 1+cut*fullness+.13*cut*fall+.072*Math.cos(angle*4+y*14)+
+      elbow*(.092*Math.sin(crease)-.061*Math.cos(crease*2));
   });
   const positions=contour.attributes.position;
   const indices=new Uint16Array(positions.count*4);
@@ -342,14 +345,35 @@ function waterStain(material, moisture) {
 
 const residentProfiles=[
   {skin:0xb08264,hair:0x372e26,head:[.87,.91,.83],jaw:.12,nose:1.10,shoulders:1.15,armWidth:1.05,sleeve:1.01,
-    bun:.166,hem:-.005,skirt:1.08,waist:1.07,binding:0x74614c,cord:0xc8a880,apron:0xc0a275,smile:.006,sash:.955,hairPart:.14,trousers:0x888b76},
+    bun:.166,hem:-.035,skirt:1.14,waist:1.12,cuff:.19,binding:0x74614c,cord:0xc8a880,apron:0xc0a275,smile:.006,sash:.955,hairPart:.14,trousers:0x888b76},
   {skin:0xc1a084,hair:0x615a50,head:[.74,1.00,.85],jaw:.30,nose:1.31,shoulders:.86,armWidth:.95,sleeve:1.06,
-    bun:.151,beard:true,coat:0xb0a18a,binding:0x62513d,cord:0xad8b63,hem:-.137,skirt:.92,waist:.96,eyes:.69,smile:-.003,sash:1.00,hairPart:-.19,trousers:0x817965},
+    bun:.151,beard:true,coat:0x93957f,binding:0x62513d,cord:0xad8b63,hem:-.137,skirt:1.01,waist:.96,cuff:.12,eyes:.69,smile:-.003,sash:1.00,hairPart:-.19,trousers:0x817965},
   {skin:0xd2ad90,hair:0x362c28,head:[.74,.89,.81],jaw:.40,nose:.77,shoulders:.86,armWidth:.82,sleeve:.96,
-    bun:.151,hem:-.115,skirt:.79,waist:.91,binding:0x4b6870,cord:0xaeb5a3,eyes:1.03,smile:.007,sash:1.033,hairPart:.23,trousers:0x74838c},
+    bun:.151,hem:-.115,skirt:.81,waist:.86,cuff:-.12,binding:0x4b6870,cord:0xaeb5a3,eyes:1.03,smile:.007,sash:1.033,hairPart:.23,trousers:0x74838c},
   {skin:0xa87f62,hair:0x3d3228,head:[.85,.87,.91],jaw:.15,nose:.96,shoulders:1.09,armWidth:.88,sleeve:.88,
-    bun:.145,wrap:true,coat:0x776e5d,hem:.137,skirt:.90,waist:1.02,binding:0xa7906d,cord:0xc0ab89,eyes:.88,smile:-.001,sash:.911,hairPart:-.03,trousers:0xab9878},
+    bun:.145,wrap:true,coat:0x947e63,hem:.137,skirt:.88,waist:1.02,cuff:-.16,binding:0xa7906d,cord:0xc0ab89,eyes:.88,smile:-.001,sash:.911,hairPart:-.03,trousers:0xab9878},
 ];
+
+function shoulderSatchel(figure,robe,cloth,edge,lowDetail) {
+  // The strap follows the robe on both sides and meets the pouch at the hip.
+  for(const side of [-1,1]) {
+    const front=side<0;
+    const strap=front ? [[3.89,1.333],[3.48,1.263],[3.08,1.167],[2.71,1.050],[2.27,.949]] :
+      [[-.75,1.333],[-.44,1.260],[-.04,1.164],[.38,1.050],[.92,.949]];
+    robeSeam(figure,robe,strap,edge,.043,!lowDetail,.030);
+  }
+  const bag=new THREE.Group();
+  bag.position.set(.232,.823,.006);
+  bag.rotation.z=.21;
+  bag.rotation.y=.69;
+  figure.add(bag);
+  piece(bag,fabric([[0,-.117],[.067,-.111],[.095,-.075],[.101,.004],
+    [.091,.063],[.076,.080],[0,.085]],.59,0,lowDetail ? 10 : 28),cloth,0,0,0).name="Cloth shoulder satchel";
+  const flap=piece(bag,new THREE.SphereGeometry(1,lowDetail ? 8 : 16,lowDetail ? 5 : 9),
+    edge,0,.055,-.024);
+  flap.scale.set(.086,.037,.039);
+  piece(bag,new THREE.SphereGeometry(.011,10,7),edge,0,.024,-.066);
+}
 
 function sculptedEye(feature,side,opening,slant,look,lowDetail) {
   const strips=lowDetail ? 8 : 24, rows=lowDetail ? 4 : 10;
@@ -408,18 +432,18 @@ function sculptedEar(side,lowDetail) {
 
 function faceDepth(x,y,z,nose) {
   const patch=(cx,cy,dx,dy)=>Math.exp(-((x-cx)**2/dx+(y-cy)**2/dy));
-  const cheek=patch(.078,-.022,.0011,.00081);
-  const lowerCheek=patch(.081,-.073,.00058,.00078);
+  const cheek=patch(.076,-.023,.0014,.0012);
+  const lowerCheek=patch(.080,-.073,.00077,.00091);
   const supraorbital=patch(.055,.034,.00145,.00023);
   const socket=patch(.053,.012,.00043,.00025);
   const jaw=patch(0,-.114,.0031,.00065);
   const muzzle=patch(0,-.052,.0023,.0010);
-  const bridge=patch(0,.005,.00042,.0022);
-  const noseTip=patch(0,-.026,.00075,.00025);
+  const bridge=patch(0,.005,.00040,.0019);
+  const noseTip=patch(0,-.026,.00064,.00031);
   const nostril=patch(.015,-.041,.000065,.00009);
   const front=THREE.MathUtils.smoothstep(-z,.047,.118);
-  return z*.87-front*(.027*cheek-.011*lowerCheek-.012*socket+.009*supraorbital+.020*jaw+.012*muzzle+
-    (.020*bridge+.039*noseTip)*nose-.006*nostril);
+  return z*.87-front*(.022*cheek-.009*lowerCheek-.013*socket+.008*supraorbital+.015*jaw+.010*muzzle+
+    (.017*bridge+.030*noseTip)*nose-.005*nostril);
 }
 
 export function riverWorker(parent, surface, role, residentHat=false, variant=0,lowDetail=false) {
@@ -524,7 +548,11 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   figure.add(head);
   const skullRadius=.149, nose=profile?.nose??(role==="merchant" ? 1.18 : role==="helper" ? .93 : 1);
   const eyeOpening=(profile?.eyes??(role==="merchant" ? .76 : 1))*.016;
-  const jawWidth=y=>1-THREE.MathUtils.smoothstep(-y,.014,.144)*(profile?.jaw??.29);
+  const jawWidth=y=>{
+    const lower=THREE.MathUtils.smoothstep(-y,.022,.128);
+    const temple=THREE.MathUtils.smoothstep(y,.061,.133);
+    return 1-lower*(profile?.jaw??.29)-temple*(profile?.beard ? .075 : .027);
+  };
   const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : detail ? 52 : 40,lowDetail ? 13 : detail ? 36 : 28);
   const position = skull.attributes.position;
   const faceColours=[];
@@ -544,7 +572,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose));
     const stubble=(profile?.beard || role==="merchant") ?
       .095*THREE.MathUtils.smoothstep(-y,.060,.126)*front : 0;
-    const faceVolume=front*(chinLight-underlip-templeCreases);
+    const cheekLight=.077*Math.exp(-((Math.abs(x)-.072)**2/.00058+(y+.013)**2/.00039));
+    const laughLine=Math.exp(-((Math.abs(x)-.039+.51*(y+.057))**2/.000048+(y+.056)**2/.00055));
+    const faceVolume=front*(chinLight+cheekLight-underlip-templeCreases-(profile?.beard ? .13 : .065)*laughLine);
     faceColours.push(1+faceVolume-front*(.17*socket+.25*nostril)+pores-stubble-.10*throat-.055*temples,
       .97+faceVolume-front*(.23*socket+.16*cheek+.31*nostril)+pores-stubble-.12*throat-.069*temples,
       .93+faceVolume-front*(.22*socket+.16*cheek+.31*nostril)+pores-stubble*.5-.13*throat-.081*temples);
@@ -628,9 +658,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     faceLine([[side*.030,.033+lift,.001],[side*.046,.040+lift,.002],
       [side*.061,.041+lift,.002],[side*.077,.035+lift,.0015]],hairPigment,.0022,12);
   }
+  const mouthWidth=profile ? [.032,.026,.023,.030][variant] : .028;
   const mouthCorner=-.065+(profile?.smile??.002);
-  faceLine([[-.024,mouthCorner,.001],[-.012,-.064,.002],
-    [0,-.065,.0025],[.012,-.064,.002],[.024,mouthCorner,.001]],lips,.0022,16);
+  faceLine([[-mouthWidth,mouthCorner,.0007],[-mouthWidth*.43,-.064,.0015],
+    [0,-.066,.002],[mouthWidth*.39,-.064,.0016],[mouthWidth,mouthCorner-.002,.0007]],lips,.0017,18);
   if(!lowDetail) {
     const lowerLip=plain(0xaa7866,.76);
     faceLine([[-.017,-.069,.0007],[0,-.072,.0012],[.017,-.069,.0007]],lowerLip,.0016,10);
@@ -658,6 +689,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
 
+  if(profile?.wrap) {
+    const satchel=surface("indigo-linen",0xad9b79,.76,.94);
+    shoulderSatchel(figure,robe,satchel,binding,lowDetail);
+  }
   const torsoPivot=new THREE.Group(), torso=role==="merchant" ? figure : new THREE.Group();
   if(torso!==figure) {
     for(const part of [...figure.children]) torso.add(part);
@@ -704,7 +739,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     arm.position.set(side*.247*shoulders,1.239,.012);
     arm.scale.set(profile?.armWidth??1,profile?.sleeve??1,profile?.armWidth??1);
     torso.add(arm);
-    const elbow=tailoredSleeve(arm,cloth,binding,garmentSections);
+    const elbow=tailoredSleeve(arm,cloth,binding,garmentSections,profile?.cuff??.04);
     const hand=fabric([[0,-.244],[.026,-.231],[.034,-.209],[.031,-.189],[.022,-.167],[0,-.159]],
       .58,0,lowDetail ? 10 : 20,0,(angle,y)=>1+.055*Math.sin(angle*3+y*12));
     piece(elbow,hand,skin,0,0,-.009).name="Wrist and palm";

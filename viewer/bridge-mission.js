@@ -381,11 +381,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }),root,pickup.x,.028,pickup.z);
   groundMarker.name="Mission objective ground marker";
   groundMarker.rotation.x=-Math.PI/2;
+  const beacon=new THREE.Group();
+  beacon.name="Mission objective beacon";
+  root.add(beacon);
+  const beaconRim=mesh(new THREE.OctahedronGeometry(.20),new THREE.MeshBasicMaterial({color:0xffd47c,wireframe:true}),beacon,0,0,0);
+  beaconRim.scale.y=1.43;
+  const beaconInset=mesh(new THREE.OctahedronGeometry(.145),new THREE.MeshBasicMaterial({color:0xba6337}),beacon,0,0,0);
+  beaconInset.scale.y=1.43;
+  beacon.visible=false;
   const markerPoint=new THREE.Vector3(), projectedMarker=new THREE.Vector3();
   let markerText="";
   function markObjective() {
     const phase=state.phase;
     groundMarker.visible=view==="mission" && phase!=="delivered";
+    beacon.visible=groundMarker.visible && !restartDialog.open;
     waypoint.hidden=!groundMarker.visible || restartDialog.open;
     if(waypoint.hidden) return;
     const at=phase==="waiting" ? state.crate : counter;
@@ -393,7 +402,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
     groundMarker.material.opacity=.85+.13*Math.sin(elapsed*3.6);
-    markerPoint.set(x,y+(phase==="waiting" ? 1.13 : 2.1),z);
+    const hover=y+(phase==="waiting" ? 1.06 : 2.1)+.085*Math.sin(elapsed*3.6);
+    beacon.position.set(x,hover,z);
+    beacon.rotation.y=elapsed*.92;
+    markerPoint.set(x,hover+.35,z);
     camera.updateMatrixWorld();
     projectedMarker.copy(markerPoint).applyMatrix4(camera.matrixWorldInverse);
     const behind=projectedMarker.z>=0;
@@ -645,7 +657,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const briefing=hasRestarted && kind==="new" ? "reset" : kind;
     if(briefing!==introduced) {
       const [title,detail,action]={
-        new:["任务开始 · 桥畔茶铺","在桥头取茶叶箱，过桥送到茶铺。","开始送茶"],
+        new:["任务开始 · 桥畔茶铺","跟随金色标记，在桥头取一箱茶叶，再过桥送到对岸茶铺。","开始送茶"],
         reset:["任务已重置 · 桥畔茶铺","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
         resume:["继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
         finished:["茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
@@ -757,6 +769,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     labels.hidden = !active;
     document.body.classList.toggle("mission-open", active);
     groundMarker.visible = mode === "mission" && state.phase !== "delivered";
+    beacon.visible=false;
     if (active) {
       positionCrate();
       ui();
@@ -767,6 +780,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if (!root.visible) return;
     if(restartDialog.open) {
       waypoint.hidden=intro.hidden=true;
+      beacon.visible=false;
       return;
     }
 
@@ -926,7 +940,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function toggleScroll() { setMode(view === "missionScroll" ? "mission" : "missionScroll"); }
-  begin.onclick=()=>{
+  function beginMission(){
     if(state.phase==="delivered") {
       requestRestart(begin);
       return;
@@ -935,7 +949,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
     ui();
     canvas.focus({preventScroll:true});
-  };
+  }
+  begin.onclick=beginMission;
   interactButton.onclick = useCargo;
   hireButton.onclick = hire;
   byId("missionCamera").onclick = toggleCamera;
@@ -971,6 +986,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   byId("missionExit").onclick = () => setMode("paint");
   window.addEventListener("keydown", e => {
     if (!root.visible || restartDialog.open || e.repeat) return;
+    if (e.code==="Enter" && document.activeElement===canvas && !intro.hidden) {
+      e.preventDefault();
+      beginMission();
+      return;
+    }
     if (e.code === "KeyE") useCargo();
     if (e.code === "KeyV") toggleCamera();
     if (e.code === "KeyF") tossStone();

@@ -22,9 +22,11 @@
   #credit { font-size:11px; color:#7a705e; margin-top:6px; border-top:1px solid #d8ccb2; padding-top:5px; }
   #seal { position:fixed; right:14px; top:14px; writing-mode:vertical-rl; background:var(--zhu); color:#fff;
     padding:8px 5px; font-size:14px; letter-spacing:3px; border-radius:3px; opacity:.9; }
-  .quest-entry { border-top:1px solid #d8ccb2; padding-top:8px; }
-  #bMission { background:#843b30; color:#fff9e9; border-color:#843b30; font-weight:600; }
-  #bMissionRestart { color:#79362b; border-color:#ad7765; }
+  #questEntry { position:fixed; z-index:6; top:22px; right:58px; display:flex; gap:6px; }
+  #questEntry button { min-height:42px; padding:8px 13px; border-color:#caa77a; font-weight:700; }
+  #bMission { background:#793b30; color:#fff5df; }
+  #bMissionRestart { background:#fff7e8; color:#722e24; }
+  .mission-open #questEntry, .scene-loading #questEntry { display:none; }
   #missionProgress { display:block; width:100%; height:6px; accent-color:#843b30; }
   #missionProgress::-webkit-progress-bar { background:#d8c7ab; border-radius:3px; }
   #missionProgress::-webkit-progress-value { background:#843b30; border-radius:3px; }
@@ -37,7 +39,7 @@
   .mission-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .mission-open #seal { display:none; }
   #missionRestart { position:fixed; z-index:6; top:22px; right:22px; min-height:42px;
-    padding:8px 14px; color:#fff7e1; font-weight:700; background:#733a2d;
+    padding:9px 16px; color:#fff7e1; font-size:14px; font-weight:700; background:#733a2d;
     border:1px solid #e3bd82; box-shadow:0 3px 15px #38271c66; }
   #missionRestart:hover, #missionRestart:focus-visible { background:#9a4635; }
   #missionIntro { position:fixed; z-index:5; top:clamp(84px,16vh,168px); left:50%;
@@ -68,7 +70,7 @@
   #missionSpeech { color:#623a2e; }
   #missionObjective { font-weight:600; }
   #missionWaypoint { position:fixed; z-index:3; transform:translate(-50%,-100%); pointer-events:none;
-    background:#733a2d; color:#fff4df; border:1px solid #e4be86; border-radius:4px;
+    background:#583023; color:#ffe9b4; border:1px solid #edc77e; border-radius:4px;
     box-shadow:0 2px 9px #34261f66; padding:6px 11px; font-weight:600; font-size:16px; white-space:nowrap; }
   #missionWaypoint[data-offscreen="false"]::after { position:absolute; left:calc(50% - 6px);
     top:100%; content:""; border:6px solid transparent; border-top-color:#733a2d; }
@@ -77,6 +79,7 @@
     transform:rotate(calc(45deg + var(--waypoint-angle))); }
   body.scene-loading #missionWaypoint { visibility:hidden; }
   @media (max-width:760px), (max-height:525px) {
+    #questEntry { top:auto; bottom:12px; right:12px; }
     #missionHud { top:auto; bottom:10px; left:10px; padding:8px 12px; }
     #missionHud h1 { font-size:19px; margin-bottom:4px; }
     #missionIntro { top:66px; padding:15px 16px 13px; }
@@ -137,12 +140,12 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=110",
+  "./bridge-look.js": "./bridge-look.js?v=111",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=110",
-  "./bridge-people.js": "./bridge-people.js?v=110",
-  "./bridge-street.js": "./bridge-street.js?v=110",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=110"
+  "./bridge-mission.js": "./bridge-mission.js?v=111",
+  "./bridge-people.js": "./bridge-people.js?v=111",
+  "./bridge-street.js": "./bridge-street.js?v=111",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=111"
 } }
 </script>
 </head>
@@ -171,16 +174,16 @@
     <button id="bWalk" aria-pressed="false">漫游</button>
     <button id="bOrbit" aria-pressed="false">俯瞰</button>
   </div>
-  <div class="row quest-entry">
-    <button id="bMission" type="button">任务 · 桥畔茶铺</button>
-    <button id="bMissionRestart" type="button">重置任务</button>
-  </div>
   <div class="row"><button id="bModels" aria-pressed="false" hidden>远处房屋：原画裁片</button></div>
   <div id="help"></div>
   <div id="status">加载中…</div>
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1.10</div>
+<nav id="questEntry" aria-label="桥畔茶铺任务">
+  <button id="bMission" type="button">去送茶</button>
+  <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
+</nav>
+<div id="seal">入卷 v1.11</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
