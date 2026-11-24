@@ -60,6 +60,7 @@ export function createSurfaceLibrary() {
   }
 
   surface.project = (id, options, floor=false) => {
+    const street=floor==="street";
     const material = new THREE.MeshStandardMaterial(options);
     const detail={
       finishColor:{value:null}, finishNormal:{value:null}, finishOrm:{value:null},
@@ -72,7 +73,8 @@ export function createSurfaceLibrary() {
       detail.finishReady.value=1;
       material.userData.surfaceReady=true;
     },err=>console.warn("Projected material could not be loaded",id,err.message));
-    material.customProgramCacheKey=()=>floor ? "projected-floor-finish" : "projected-building-finish";
+    material.customProgramCacheKey=()=>street ? "projected-street-finish" :
+      floor ? "projected-floor-finish" : "projected-building-finish";
     material.onBeforeCompile=shader=>{
       Object.assign(shader.uniforms,detail);
       shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec3 finishPoint;")
@@ -120,18 +122,29 @@ export function createSurfaceLibrary() {
         vec3 dust=mix(vec3(.74,.72,.65),vec3(1.12,1.04,.93),smoothstep(.22,.80,districts));
         float aggregate=texture2D(finishColor,finishUV.zx*2.13+vec2(.21,.47)).r;
         vec3 soil=litSurface*dust*(.77+.23*compaction+.12*mottling+.15*aggregate);
+        ${street ? `
+        vec2 ruts=vec2(soilPoint.x+sin(soilPoint.y*.37)*.42,soilPoint.y);
+        float tracks=soilNoise(ruts*vec2(2.35,.26));
+        float crust=soilNoise(soilPoint*3.8+18.)*.38+soilNoise(soilPoint*.53)*.62;
+        float compacted=smoothstep(.36,.80,tracks*.56+crust*.44);
+        float coarse=smoothstep(.24,.75,soilNoise(soilPoint*11.6+3.6));
+        vec3 groundDye=mix(vec3(.69,.65,.53),vec3(1.03,.99,.85),compacted);
+        groundDye=mix(groundDye,groundDye*vec3(.86,.90,.81),smoothstep(.62,.84,crust)*.52);
+        soil*=groundDye*(.89+.26*coarse);
+        ` : ""}
         diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
         ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
+        ${street ? "roughnessFactor=clamp(roughnessFactor+(.16-.23*compacted)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
         vec3 reliefVector=vec3(sy.x,0.,sy.y)*(finishWeight.y*.64);
         ${floor ? `
         vec2 grit=texture2D(finishNormal,finishUV.zx*2.13+vec2(.21,.47)).yx*2.-1.;
-        reliefVector=vec3(sy.x,0.,sy.y)*.44+vec3(grit.x,0.,grit.y)*.29;
+        reliefVector=vec3(sy.x,0.,sy.y)*${street ? ".54" : ".44"}+vec3(grit.x,0.,grit.y)*${street ? ".40" : ".29"};
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;

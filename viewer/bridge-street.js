@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riverWorker } from "./bridge-people.js";
+import { buildStreetGround } from "./bridge-street-ground.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
@@ -451,6 +452,7 @@ export function createStreetScene(scene,objects,anchor) {
   root.add(bridge);
   buildWoodenBridge(bridge,anchor,surface);
   const origin=canalOrigin(anchor);
+  buildStreetGround(root,origin,surface);
   const replacements=new Set();
   const people=[], treeObjects=[];
   const curb=bridgeRailOffset-.365;

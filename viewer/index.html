@@ -28,6 +28,17 @@
     padding:17px 19px 12px; border:1px solid #b8a283; border-top:3px solid #863d34;
     background:#f6ecdaee; color:#322b24; box-shadow:0 7px 24px #2e201e33; }
   #missionHud h1 { margin:3px 0 8px; font-size:26px; font-weight:600; letter-spacing:.1em; }
+  .mission-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  #missionRestart { flex:none; margin-top:3px; padding:6px 9px; color:#79362b; font-weight:600;
+    border-color:#ad7765; background:#fff6e7; }
+  #missionRestart:hover, #missionRestart:focus-visible { background:#843b30; color:#fff6e7; }
+  #missionIntro { position:fixed; z-index:4; top:24px; left:50%; transform:translateX(-50%);
+    display:grid; gap:4px; min-width:215px; padding:11px 20px 13px; color:#fff4da;
+    text-align:center; background:#6c3026f5; border:1px solid #e9c38b; box-shadow:0 5px 20px #34261f66;
+    border-radius:3px; pointer-events:none; }
+  #missionIntro strong { font-size:23px; letter-spacing:.13em; }
+  #missionIntro span { font-size:12px; letter-spacing:.05em; }
+  #missionIntro[hidden] { display:none; }
   #missionHud p { margin:7px 0; font-size:13px; line-height:1.55; }
   .mission-kicker { color:#87483b; font-size:11px; letter-spacing:.14em; }
   .mission-metrics { color:#745738; padding:5px 0; border-block:1px solid #c8b89b; }
@@ -41,6 +52,9 @@
     box-shadow:0 2px 9px #34261f66; padding:6px 11px; font-weight:600; font-size:16px; white-space:nowrap; }
   #missionWaypoint[data-offscreen="false"]::after { position:absolute; left:calc(50% - 6px);
     top:100%; content:""; border:6px solid transparent; border-top-color:#733a2d; }
+  #missionWaypoint[data-offscreen="true"]::after { display:inline-block; margin:0 1px 1px 8px;
+    width:7px; height:7px; content:""; border-top:2px solid; border-right:2px solid;
+    transform:rotate(calc(45deg + var(--waypoint-angle))); }
   body.scene-loading #missionWaypoint { visibility:hidden; }
   #missionRestartDialog { max-width:min(320px,calc(100vw - 52px)); background:#faf1de; color:#3a2d25;
     border:1px solid #b39b76; border-top:3px solid #843b30; padding:18px 21px; }
@@ -69,7 +83,7 @@
   @media(max-width:640px) {
     #scene-background { top:12px; bottom:auto; max-width: min(265px,75vw); }
   }
-  @media(max-width:640px) {
+  @media(max-width:760px) {
     #missionHud { top:auto; bottom:12px; left:12px; padding:8px 12px; }
     #missionHud h1 { font-size:19px; }
   }
@@ -112,7 +126,7 @@
   <div id="status">加载中…</div>
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1.4</div>
+<div id="seal">入卷 v1.5</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -172,7 +186,7 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBas
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -GD / 2); scene.add(ground);
 ground.receiveShadow=true;
 ground.userData.archiveMaterial=ground.material;
-const walkingGround=surfaces.project("worn-stone",{color:0xc2ab86,roughness:.94},true);
+const walkingGround=surfaces.project("worn-stone",{color:0xbba584,roughness:.94},"street");
 ground.userData.perspectiveMaterial=walkingGround;
 
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
@@ -350,6 +364,9 @@ function setPaintingExact(on) {
   for (const card of trailCards) card.visible = mode !== "mission";
   street.root.visible=!on;
   ground.material=on ? ground.userData.archiveMaterial : walkingGround;
+  ambient.intensity=(on ? .80 : .55)*Math.PI;
+  sun.intensity=(on ? .32 : .52)*Math.PI;
+  sun.position.set(-.6,on ? 1 : .72,.5);
   for (const card of sourceReplacements) card.visible=on;
   scene.fog = on ? null : haze;
   applyModelVisibility();
@@ -362,7 +379,8 @@ const help = {
 };
 function setMode(m) {
   if (m === "mission" || m === "missionScroll") {
-    mission ||= createBridgeMission({ scene, camera: persp, renderer, ambient, sun, ground, apron, street, setMode });
+    mission ||= createBridgeMission({ scene, camera: persp, renderer, ambient, sun, ground, apron, street, setMode,
+      clearInput:()=>{keys.clear();drag=null;} });
   }
   mode = m;
 
