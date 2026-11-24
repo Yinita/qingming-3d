@@ -98,8 +98,11 @@
   .loading-panel[hidden], .loading-panel [hidden] { display:none!important; }
   body.scene-loading #hud, body.scene-loading #missionHud, body.scene-loading #seal { visibility:hidden; }
   @media(max-width:640px) {
-    #scene-background { top:12px; bottom:auto; max-width: min(265px,75vw); }
-    body.mission-open #scene-background { top:87px; }
+    #scene-background { max-width:min(265px,75vw); }
+    body.mission-open #scene-background { top:87px; bottom:auto; }
+  }
+  @media (max-width:640px) and (max-height:459px) {
+    body.mission-open #scene-background { top:45px; }
   }
 </style>
 <script type="importmap">
