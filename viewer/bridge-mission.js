@@ -260,8 +260,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     </dialog>`;
   document.body.appendChild(labels);
   const byId = id => labels.querySelector("#" + id);
-  let hudHeight=0;
-  new ResizeObserver(([size])=>{hudHeight=size.target.offsetHeight;}).observe(labels);
+  let hudHeight=0, introHeight=0;
+  const panels=new ResizeObserver(entries=>{
+    for(const {target} of entries) {
+      if(target===labels) hudHeight=target.offsetHeight;
+      else introHeight=target.offsetHeight;
+    }
+  });
+  panels.observe(labels);
   const status = byId("missionObjective");
   const stage = byId("missionStage");
   const restartDialog=byId("missionRestartDialog");
@@ -269,12 +275,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const restartConfirm=byId("missionRestartConfirm");
   const progress=byId("missionProgress");
   document.body.appendChild(restartDialog);
-  const intro=document.createElement("div");
+  const intro=document.createElement("section");
   intro.id="missionIntro";
   intro.hidden=true;
-  intro.setAttribute("role","status");
-  intro.innerHTML="<strong>任务开始</strong><span>走向标牌处的茶叶箱，拿到茶叶后过桥。</span>";
+  intro.setAttribute("aria-label","开始桥畔茶铺任务");
+  intro.innerHTML=`
+    <div><strong>任务开始</strong><span>在桥头取一箱茶叶，送到对岸。</span></div>
+    <button id="missionBegin" type="button">开始送茶</button>`;
   document.body.appendChild(intro);
+  panels.observe(intro);
   const waypoint=document.createElement("div");
   waypoint.id="missionWaypoint";
   waypoint.hidden=true;
@@ -374,7 +383,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     projectedMarker.copy(markerPoint).project(camera);
     const horizontalInset=Math.min(119,width*.35);
     const compact=width<=760 || height<=525;
-    const upperInset=compact ? height<460 ? 50 : 112 : 142;
+    const upperInset=Math.max(compact ? 50 : 72,
+      intro.hidden ? 0 : (compact ? 14 : 24)+introHeight+39);
     const bottomPanel=compact ? hudHeight+24 : 54;
     const lowerInset=Math.min(bottomPanel,height-upperInset-12);
     const px=behind ? (turnRight ? width : 0) : (projectedMarker.x*.5+.5)*width;
@@ -859,6 +869,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function toggleScroll() { setMode(view === "missionScroll" ? "mission" : "missionScroll"); }
+  intro.querySelector("button").onclick=()=>{
+    showStart=false;
+    hint.textContent="走到「取茶叶箱」标记处，按 E 拿箱。";
+    ui();
+    canvas.focus({preventScroll:true});
+  };
   interactButton.onclick = useCargo;
   hireButton.onclick = hire;
   byId("missionCamera").onclick = toggleCamera;

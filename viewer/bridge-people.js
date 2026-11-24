@@ -22,7 +22,17 @@ function foldFactor(theta,y) {
   return 1+.058*Math.sin(theta*7+y*4.2)+.026*Math.sin(theta*13-y*6.2)+.042*crease+gathers;
 }
 
-function fabric(points, depth, offset = 0, count = 32, foldOrigin = 0) {
+function robeVolume(theta,y) {
+  const front=Math.max(0,-Math.cos(theta));
+  const chest=THREE.MathUtils.smoothstep(y,1.03,1.20)*(1-THREE.MathUtils.smoothstep(y,1.26,1.36));
+  const hip=THREE.MathUtils.smoothstep(y,.46,.69)*(1-THREE.MathUtils.smoothstep(y,.72,.95));
+  const tuck=Math.exp(-(((y-.91)/.084)**2));
+  const diagonal=theta*5+(y-.67)*8+.69*Math.sin(theta*2);
+  return foldFactor(theta,y)+.078*chest*front-.084*tuck*front+
+    hip*(.088*Math.cos(diagonal)-.062*Math.cos(diagonal*2));
+}
+
+function fabric(points, depth, offset = 0, count = 32, foldOrigin = 0, folds=foldFactor) {
   const contour=points.map(([radius,y])=>new THREE.Vector2(radius,y));
   const outline=count>32 ? contour.flatMap((p,i)=>i===0 ? [p] : [contour[i-1].clone().lerp(p,.5),p]) : contour;
   const g = new THREE.LatheGeometry(outline,count);
@@ -32,7 +42,7 @@ function fabric(points, depth, offset = 0, count = 32, foldOrigin = 0) {
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const theta = Math.atan2(x, z);
-    const fold=foldFactor(theta,y+foldOrigin);
+    const fold=folds(theta,y+foldOrigin);
     pos.setXYZ(i, x * fold, y + offset * Math.cos(theta), z * depth * fold);
     uv.setXY(i,uv.getX(i)*circumference,y);
   }
@@ -43,7 +53,7 @@ function fabric(points, depth, offset = 0, count = 32, foldOrigin = 0) {
 function surfacePoint(profile,theta,y,standOff) {
   const i=profile.findIndex(([,h],j)=>j>0 && y<=h);
   const [a,low]=profile[i-1], [b,high]=profile[i];
-  const radius=THREE.MathUtils.lerp(a,b,(y-low)/(high-low))*foldFactor(theta,y)+standOff;
+  const radius=THREE.MathUtils.lerp(a,b,(y-low)/(high-low))*robeVolume(theta,y)+standOff;
   return [radius*Math.sin(theta),y+.012*Math.cos(theta),radius*.70*Math.cos(theta)];
 }
 
@@ -138,7 +148,21 @@ function ribbon(parent, from, to, width, material, depth = .017) {
   return o;
 }
 
-function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
+function bootLast(geometry,side,sole) {
+  const vertices=geometry.attributes.position;
+  for(let i=0;i<vertices.count;i++) {
+    const x=vertices.getX(i), y=vertices.getY(i), z=vertices.getZ(i);
+    const toe=1-THREE.MathUtils.smoothstep(z,-.93,-.16);
+    const heel=THREE.MathUtils.smoothstep(z,.05,.83);
+    const width=1+.13*toe-.25*heel;
+    const height=sole ? Math.max(-.57,y)+.14*toe : y*(.62+.33*heel)+.24*toe;
+    vertices.setXYZ(i,x*width+side*.17*toe,height,z);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail) {
   const hip=new THREE.Vector3(side*legRig.separation,legRig.hip,0);
   const kneeY=-legRig.upper;
   const geometry=fabric([[.076,kneeY-.179],[.077,kneeY-.091],[.071,kneeY-.038],[.073,kneeY],
@@ -181,13 +205,12 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
   }
   const ankle=new THREE.Group();
   figure.add(ankle);
-  const shoe=piece(ankle,new THREE.SphereGeometry(1,22,13),footwear,0,-.023,-.034);
-  shoe.scale.set(.079,.041,.127);
+  const upperShoe=bootLast(new THREE.SphereGeometry(1,lowDetail ? 9 : 26,lowDetail ? 5 : 15),side,false);
+  const shoe=piece(ankle,upperShoe,footwear,0,-.027,-.034);
+  shoe.scale.set(.078,.050,.128);
   shoe.name=side<0 ? "Left boot" : "Right boot";
-  const soleShape=new THREE.SphereGeometry(1,24,13);
+  const soleShape=bootLast(new THREE.SphereGeometry(1,lowDetail ? 9 : 28,lowDetail ? 5 : 13),side,true);
   const soleVertices=soleShape.attributes.position;
-  for(let i=0;i<soleVertices.count;i++) soleVertices.setY(i,Math.max(-.57,soleVertices.getY(i)));
-  soleShape.computeVertexNormals();
   const sole=piece(ankle,soleShape,hem,0,-.05845,-.039);
   sole.scale.set(.081,.015,.132);
   sole.name=side<0 ? "Left sole" : "Right sole";
@@ -196,9 +219,17 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
     if(soleVertices.getY(i)>0) continue;
     footprint.push(new THREE.Vector3().fromBufferAttribute(soleVertices,i).multiply(sole.scale).add(sole.position));
   }
-  const stitch=new THREE.CatmullRomCurve3([[-.068,-.030,-.093],[-.044,-.010,-.127],
-    [0,-.004,-.138],[.044,-.010,-.127],[.068,-.030,-.093]].map(p=>new THREE.Vector3(...p)));
-  piece(ankle,new THREE.TubeGeometry(stitch,20,.0022,5,false),hem,0,0,0);
+  if(!lowDetail) {
+    const points=[];
+    const rimZ=-.062;
+    for(let i=0;i<=16;i++) {
+      const theta=Math.PI*i/16;
+      points.push(new THREE.Vector3(Math.cos(theta)*.070+side*.009*Math.sin(theta),
+        -.050+.007*Math.sin(theta),rimZ-.091*Math.sin(theta)));
+    }
+    const piping=new THREE.CatmullRomCurve3(points);
+    piece(ankle,new THREE.TubeGeometry(piping,24,.0019,5,false),binding,0,0,0);
+  }
   return { upper,calf,ankle,footprint,hip };
 }
 
@@ -241,15 +272,15 @@ const residentProfiles=[
 
 function faceDepth(x,y,z,nose) {
   const patch=(cx,cy,dx,dy)=>Math.exp(-((x-cx)**2/dx+(y-cy)**2/dy));
-  const cheek=patch(.075,-.026,.0017,.0013);
-  const socket=patch(.054,.017,.00037,.00026);
-  const jaw=patch(0,-.109,.0043,.0010);
+  const cheek=patch(.083,-.019,.0016,.00075);
+  const socket=patch(.053,.012,.00043,.00025);
+  const jaw=patch(0,-.114,.0031,.00065);
   const muzzle=patch(0,-.052,.0023,.0010);
   const bridge=patch(0,.005,.00042,.0022);
   const noseTip=patch(0,-.026,.00075,.00025);
   const nostril=patch(.015,-.041,.000065,.00009);
   const front=THREE.MathUtils.smoothstep(-z,.047,.118);
-  return z*.87-front*(.024*cheek-.012*socket+.016*jaw+.010*muzzle+
+  return z*.87-front*(.031*cheek-.016*socket+.018*jaw+.010*muzzle+
     (.021*bridge+.045*noseTip)*nose-.005*nostril);
 }
 
@@ -304,15 +335,16 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     [.232, .91], [.229, 1.04], [.251*shoulders, 1.17], [.267*shoulders, 1.256], [.21*shoulders, 1.32],
     [.114, 1.357], [.101, 1.361], [0, 1.364]];
   const garmentSections=lowDetail ? 14 : 32;
-  const robeSegments=detail ? 48 : garmentSections;
-  piece(figure,fabric(robe.slice(2),.70,.012,robeSegments),cloth,0,0,0).name="Outer robe shell";
-  piece(figure,fabric(robe.slice(0,3),.70,.012,robeSegments),binding,0,0,0);
+  const robeSegments=lowDetail ? garmentSections : 48;
+  piece(figure,fabric(robe.slice(2),.70,.012,robeSegments,0,robeVolume),cloth,0,0,0).name="Outer robe shell";
+  piece(figure,fabric(robe.slice(0,3),.70,.012,robeSegments,0,robeVolume),binding,0,0,0);
   piece(figure, new THREE.CylinderGeometry(.072,.084,.105,lowDetail ? 8 : 16), skin, 0, 1.382, -.005);
   const sashBottom=profile?.sash??.948;
   const sash=profile?.beard ? binding : hem;
   const sashHeight=profile?.beard ? .077 : .053;
-  piece(figure,fabric([[.235,sashBottom],[.242,sashBottom+.011],[.241,sashBottom+sashHeight-.009],
-    [.234,sashBottom+sashHeight]],.72,.012,garmentSections),sash,0,0,0);
+  const sashRim=(theta,y)=>robeVolume(theta,y)*(1+.024*Math.sin(theta*2.0+.6));
+  piece(figure,fabric([[.239,sashBottom],[.246,sashBottom+.011],[.245,sashBottom+sashHeight-.009],
+    [.238,sashBottom+sashHeight]],.71,.012,garmentSections,0,sashRim),sash,0,0,0);
   const lapel=profile?.beard ? .081 : profile?.wrap ? .046 : .064;
   robeSeam(figure,robe,[[3.64,1.324],[3.30,1.281],[3.00,1.229],[2.67,1.173],
     [2.48,1.115],[2.35,sashBottom+sashHeight*.77]],binding,lapel,detail,.018);
@@ -346,7 +378,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   figure.add(head);
   const skullRadius=.149, nose=profile?.nose??1;
   const jawWidth=y=>1-THREE.MathUtils.smoothstep(-y,.014,.144)*(profile?.jaw??.29);
-  const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : detail ? 52 : 36,lowDetail ? 13 : detail ? 36 : 25);
+  const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : detail ? 52 : 40,lowDetail ? 13 : detail ? 36 : 28);
   const position = skull.attributes.position;
   const faceColours=[];
   for (let i = 0; i < position.count; i++) {
@@ -356,12 +388,14 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const socket=Math.exp(-((Math.abs(x)-.053)**2/.00037+(y-.017)**2/.00026));
     const nostril=Math.exp(-((Math.abs(x)-.017)**2/.00010+(y+.042)**2/.00010));
     const pores=.013*Math.sin(331*x+192*y)*Math.sin(259*y-138*z);
+    const temples=THREE.MathUtils.smoothstep(Math.abs(x),.078,.143);
+    const throat=Math.exp(-((y+.124)**2/.0013))*front;
     position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose));
     const stubble=(profile?.beard || role==="merchant") ?
       .095*THREE.MathUtils.smoothstep(-y,.060,.126)*front : 0;
-    faceColours.push(1-front*(.14*socket+.23*nostril)+pores-stubble,
-      .97-front*(.18*socket+.10*cheek+.28*nostril)+pores-stubble,
-      .93-front*(.18*socket+.12*cheek+.29*nostril)+pores-stubble*.5);
+    faceColours.push(1-front*(.17*socket+.25*nostril)+pores-stubble-.10*throat-.055*temples,
+      .97-front*(.23*socket+.16*cheek+.31*nostril)+pores-stubble-.12*throat-.069*temples,
+      .93-front*(.22*socket+.16*cheek+.31*nostril)+pores-stubble*.5-.13*throat-.081*temples);
   }
   skull.setAttribute("color",new THREE.Float32BufferAttribute(faceColours,3));
   skull.computeVertexNormals();
@@ -503,7 +537,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const wrapTint=profile ? plain([0xaa997c,0x908679,0x797e75,0xc5ac86][variant],.95) : dyed;
   for (const side of [-1, 1]) {
     if (role==="player" || role==="helper" || role==="resident") {
-      articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear));
+      articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail));
     } else {
       const leg = new THREE.Group();
       leg.position.set(side * .119, .68, 0);

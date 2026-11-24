@@ -35,15 +35,19 @@
     background:#f6ecdaee; color:#322b24; box-shadow:0 7px 24px #2e201e33; }
   #missionHud h1 { margin:3px 0 8px; font-size:26px; font-weight:600; letter-spacing:.1em; }
   .mission-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-  #missionRestart { flex:none; margin-top:3px; padding:6px 9px; color:#79362b; font-weight:600;
-    border-color:#ad7765; background:#fff6e7; }
+  #missionRestart { flex:none; margin-top:3px; min-height:36px; padding:6px 11px;
+    color:#73352b; font-weight:700; border-color:#925445; background:#fff1da; }
   #missionRestart:hover, #missionRestart:focus-visible { background:#843b30; color:#fff6e7; }
   #missionIntro { position:fixed; z-index:4; top:24px; left:50%; transform:translateX(-50%);
-    display:grid; gap:4px; min-width:215px; padding:11px 20px 13px; color:#fff4da;
-    text-align:center; background:#6c3026f5; border:1px solid #e9c38b; box-shadow:0 5px 20px #34261f66;
-    border-radius:3px; pointer-events:none; }
-  #missionIntro strong { font-size:23px; letter-spacing:.13em; }
-  #missionIntro span { font-size:12px; letter-spacing:.05em; }
+    display:flex; align-items:center; gap:20px; max-width:calc(100vw - 80px);
+    padding:12px 15px 12px 19px; color:#fff4da; background:#642d24f7;
+    border:1px solid #e9c38b; border-left:4px solid #e1a75c; box-shadow:0 5px 20px #34261f66;
+    border-radius:3px; }
+  #missionIntro strong { display:block; font-size:21px; letter-spacing:.1em; }
+  #missionIntro span { display:block; margin-top:3px; font-size:13px; }
+  #missionBegin { flex:none; min-height:38px; padding:6px 12px; background:#f3d398;
+    color:#54251f; border-color:#e9c38b; font-weight:700; }
+  #missionBegin:hover, #missionBegin:focus-visible { background:#ffe7b6; }
   #missionIntro[hidden] { display:none; }
   #missionHud p { margin:7px 0; font-size:13px; line-height:1.55; }
   .mission-kicker { color:#87483b; font-size:11px; letter-spacing:.14em; }
@@ -65,13 +69,15 @@
   @media (max-width:760px), (max-height:525px) {
     #missionHud { top:auto; bottom:10px; left:10px; padding:8px 12px; }
     #missionHud h1 { font-size:19px; margin-bottom:4px; }
-    #missionIntro { top:14px; min-width:0; width:min(245px,calc(100vw - 86px)); }
+    #missionIntro { top:14px; gap:11px; padding:9px 11px; width:max-content; }
+    #missionIntro span { font-size:12px; }
     #missionRestart { min-height:40px; }
   }
   @media (max-height:459px) {
     #missionIntro { top:6px; padding:4px 9px; }
     #missionIntro strong { font-size:16px; }
     #missionIntro span, #missionHud .mission-controls { display:none; }
+    #missionBegin { min-height:31px; }
   }
   #missionRestartDialog { max-width:min(320px,calc(100vw - 52px)); background:#faf1de; color:#3a2d25;
     border:1px solid #b39b76; border-top:3px solid #843b30; padding:18px 21px; }

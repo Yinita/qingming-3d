@@ -120,7 +120,8 @@ export function createSurfaceLibrary() {
         float compaction=soilNoise(soilPoint*vec2(.84,1.42)+vec2(districts*1.8,-districts));
         float mottling=soilNoise(soilPoint*5.7+13.2);
         vec3 dust=mix(vec3(.74,.72,.65),vec3(1.12,1.04,.93),smoothstep(.22,.80,districts));
-        float aggregate=texture2D(finishColor,finishUV.zx*2.13+vec2(.21,.47)).r;
+        vec3 grains=texture2D(finishColor,finishUV.zx*2.13+vec2(.21,.47)).rgb;
+        float aggregate=grains.r;
         vec3 soil=litSurface*dust*(.77+.23*compaction+.12*mottling+.15*aggregate);
         ${street ? `
         // Wheel paths converge at the market and the two landings.
@@ -129,21 +130,29 @@ export function createSurfaceLibrary() {
           length(soilPoint-vec2(-43.0,-41.42))));
         float wander=soilNoise(soilPoint*.38)+.28*sin(soilPoint.y*.37);
         float crossTrack=mix(soilPoint.x-25.06-(soilPoint.y+26.6)*.08,soilPoint.y+41.42,approach);
-        float rutDist=abs(crossTrack-.21*wander);
-        float wheel=(1.-smoothstep(.035,.21,abs(rutDist-.73)))*max(market,approach);
-        float compressed=wheel*(.62+.38*compaction);
+        float track=crossTrack-.29*wander;
+        float rutDist=abs(track);
+        float rutCentre=rutDist-(.78+.069*sin(soilPoint.x*.51+soilPoint.y*.77));
+        float route=max(market,approach);
+        float wheel=(1.-smoothstep(.034,.23,abs(rutCentre)))*route;
+        float tread=(1.-smoothstep(.92,2.36,rutDist))*route;
+        float compressed=(.27*tread+.73*wheel)*(.60+.40*compaction);
+        float drift=smoothstep(.39,.71,soilNoise(soilPoint*.87+5.8))*(1.-.80*tread);
         float coarse=soilNoise(soilPoint*2.15+4.1);
-        soil=diffuseColor.rgb*pigment*vec3(1.63,1.91,2.48);
-        soil*=mix(.79,1.20,smoothstep(.15,.86,districts+.21*coarse));
-        soil*=mix(.84,1.02,relief.r)*mix(1.,.75,compressed);
-        soil=mix(soil,soil*vec3(.79,.86,.79),smoothstep(.60,.84,coarse)*.51);
+        vec3 earth=pigment*vec3(1.66,1.91,2.47);
+        vec3 stoneDust=grains*vec3(1.61,1.79,2.09);
+        soil=diffuseColor.rgb*mix(earth,stoneDust,.35*drift+.17);
+        soil*=mix(.72,1.19,smoothstep(.12,.82,districts+.24*coarse));
+        soil*=mix(.81,1.02,relief.r)*mix(1.,.71,compressed);
+        soil*=mix(vec3(1.),vec3(1.16,1.10,.97),drift);
+        soil=mix(soil,soil*vec3(.74,.84,.78),smoothstep(.58,.84,coarse)*.53*(1.-.5*tread));
         ` : ""}
         diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
         ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
-        ${street ? "roughnessFactor=clamp(roughnessFactor+(.10-.29*compressed)*finishReady,.51,1.);" : ""}
+        ${street ? "roughnessFactor=clamp(roughnessFactor+(.09+.08*drift-.32*compressed)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
@@ -151,6 +160,11 @@ export function createSurfaceLibrary() {
         ${floor ? `
         vec2 grit=texture2D(finishNormal,finishUV.zx*2.13+vec2(.21,.47)).yx*2.-1.;
         reliefVector=vec3(sy.x,0.,sy.y)*${street ? ".76" : ".44"}+vec3(grit.x,0.,grit.y)*${street ? ".18" : ".29"};
+        ` : ""}
+        ${street ? `
+        float bank=exp(-31.*rutCentre*rutCentre)*rutCentre*sign(track)*route;
+        vec2 crossSlope=mix(vec2(1.,-.08),vec2(0.,1.),approach);
+        reliefVector=reliefVector*(1.-.37*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*1.42;
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;
