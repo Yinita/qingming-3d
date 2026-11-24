@@ -39,10 +39,10 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   worker.head.rotation.set([.01,-.04,.05,-.02][variant],[.14,-.17,.23,-.11][variant],.017*variant);
   const [left,right]=worker.limbs.arms;
   const [leftElbow,rightElbow]=worker.limbs.elbows;
-  left.rotation.set([.01,-.16,.13,-.42][variant],0,.068);
-  right.rotation.set([-.20,-.27,0,.14][variant],0,-.04);
-  leftElbow.rotation.x=[-.06,-.44,-.09,-.63][variant];
-  rightElbow.rotation.x=[-.34,-.51,-.04,-.05][variant];
+  left.rotation.set([-.28,-.16,.15,-.12][variant],0,[.12,.08,.09,.19][variant]);
+  right.rotation.set([-.19,.02,-.34,-.32][variant],0,[-.16,-.06,-.14,-.11][variant]);
+  leftElbow.rotation.x=[-.40,-.49,-.09,-.84][variant];
+  rightElbow.rotation.x=[-.38,-.64,-.45,-.17][variant];
   worker.figure.updateMatrixWorld(true);
   const parts=new Map(), point=new THREE.Vector3();
   worker.figure.traverse(node=>{

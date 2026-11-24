@@ -37,7 +37,7 @@ export function flagstones(parent, x, z, width, depth, surface, seed, relief=1) 
   const rock = surface("worn-stone", 0xf5eddf, .79);
   rock.vertexColors = true;
   const base = walkPath(width + .14, depth + .47, mortar);
-  base.position.set(x, .006, z);
+  base.position.set(x, relief<.5 ? -.005 : .006, z);
   parent.add(base);
   const stones = [];
   let left = x - width / 2;
@@ -48,11 +48,11 @@ export function flagstones(parent, x, z, width, depth, surface, seed, relief=1) 
     let bottom = z - offset;
     while (bottom < z + offset - .18) {
       const d = Math.min(.34 + random() * .35, z + offset - bottom);
-      const h = (.035 + random() * .025)*relief;
+      const h = (.035 + random() * .025)*Math.max(.63,relief);
       const block = detailedBox(w - .017, h, d - .017, rock, .017, random() * 11);
       block.rotateY((random() - .5) * .033);
       block.rotateX((random() - .5) * .040);
-      block.translate(left + w / 2, h / 2 + .003, bottom + d / 2);
+      block.translate(left + w / 2, h / 2 + (relief<.5 ? -.015 : .003), bottom + d / 2);
       const shade = .71 + random() * .23;
       tint(block, new THREE.Color(shade, shade * (1 - random() * .07), shade * (.91 + random() * .07)));
       stones.push(block);

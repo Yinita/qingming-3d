@@ -19,7 +19,7 @@ export function bridgeDeckHeight(anchor,x) {
 const materialScale = {
   "tea-wood": 1.4, "rail-wood": 2.0, "stone-paving": 3.8,
   "gray-roof-tile": 2.4, "lime-plaster": 2.5, "indigo-linen": 1.0,
-  "worn-stone": 1.25, "willow-bark": 1.7,
+  "worn-stone": 1.25, "willow-bark": 1.7, "packed-earth": 2.4,
 };
 
 export function createSurfaceLibrary() {
@@ -123,28 +123,34 @@ export function createSurfaceLibrary() {
         float aggregate=texture2D(finishColor,finishUV.zx*2.13+vec2(.21,.47)).r;
         vec3 soil=litSurface*dust*(.77+.23*compaction+.12*mottling+.15*aggregate);
         ${street ? `
-        vec2 ruts=vec2(soilPoint.x+sin(soilPoint.y*.37)*.42,soilPoint.y);
-        float tracks=soilNoise(ruts*vec2(2.35,.26));
-        float crust=soilNoise(soilPoint*3.8+18.)*.38+soilNoise(soilPoint*.53)*.62;
-        float compacted=smoothstep(.36,.80,tracks*.56+crust*.44);
-        float coarse=smoothstep(.24,.75,soilNoise(soilPoint*11.6+3.6));
-        vec3 groundDye=mix(vec3(.69,.65,.53),vec3(1.03,.99,.85),compacted);
-        groundDye=mix(groundDye,groundDye*vec3(.86,.90,.81),smoothstep(.62,.84,crust)*.52);
-        soil*=groundDye*(.89+.26*coarse);
+        // Wheel paths converge at the market and the two landings.
+        float market=1.-smoothstep(8.,16.,length((soilPoint-vec2(25.06,-26.6))*vec2(1.,.56)));
+        float approach=1.-smoothstep(3.,12.,min(length(soilPoint-vec2(-71.0,-41.42)),
+          length(soilPoint-vec2(-43.0,-41.42))));
+        float wander=soilNoise(soilPoint*.38)+.28*sin(soilPoint.y*.37);
+        float crossTrack=mix(soilPoint.x-25.06-(soilPoint.y+26.6)*.08,soilPoint.y+41.42,approach);
+        float rutDist=abs(crossTrack-.21*wander);
+        float wheel=(1.-smoothstep(.035,.21,abs(rutDist-.73)))*max(market,approach);
+        float compressed=wheel*(.62+.38*compaction);
+        float coarse=soilNoise(soilPoint*2.15+4.1);
+        soil=diffuseColor.rgb*pigment*vec3(1.63,1.91,2.48);
+        soil*=mix(.79,1.20,smoothstep(.15,.86,districts+.21*coarse));
+        soil*=mix(.84,1.02,relief.r)*mix(1.,.75,compressed);
+        soil=mix(soil,soil*vec3(.79,.86,.79),smoothstep(.60,.84,coarse)*.51);
         ` : ""}
         diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
         ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
-        ${street ? "roughnessFactor=clamp(roughnessFactor+(.16-.23*compacted)*finishReady,.51,1.);" : ""}
+        ${street ? "roughnessFactor=clamp(roughnessFactor+(.10-.29*compressed)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
         vec3 reliefVector=vec3(sy.x,0.,sy.y)*(finishWeight.y*.64);
         ${floor ? `
         vec2 grit=texture2D(finishNormal,finishUV.zx*2.13+vec2(.21,.47)).yx*2.-1.;
-        reliefVector=vec3(sy.x,0.,sy.y)*${street ? ".54" : ".44"}+vec3(grit.x,0.,grit.y)*${street ? ".40" : ".29"};
+        reliefVector=vec3(sy.x,0.,sy.y)*${street ? ".76" : ".44"}+vec3(grit.x,0.,grit.y)*${street ? ".18" : ".29"};
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;

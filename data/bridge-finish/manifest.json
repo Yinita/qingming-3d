@@ -1,0 +1,56 @@
+{
+  "tea-wood": {
+    "metres": 1.4,
+    "albedo_size": 4096,
+    "surface_map_size": 2048,
+    "provenance": "authored procedural"
+  },
+  "rail-wood": {
+    "metres": 2.0,
+    "albedo_size": 4096,
+    "surface_map_size": 2048,
+    "provenance": "authored procedural"
+  },
+  "stone-paving": {
+    "metres": 3.8,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  },
+  "gray-roof-tile": {
+    "metres": 2.4,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  },
+  "lime-plaster": {
+    "metres": 2.5,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  },
+  "indigo-linen": {
+    "metres": 1.0,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  },
+  "worn-stone": {
+    "metres": 1.25,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  },
+  "willow-bark": {
+    "metres": 1.7,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  },
+  "packed-earth": {
+    "metres": 2.4,
+    "albedo_size": 2048,
+    "surface_map_size": 1024,
+    "provenance": "authored procedural"
+  }
+}
