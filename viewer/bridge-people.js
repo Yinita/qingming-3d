@@ -13,19 +13,88 @@ const { clamp }=THREE.MathUtils;
 
 const plain = (color, roughness = .84) => new THREE.MeshStandardMaterial({ color, roughness });
 
-function fabric(points, depth, offsets = []) {
-  const count = 32;
-  const g = new THREE.LatheGeometry(points.map(([radius, y]) => new THREE.Vector2(radius, y)), count);
+function foldFactor(theta,y) {
+  const crease=Math.pow(Math.max(0,Math.cos(theta*6+y*6.2)),5);
+  return 1+.062*Math.sin(theta*7+y*4.2)+.026*Math.sin(theta*13-y*6.2)+.047*crease;
+}
+
+function fabric(points, depth, offset = 0, count = 32) {
+  const contour=points.map(([radius,y])=>new THREE.Vector2(radius,y));
+  const outline=count>32 ? contour.flatMap((p,i)=>i===0 ? [p] : [contour[i-1].clone().lerp(p,.5),p]) : contour;
+  const g = new THREE.LatheGeometry(outline,count);
   const pos = g.attributes.position;
+  const uv = g.attributes.uv;
+  const circumference=2*Math.PI*Math.max(...points.map(([r])=>r));
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
     const theta = Math.atan2(x, z);
-    const crease=Math.pow(Math.max(0,Math.cos(theta*6+y*6.2)),5);
-    const fold=1+.041*Math.sin(theta*7+y*4.2)+.019*Math.sin(theta*13-y*6.2)+.036*crease;
-    pos.setXYZ(i, x * fold, y + (offsets[0] || 0) * Math.cos(theta), z * depth * fold);
+    const fold=foldFactor(theta,y);
+    pos.setXYZ(i, x * fold, y + offset * Math.cos(theta), z * depth * fold);
+    uv.setXY(i,uv.getX(i)*circumference,y);
   }
   g.computeVertexNormals();
   return g;
+}
+
+function surfacePoint(profile,theta,y,standOff) {
+  const i=profile.findIndex(([,h],j)=>j>0 && y<=h);
+  const [a,low]=profile[i-1], [b,high]=profile[i];
+  const radius=THREE.MathUtils.lerp(a,b,(y-low)/(high-low))*foldFactor(theta,y)+standOff;
+  return [radius*Math.sin(theta),y+.012*Math.cos(theta),radius*.70*Math.cos(theta)];
+}
+
+function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
+  const course=new THREE.CatmullRomCurve3(points.map(([theta,y])=>new THREE.Vector3(theta,y,0)));
+  const vertices=[],uv=[],indices=[];
+  const rows=detail ? 28 : 12;
+  for(let row=0;row<=rows;row++) {
+    const point=course.getPoint(row/rows);
+    for (const side of [-1,1]) {
+      const y=point.y+side*width*.37, theta=point.x+side*width*1.42;
+      vertices.push(...surfacePoint(profile,theta,y,standOff));
+      uv.push(row/rows,side*.5+.5);
+    }
+    if(row>0) {
+      const i=row*2;
+      indices.push(i-2,i-1,i,i-1,i+1,i);
+    }
+  }
+  const shape=new THREE.BufferGeometry();
+  shape.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));
+  shape.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+  shape.setIndex(indices);
+  shape.computeVertexNormals();
+  piece(parent,shape,material,0,0,0);
+}
+
+function apron(figure,profile,material,edge) {
+  const positions=[],uv=[],indices=[];
+  const columns=18, rows=10;
+  for(let row=0;row<=rows;row++) {
+    const t=row/rows;
+    const spread=.63+.16*t;
+    for(let col=0;col<=columns;col++) {
+      const u=col/columns, theta=Math.PI+(2*u-1)*spread;
+      const y=.950-.344*t+Math.sin(Math.PI*u)*.016*t;
+      const relief=.016+.005*Math.cos(u*22+t*2)*t;
+      positions.push(...surfacePoint(profile,theta,y,relief));
+      uv.push(.38*u,1-y);
+      if(row>0&&col>0) {
+        const i=row*(columns+1)+col;
+        indices.push(i-columns-2,i-columns-1,i,i-columns-2,i,i-1);
+      }
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  piece(figure,geometry,material,0,0,0).name="Fitted linen apron";
+  for(const side of [-1,1]) {
+    robeSeam(figure,profile,[[Math.PI+side*.63,.95],[Math.PI+side*.71,.774],
+      [Math.PI+side*.78,.613]],edge,.009,true,.022);
+  }
 }
 
 function wovenHat(head,straw,rim) {
@@ -77,14 +146,24 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear) {
   figure.add(ankle);
   const shoe=piece(ankle,new THREE.SphereGeometry(1,22,13),footwear,0,-.023,-.034);
   shoe.scale.set(.079,.041,.127);
-  shoe.name=side<0 ? "Player left boot" : "Player right boot";
+  shoe.name=side<0 ? "Left boot" : "Right boot";
   const sole=piece(ankle,new THREE.SphereGeometry(1,20,9),hem,0,-.052,-.039);
   sole.scale.set(.081,.015,.132);
-  return { upper,knee,calf,ankle,hip:new THREE.Vector3(side*.119,.68,0) };
+  sole.name=side<0 ? "Left sole" : "Right sole";
+  const footprint=[];
+  const vertices=sole.geometry.attributes.position;
+  for(let i=0;i<vertices.count;i+=2){
+    if(vertices.getY(i)>0) continue;
+    footprint.push(new THREE.Vector3().fromBufferAttribute(vertices,i).multiply(sole.scale).add(sole.position));
+  }
+  return { upper,knee,calf,ankle,footprint,hip:new THREE.Vector3(side*.119,.68,0) };
 }
 
 function waterStain(material, moisture) {
+  const previous=material.onBeforeCompile;
+  const key=material.customProgramCacheKey();
   material.onBeforeCompile=shader=>{
+    previous.call(material,shader);
     shader.uniforms.wetCloth=moisture;
     shader.vertexShader=shader.vertexShader
       .replace("#include <common>","#include <common>\nvarying vec3 wetPoint;")
@@ -103,7 +182,7 @@ function waterStain(material, moisture) {
       .replace("#include <roughnessmap_fragment>",
         "#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.32,wet*.72);");
   };
-  material.customProgramCacheKey=()=>"river-worker-wet-cloth";
+  material.customProgramCacheKey=()=>key+"-wet-cloth";
 }
 
 export function riverWorker(parent, surface, role, residentHat=false) {
@@ -117,21 +196,24 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   }[role];
   const cloth = surface("indigo-linen", shades[0], .40);
   const trousers = surface("indigo-linen", shades[1], .49);
-  if(role==="resident"){
-    cloth.userData.streetCloth=true;
-    cloth.onBeforeCompile=shader=>{
+  cloth.userData.streetCloth=role==="resident";
+  const apronLinen=role==="merchant" ? surface("indigo-linen",0xc7a079,.57) : null;
+  for(const linen of [cloth,trousers,...(apronLinen ? [apronLinen] : [])]) {
+    linen.onBeforeCompile=shader=>{
       shader.fragmentShader=shader.fragmentShader.replace("#include <map_fragment>",`
         #ifdef USE_MAP
           vec3 weave=texture2D(map,vMapUv).rgb;
           float lightness=dot(weave,vec3(.2126,.7152,.0722));
-          diffuseColor.rgb*=mix(.53,.96,smoothstep(.035,.46,lightness));
+          float fiber=smoothstep(.029,.47,lightness);
+          diffuseColor.rgb*=mix(vec3(.43,.41,.37),vec3(.96,1.01,1.02),fiber);
         #endif`);
     };
-    cloth.customProgramCacheKey=()=>"resident-undyed-linen";
+    linen.customProgramCacheKey=()=>"dyed-woven-linen";
   }
   const binding = plain(shades[2], .78);
   const dyed = plain(shades[3], .79);
-  const skin = plain({player:0xcfab8c,merchant:0xb7896b,helper:0xc09576,resident:0xc6a182}[role],.78);
+  binding.side=dyed.side=THREE.DoubleSide;
+  const skin = plain({player:0xcfab8c,merchant:0xb7896b,helper:0xc09576,resident:0xc6a182}[role],.72);
   const facePaint=skin.clone();
   facePaint.vertexColors=true;
   const lips = plain(0x785245, .80);
@@ -143,25 +225,22 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   if (role==="player") {
     for (const mat of [trousers,footwear,hem,dyed,cloth]) waterStain(mat,moisture);
   }
-  const body = fabric([[0, .606], [.282, .619], [.293, .66], [.268, .77],
+  const detail=role!=="resident";
+  const robe=[[0, .606], [.282, .619], [.293, .66], [.268, .77],
     [.232, .91], [.229, 1.04], [.251, 1.17], [.267, 1.256], [.21, 1.32],
-    [.114, 1.357], [.101, 1.353], [0, 1.344]], .70, [.012]);
-  piece(figure, body, cloth, 0, 0, 0).name="Outer robe shell";
+    [.114, 1.357], [.101, 1.361], [0, 1.364]];
+  piece(figure,fabric(robe,.70,.012,detail ? 48 : 32),cloth,0,0,0).name="Outer robe shell";
   piece(figure, new THREE.CylinderGeometry(.072, .084, .105, 16), skin, 0, 1.382, -.005);
   piece(figure, fabric([[.232,.948],[.238,.961],[.236,1.008],[.229,1.015]], .72), hem, 0, 0, 0);
-  piece(figure, fabric([[.274,.618],[.294,.634],[.296,.657],[.287,.668]],.708,[.012]),binding,0,0,0);
-  ribbon(figure,[-.115,1.329,-.114],[.014,1.257,-.190],.037,binding);
-  ribbon(figure,[.014,1.257,-.190],[.145,1.164,-.173],.037,binding);
-  ribbon(figure,[.145,1.164,-.173],[-.067,.986,-.172],.039,binding);
-  ribbon(figure,[.103,1.332,-.106],[.047,1.247,-.183],.031,dyed);
+  piece(figure,fabric([[.274,.618],[.294,.634],[.296,.657],[.287,.668]],.708,.012),binding,0,0,0);
+  robeSeam(figure,robe,[[3.64,1.327],[3.24,1.268],[2.85,1.206],[2.51,1.151],[2.93,1.056],[3.41,.983]],binding,.046,detail);
+  robeSeam(figure,robe,[[2.56,1.33],[2.74,1.281],[3.02,1.231]],dyed,.030,detail);
   ribbon(figure, [.179,.978,-.126],[.153,.803,-.171],.030,dyed);
   const knot=piece(figure,new THREE.SphereGeometry(1,12,8),dyed,.147,.982,-.165);
   knot.scale.set(.048,.025,.026);
-  if (role === "merchant") {
-    const apron = detailedBox(.307, .351, .035, dyed, .018);
-    const panel = piece(figure, apron, dyed, .001, .792, -.175);
-    panel.rotation.x = -.11;
-    for (const x of [-.121, .121]) ribbon(figure, [x, .946, -.197], [x, .636, -.187], .011, binding, .008);
+  if (apronLinen) {
+    apronLinen.side=THREE.DoubleSide;
+    apron(figure,robe,apronLinen,binding);
   }
 
   const head = new THREE.Group();
@@ -177,8 +256,10 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const cheek=Math.exp(-((Math.abs(x)-.081)**2/.0017+(y+.031)**2/.0011));
     const socket=Math.exp(-((Math.abs(x)-.053)**2/.00037+(y-.017)**2/.00026));
     const jaw=Math.exp(-(x*x/.0043+(y+.109)**2/.0010));
-    position.setXYZ(i,x*chin,y*1.105,z*.87-front*(.017*cheek-.012*socket+.014*jaw));
-    faceColours.push(1-.14*socket,.97-.18*socket-.085*cheek,.93-.18*socket-.096*cheek);
+    const muzzle=Math.exp(-(x*x/.0023+(y+.049)**2/.0010));
+    const pores=.013*Math.sin(331*x+192*y)*Math.sin(259*y-138*z);
+    position.setXYZ(i,x*chin,y*1.105,z*.87-front*(.021*cheek-.012*socket+.014*jaw+.008*muzzle));
+    faceColours.push(1-.14*socket+pores,.97-.18*socket-.10*cheek+pores,.93-.18*socket-.12*cheek+pores);
   }
   skull.setAttribute("color",new THREE.Float32BufferAttribute(faceColours,3));
   skull.computeVertexNormals();
@@ -191,11 +272,11 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   for (const side of [-1, 1]) {
     const ear = piece(head, new THREE.SphereGeometry(.026, 10, 8), skin, side * .136, -.014, -.004);
     ear.scale.set(.55, 1, .67);
-    const eye=piece(head,new THREE.SphereGeometry(.017,12,8),lips,side*.050,.012,-.112);
-    eye.scale.set(1.23,.43,.42);
+    const eye=piece(head,new THREE.SphereGeometry(.017,12,8),lips,side*.050,.013,-.120);
+    eye.scale.set(1.18,.36,.28);
     eye.rotation.z=side*.07;
-    const iris=piece(head,new THREE.SphereGeometry(.0084,10,7),brow,side*.047,.012,-.116);
-    iris.scale.set(.87,.71,.74);
+    const iris=piece(head,new THREE.SphereGeometry(.007,10,7),brow,side*.047,.013,-.125);
+    iris.scale.set(.70,.63,.43);
     ribbon(head,[side*.029,.040,-.125],[side*.071,.040,-.113],.007,brow,.005);
   }
   const nose=piece(head,new THREE.SphereGeometry(.031,14,10),skin,0,-.013,-.119);
@@ -211,7 +292,13 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const straw = plain(0xb49a62, .90);
     const rim = plain(0x7f6a4a, .94);
     wovenHat(head,straw,rim);
-    for (const x of [-.112,.112]) ribbon(head,[x,.095,-.067],[x*.51,-.104,-.081], .012, dyed,.009);
+    const cord=plain(0x77654b,.97);
+    for (const side of [-1,1]) {
+      const trace=new THREE.CatmullRomCurve3([[side*.139,.158,-.018],[side*.144,.072,-.027],
+        [side*.135,-.018,-.048],[side*.108,-.081,-.067],[side*.052,-.127,-.064],[0,-.141,-.059]]
+        .map(p=>new THREE.Vector3(...p)));
+      piece(head,new THREE.TubeGeometry(trace,detail ? 20 : 12,.0048,5,false),cord,0,0,0);
+    }
   }
 
   const limbs = { legs: [], arms: [] };
@@ -226,7 +313,7 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   }
   const articulated=[];
   for (const side of [-1, 1]) {
-    if (role==="player") {
+    if (role==="player" || role==="helper" || role==="resident") {
       articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear));
     } else {
       const leg = new THREE.Group();
@@ -314,7 +401,7 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const down=new THREE.Vector3(0,-1,0), up=new THREE.Vector3(0,1,0);
     const anklePoint=new THREE.Vector3(), axis=new THREE.Vector3();
     const bend=new THREE.Vector3(), kneePoint=new THREE.Vector3(), direction=new THREE.Vector3();
-    const tilt=new THREE.Vector3();
+    const tilt=new THREE.Vector3(), solePoint=new THREE.Vector3();
     const heading=new THREE.Quaternion();
     const outer=.332, inner=.306;
     function bone(mesh,start,end,rest) {
@@ -328,6 +415,20 @@ export function riverWorker(parent, surface, role, residentHat=false) {
       for(const [i,leg] of articulated.entries()){
         const foot=feet[i], gx=foot.x-x, gz=foot.z-z;
         anklePoint.set(gx*cos-gz*sin,foot.y-y+.067,gx*sin+gz*cos);
+        const delta=.075;
+        const sx=clamp((floor(foot.x-delta,foot.z)-floor(foot.x+delta,foot.z))/(2*delta),-.6,.6);
+        const sz=clamp((floor(foot.x,foot.z-delta)-floor(foot.x,foot.z+delta))/(2*delta),-.6,.6);
+        tilt.set(sx*cos-sz*sin,1,sx*sin+sz*cos).normalize();
+        leg.ankle.quaternion.setFromUnitVectors(up,tilt)
+          .multiply(heading.setFromAxisAngle(up,foot.yaw-yaw));
+        let lift=0;
+        for(const point of leg.footprint) {
+          solePoint.copy(point).applyQuaternion(leg.ankle.quaternion);
+          const sx=foot.x+solePoint.x*cos+solePoint.z*sin;
+          const sz=foot.z-solePoint.x*sin+solePoint.z*cos;
+          lift=Math.max(lift,floor(sx,sz)+.006-foot.y-.067-solePoint.y);
+        }
+        anklePoint.y+=lift;
         axis.copy(anklePoint).sub(leg.hip);
         const span=Math.max(.045,axis.length());
         axis.normalize();
@@ -340,16 +441,17 @@ export function riverWorker(parent, surface, role, residentHat=false) {
         bone(leg.calf,kneePoint,anklePoint,inner);
         leg.knee.position.copy(kneePoint);
         leg.ankle.position.copy(anklePoint);
-        const delta=.075;
-        const sx=clamp((floor(foot.x-delta,foot.z)-floor(foot.x+delta,foot.z))/(2*delta),-.6,.6);
-        const sz=clamp((floor(foot.x,foot.z-delta)-floor(foot.x,foot.z+delta))/(2*delta),-.6,.6);
-        tilt.set(sx*cos-sz*sin,1,sx*sin+sz*cos).normalize();
-        leg.ankle.quaternion.setFromUnitVectors(up,tilt)
-          .multiply(heading.setFromAxisAngle(up,foot.yaw-yaw));
       }
     };
   }
-  return { figure, limbs, straps, head, reachWithRightHand, poseFeet, moisture:moisture.value };
+  function stand(floor,x,y,z,yaw) {
+    const feet=[-1,1].map(side=>{
+      const px=x+side*.119*Math.cos(yaw), pz=z-side*.119*Math.sin(yaw);
+      return {x:px,y:floor(px,pz),z:pz,yaw,side};
+    });
+    poseFeet(feet,floor,x,y,z,yaw);
+  }
+  return { figure, limbs, straps, head, reachWithRightHand, poseFeet, stand, moisture:moisture.value };
 }
 
 export function counterCeramics(stall) {

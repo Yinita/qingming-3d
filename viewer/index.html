@@ -64,7 +64,7 @@
   <div id="status">加载中…</div>
   <div id="credit">原画：清院本《清明上河图》，Wikimedia Commons 公有领域扫描。房屋 3D 模型由 Hunyuan3D-2 生成，受腾讯混元非商业许可约束，仅限非商业使用。地面补全用 LaMa，纸片放大用 Real-ESRGAN。</div>
 </div>
-<div id="seal">入卷 v1.3</div>
+<div id="seal">入卷 v1.4</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -72,6 +72,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
 import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetScene } from "./bridge-street.js";
+import { createSurfaceLibrary } from "./bridge-look.js";
+import { sweepHorizontal } from "./bridge-collision.js";
 
 const params = new URLSearchParams(location.search);
 const base = (params.get("scene") || "../data/seg01/scene/").replace(/\/?$/, "/");
@@ -79,6 +81,7 @@ const L = await fetch(base + "layout.json").then(r => r.json());
 const th = THREE.MathUtils.degToRad(L.camera.elev_deg);
 const s = L.camera.m_per_px, W = L.image.width, H = L.image.height;
 const GW = L.ground.width, GD = L.ground.depth;
+
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -88,6 +91,7 @@ renderer.domElement.tabIndex = 0;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xEDE6D6);
 const loader = new THREE.TextureLoader();
+const surfaces=createSurfaceLibrary();
 const tex = url => { const t = loader.load(base + url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
 
 // Ground: the painting with objects removed, mapped affinely onto the ground plane.
@@ -95,25 +99,8 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBas
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -GD / 2); scene.add(ground);
 ground.receiveShadow=true;
 ground.userData.archiveMaterial=ground.material;
-const walkingGround=new THREE.MeshStandardMaterial({map:ground.material.map,roughness:.94});
+const walkingGround=surfaces.project("worn-stone",{map:ground.material.map,roughness:.94},true);
 ground.userData.perspectiveMaterial=walkingGround;
-const groundNormal=loader.load("../data/bridge-finish/worn-stone/normal.png");
-groundNormal.wrapS=groundNormal.wrapT=THREE.RepeatWrapping;
-groundNormal.anisotropy=8;
-walkingGround.onBeforeCompile=shader=>{
-  shader.uniforms.groundDetail={value:groundNormal};
-  shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec2 stoneXZ;")
-    .replace("#include <begin_vertex>","#include <begin_vertex>\nstoneXZ=(modelMatrix*vec4(position,1.)).xz;");
-  shader.fragmentShader=shader.fragmentShader.replace("#include <common>",`#include <common>
-    varying vec2 stoneXZ;
-    uniform sampler2D groundDetail;`)
-    .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
-      vec3 stone=2.*texture2D(groundDetail,stoneXZ*.86).xyz-1.;
-      vec3 tangent=(viewMatrix*vec4(1.,0.,0.,0.)).xyz;
-      vec3 bitangent=(viewMatrix*vec4(0.,0.,-1.,0.)).xyz;
-      normal=normalize(normal*max(.65,stone.z)+.37*(tangent*stone.x+bitangent*stone.y));`);
-};
-walkingGround.customProgramCacheKey=()=>"walkable-pbr-ground";
 
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
 apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.add(apron);
@@ -236,7 +223,7 @@ function startModels() {
       if(o.label==="house"){
         if(!n.geometry.attributes.normal) n.geometry.computeVertexNormals();
         n.userData.archiveMaterial=n.material;
-        n.userData.nearbyMaterial=new THREE.MeshStandardMaterial({
+        n.userData.nearbyMaterial=surfaces.project(/^roof/.test(n.name) ? "gray-roof-tile" : "lime-plaster",{
           map,color:map ? 0xf1e6d2 : 0xa99073,side:THREE.DoubleSide,roughness:synth ? .89 : .96,
         });
         n.castShadow=n.receiveShadow=true;
@@ -245,7 +232,8 @@ function startModels() {
     });
     g.scene.position.set(...o.mesh.pos); g.scene.userData = { ...o, finishFaces }; scene.add(g.scene); models.push(g.scene);
     if(o.label==="house" && !street.replacements.has(o.id)){
-      street.collisions.meshBox("existing house",g.scene);
+      street.registerHouse(g.scene);
+      if(mode==="walk") clearWalkSpawn();
     }
     pending--; setModels(showModels);
   }, undefined, () => { pending--; setModels(showModels); });
@@ -304,6 +292,7 @@ function setMode(m) {
     mission ||= createBridgeMission({ scene, camera: persp, renderer, ambient, sun, ground, apron, street, setMode });
   }
   mode = m;
+
   for (const [id, k] of [["bPaint", "paint"], ["bWalk", "walk"], ["bOrbit", "orbit"]])
     document.getElementById(id).setAttribute("aria-pressed", String(k === m));
   document.getElementById("help").textContent = help[m] || "";
@@ -317,6 +306,7 @@ function setMode(m) {
   }
   if (m === "missionScroll") placeMissionCam();
   if (m === "paint") placePaintCam();
+  if (m === "walk") clearWalkSpawn();
   if (m === "orbit") {
     persp.fov = 50; persp.updateProjectionMatrix();
     orbit.target.copy(paintTarget());
@@ -327,6 +317,22 @@ function setMode(m) {
 
 // --- walk controls ---
 const walk = { yaw: 0, pitch: -0.05, pos: new THREE.Vector3(0, 1.6, 2) };
+const walkClear=(x,z,feet)=>!street.collisions.blocking(x,z,feet,.31,1.67);
+function clearWalkSpawn() {
+  const {x,y,z}=walk.pos, feet=y-1.54;
+  if(walkClear(x,z,feet)) return;
+  for(let i=1;i<=28;i++) {
+    const radius=i*.42;
+    const samples=Math.max(12,i*5);
+    for(let j=0;j<samples;j++) {
+      const angle=2*Math.PI*j/samples;
+      const px=x+Math.cos(angle)*radius, pz=z+Math.sin(angle)*radius;
+      if(!walkClear(px,pz,feet)) continue;
+      walk.pos.set(px,y,pz);
+      return;
+    }
+  }
+}
 const keys = new Set();
 addEventListener("keydown", e => keys.add(e.key.toLowerCase()));
 addEventListener("keyup", e => keys.delete(e.key.toLowerCase()));
@@ -396,6 +402,7 @@ const clock = new THREE.Clock();
 const fwd = new THREE.Vector3(), right = new THREE.Vector3();
 renderer.setAnimationLoop(now => {
   const elapsed = clock.getDelta();
+
   const dt = Math.min(elapsed, 0.05);
   if (mode === "fly") stepFly(now);
   if (inMission()) {
@@ -412,15 +419,16 @@ renderer.setAnimationLoop(now => {
     const forward=Number(keys.has("w")||keys.has("arrowup"))-Number(keys.has("s")||keys.has("arrowdown"));
     const lateral=Number(keys.has("d")||keys.has("arrowright"))-Number(keys.has("a")||keys.has("arrowleft"));
     const pace=v/(Math.hypot(forward,lateral)||1);
-    const nx=walk.pos.x+(fwd.x*forward+right.x*lateral)*pace;
-    const nz=walk.pos.z+(fwd.z*forward+right.z*lateral)*pace;
     const feet=walk.pos.y-1.54;
-    const previous=street.collisions.blocking(walk.pos.x,walk.pos.z,feet,.31,1.67);
-    if(!street.collisions.blocking(nx,walk.pos.z,feet,.31,1.67,previous)) walk.pos.x=nx;
-    if(!street.collisions.blocking(walk.pos.x,nz,feet,.31,1.67,previous)) walk.pos.z=nz;
-    const ny=walk.pos.y+v*(Number(keys.has("e"))-Number(keys.has("q")));
-    if(!street.collisions.blocking(walk.pos.x,walk.pos.z,ny-1.54,.31,1.67,previous))
-      walk.pos.y=Math.max(.3,ny);
+    sweepHorizontal(walk.pos,(fwd.x*forward+right.x*lateral)*pace,(fwd.z*forward+right.z*lateral)*pace,
+      (x,z)=>walkClear(x,z,feet));
+    const shift=v*(Number(keys.has("e"))-Number(keys.has("q")));
+    const pieces=Math.max(1,Math.ceil(Math.abs(shift)/.09));
+    for(let i=0;i<pieces && shift;i++) {
+      const ny=Math.max(.3,walk.pos.y+shift/pieces);
+      if(!walkClear(walk.pos.x,walk.pos.z,ny-1.54)) break;
+      walk.pos.y=ny;
+    }
     applyWalk();
   }
   const camPos = cam.position;

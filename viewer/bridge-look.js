@@ -5,6 +5,8 @@ import { buildCanalBed, canalOrigin } from "./bridge-canal-bed.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const materialRoot = "../data/bridge-finish/";
+const finishLoader=new THREE.TextureLoader();
+const finishSets=new Map();
 export const bridgeRailOffset=1.23;
 export function bridgeDeckHeight(anchor,x) {
   const u=x-anchor.x;
@@ -17,11 +19,8 @@ const materialScale = {
 };
 
 export function createSurfaceLibrary() {
-  const loader = new THREE.TextureLoader();
-  const sets = new Map();
-
   function load(id, file, srgb = false) {
-    return loader.loadAsync(materialRoot + id + "/" + file).then(map => {
+    return finishLoader.loadAsync(materialRoot + id + "/" + file).then(map => {
       if (srgb) map.colorSpace = THREE.SRGBColorSpace;
       map.wrapS = map.wrapT = THREE.RepeatWrapping;
       map.anisotropy = 8;
@@ -29,14 +28,20 @@ export function createSurfaceLibrary() {
     });
   }
 
-  return function surface(id, color = 0xffffff, normalStrength = 1, roughnessFactor = 1) {
-    const mat = new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0 });
+  function maps(id) {
+    if (!finishSets.has(id)) {
+      finishSets.set(id, Promise.all([load(id, "basecolor.webp", true), load(id, "normal.png"), load(id, "orm.png")]));
+    }
+    return finishSets.get(id);
+  }
+
+  function surface(id, color = 0xffffff, normalStrength = 1, roughnessFactor = 1) {
+    const mat = id === "indigo-linen" ? new THREE.MeshPhysicalMaterial({
+      color, roughness:.85, sheen:.27, sheenColor:0xcabc9e, sheenRoughness:.81,
+    }) : new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0 });
     mat.userData.tileMetres = materialScale[id];
     mat.userData.grain = id.endsWith("wood");
-    if (!sets.has(id)) {
-      sets.set(id, Promise.all([load(id, "basecolor.webp", true), load(id, "normal.png"), load(id, "orm.png")]));
-    }
-    sets.get(id).then(([colorMap, normal, orm]) => {
+    maps(id).then(([colorMap, normal, orm]) => {
       mat.map = colorMap;
       mat.normalMap = normal;
       mat.normalScale.setScalar(normalStrength);
@@ -48,7 +53,67 @@ export function createSurfaceLibrary() {
       mat.userData.surfaceReady = true;
     }, err => console.warn("Bridge material could not be loaded", id, err.message));
     return mat;
+  }
+
+  surface.project = (id, options, floor=false) => {
+    const material = new THREE.MeshStandardMaterial(options);
+    const detail={
+      finishColor:{value:null}, finishNormal:{value:null}, finishOrm:{value:null},
+      finishMetres:{value:materialScale[id]}, finishReady:{value:0},
+    };
+    maps(id).then(([color,normal,orm])=>{
+      detail.finishColor.value=color;
+      detail.finishNormal.value=normal;
+      detail.finishOrm.value=orm;
+      detail.finishReady.value=1;
+      material.userData.surfaceReady=true;
+    },err=>console.warn("Projected material could not be loaded",id,err.message));
+    material.customProgramCacheKey=()=>floor ? "projected-floor-finish" : "projected-building-finish";
+    material.onBeforeCompile=shader=>{
+      Object.assign(shader.uniforms,detail);
+      shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec3 finishPoint;")
+        .replace("#include <begin_vertex>","#include <begin_vertex>\nfinishPoint=(modelMatrix*vec4(position,1.)).xyz;");
+      shader.fragmentShader=shader.fragmentShader.replace("#include <common>",`#include <common>
+        varying vec3 finishPoint;
+        uniform sampler2D finishColor,finishNormal,finishOrm;
+        uniform float finishMetres,finishReady;
+        vec3 finishWeights() {
+          ${floor ? "return vec3(0.,1.,0.);" : `
+          vec3 v=abs(normalize(cross(dFdx(finishPoint),dFdy(finishPoint))));
+          v=pow(v,vec3(7.));
+          return v/max(dot(v,vec3(1.)),.001);`}
+        }
+        vec3 finishSample(sampler2D source,vec3 p,vec3 w) {
+          ${floor ? "return texture2D(source,p.xz).rgb;" : `
+          return texture2D(source,p.zy).rgb*w.x + texture2D(source,p.xz).rgb*w.y
+              + texture2D(source,p.xy).rgb*w.z;`}
+        }
+      `)
+      .replace("#include <color_fragment>",`#include <color_fragment>
+        vec3 finishUV=finishPoint/finishMetres, finishWeight=finishWeights();
+        vec3 pigment=finishSample(finishColor,finishUV,finishWeight);
+        vec3 relief=finishSample(finishOrm,finishUV,finishWeight);
+        vec3 litSurface=diffuseColor.rgb*(.70+.62*smoothstep(.035,.46,dot(pigment,vec3(.2126,.7152,.0722))));
+        litSurface*=mix(.78,1.,relief.r);
+        diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*${floor ? ".78" : ".81"});
+      `)
+      .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
+        roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
+      `)
+      .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
+        vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
+        vec3 reliefVector=vec3(sy.x,0.,sy.y)*(finishWeight.y*.64);
+        ${floor ? "" : `
+        vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;
+        vec2 sz=texture2D(finishNormal,finishUV.xy).xy*2.-1.;
+        reliefVector+=vec3(0.,sx.y,sx.x)*(finishWeight.x*.73)
+                     +vec3(sz.x,sz.y,0.)*(finishWeight.z*.73);`}
+        normal=normalize(normal+mat3(viewMatrix)*reliefVector*finishReady);
+      `);
+    };
+    return material;
   };
+  return surface;
 }
 
 const faceAxes = [[2, 1], [2, 1], [0, 2], [0, 2], [0, 1], [0, 1]];

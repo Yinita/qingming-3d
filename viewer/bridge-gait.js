@@ -110,6 +110,7 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
 
   return {
     update,rootHeight,feet,
+    reset() { ready=false; swing=null; next=0; cadence=0; bob=0; },
     phase:()=>cadence+(swing ? Math.PI*Math.min(1,swing.age/swing.duration) : 0),
     inspect:()=>({ feet:feet.map((foot,i)=>({...foot,planted:swing?.index!==i})),landings,wetLandings,last }),
   };

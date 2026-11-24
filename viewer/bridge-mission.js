@@ -6,7 +6,7 @@ import { buildTea } from "./bridge-tea.js";
 import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { createGroundedGait } from "./bridge-gait.js";
-import { circleTouchesBox, workerHeight, workerRadius } from "./bridge-collision.js";
+import { circleTouchesBox, sweepHorizontal, workerHeight, workerRadius } from "./bridge-collision.js";
 import { tileRoof } from "./bridge-architecture.js";
 
 const SAVE = "qingming-bridge-mission-v1";
@@ -302,6 +302,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     bridgeLook.hit(x,z,time,strength,"step",vx,vz);
     return true;
   });
+  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),()=>false);
   const fwd = new THREE.Vector3();
   const side = new THREE.Vector3();
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
@@ -397,6 +398,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     state.coins -= 3;
     state.phase = "courier";
     courierLeg = 0;
+    courierGait.reset();
     helper.figure.position.set(pickup.x, floor(pickup.x, routeZ), routeZ);
     helper.figure.rotation.y=pickup.yaw;
     hint.textContent = "付给伙计三文。他会沿桥把箱子送到茶铺。";
@@ -466,6 +468,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     stopTeaShot();
     tea.reset();
     previous = null;
+    courierGait.reset();
     helper.figure.position.set(pickup.x - .5, floor(pickup.x - .5, routeZ + 1.03), routeZ + 1.03);
     hint.textContent = "已恢复上一个可交互状态。";
     store();
@@ -586,13 +589,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const beforeDepth=wadeDepth(player.x,player.z);
       const drag=1-.69*THREE.MathUtils.smoothstep(beforeDepth,.025,.51);
       const v = (keys.has("shift") ? 6.2 : 3.35) * dt * drag / (Math.hypot(dx, dz) || 1);
-      const x = player.x + (fwd.x * dz + side.x * dx) * v;
-      const z = player.z + (fwd.z * dz + side.z * dx) * v;
       syncActors();
       const oldX = player.x;
       const oldZ = player.z;
-      if (canStep(x,player.z) && !cargoCollision(x,player.z,bodyYaw)) player.x=x;
-      if (canStep(player.x,z) && !cargoCollision(player.x,z,bodyYaw)) player.z=z;
+      sweepHorizontal(player,(fwd.x*dz+side.x*dx)*v,(fwd.z*dz+side.z*dx)*v,
+        (x,z)=>canStep(x,z) && !cargoCollision(x,z,bodyYaw));
       const moved=Math.hypot(player.x-oldX,player.z-oldZ);
       walking=moved>.0001;
       const depth=wadeDepth(player.x,player.z);
@@ -665,7 +666,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       playerBody.limbs.arms[0].rotation.z=gesture*.32;
     }
 
-    let courierWalking=false;
+    let courierVX=0,courierVZ=0;
     if (state.phase === "courier") {
       const [x, z] = trail[courierLeg];
       const p = helper.figure.position;
@@ -685,15 +686,19 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         if(separated && !courierBoxHitsPlayer(cargo) &&
            canStep(nx,nz,workerRadius,courierSolid,workerHeight,courierCargo) &&
            !cargoObstacle(nx,nz,yaw,courierSolid,0,courierCargo)){
+          courierVX=(nx-p.x)/dt;
+          courierVZ=(nz-p.z)/dt;
           p.x=nx;
           p.z=nz;
-          p.y=ny;
           helper.figure.rotation.y=yaw;
-          courierWalking=true;
         }
       }
     }
-    animate(helper, elapsed * 10, courierWalking, state.phase === "courier");
+    const courier=helper.figure.position, courierYaw=helper.figure.rotation.y;
+    courierGait.update(dt,elapsed,courier.x,courier.z,courierYaw,courierVX,courierVZ,0);
+    courier.y=courierGait.rootHeight(courier.x,courier.z);
+    helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
+    animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,state.phase==="courier");
     const nod = THREE.MathUtils.clamp((elapsed - deliveryTime) / 1.18, 0, 1);
     const greeting = state.phase === "delivered" ? Math.sin(Math.PI * nod) : 0;
     merchant.head.rotation.x = .028 * Math.sin(elapsed * 1.7) - .21 * greeting;

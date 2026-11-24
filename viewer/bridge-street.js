@@ -29,9 +29,11 @@ function batch(root,parts,name,receive=true) {
   }
 }
 
-function characterParts(surface,hatted) {
+function characterParts(surface,hatted,slope,yaw) {
   const temp=new THREE.Group();
   const worker=riverWorker(temp,surface,"resident",hatted);
+  worker.stand(x=>x*slope,0,0,0,yaw);
+  worker.head.rotation.y=hatted ? .12 : -.09;
   worker.figure.updateMatrixWorld(true);
   const parts=new Map();
   worker.figure.traverse(node=>{
@@ -51,47 +53,59 @@ function characterParts(surface,hatted) {
 
 function residents(root,entries,surface) {
   const pose=new THREE.Object3D();
-  for(const hatted of [false,true]) {
-    const chunks=new Map();
-    for(const o of entries) {
-      if(o.hatted!==hatted) continue;
-      const key=Math.floor(o.x/15)+":"+Math.floor(o.z/12);
-      if(!chunks.has(key)) chunks.set(key,[]);
-      chunks.get(key).push(o);
-    }
-    const parts=characterParts(surface,hatted);
-    for(const group of chunks.values()) {
-      for(const {material,geometry,colored} of parts) {
-        const mesh=new THREE.InstancedMesh(geometry,material,group.length);
-        mesh.name="Volumetric street residents";
-        mesh.castShadow=true;
-        mesh.receiveShadow=true;
-        group.forEach((o,i)=>{
+  const chunks=new Map(), templates=new Map();
+  for(const o of entries) {
+    const template=o.bridge ? [o.hatted,o.slope*o.width/o.scale,o.yaw] : [o.hatted,0,0];
+    const shape=template.join(":");
+    const key=[shape,Math.floor(o.x/15),Math.floor(o.z/12)].join(":");
+    if(!templates.has(shape)) templates.set(shape,characterParts(surface,...template));
+    if(!chunks.has(key)) chunks.set(key,{shape,entries:[]});
+    chunks.get(key).entries.push(o);
+  }
+  const update=new Set();
+  for(const group of chunks.values()) {
+    for(const {material,geometry,colored} of templates.get(group.shape)) {
+      const mesh=new THREE.InstancedMesh(geometry,material,group.entries.length);
+      mesh.name="Volumetric street residents";
+      mesh.castShadow=true;
+      mesh.receiveShadow=true;
+      group.entries.forEach((o,i)=>{
+        const place=()=>{
           pose.position.set(o.x,o.y,o.z);
           pose.rotation.y=o.yaw;
-          pose.scale.set(o.width,o.scale,o.width);
+          pose.scale.set(o.hidden ? 0 : o.width,o.hidden ? 0 : o.scale,o.hidden ? 0 : o.width);
           pose.updateMatrix();
           mesh.setMatrixAt(i,pose.matrix);
-          if(colored) mesh.setColorAt(i,new THREE.Color(o.robe));
-        });
-        mesh.computeBoundingSphere();
-        root.add(mesh);
-      }
+          update.add(mesh);
+        };
+        o.instances.push(place);
+        place();
+        if(colored) mesh.setColorAt(i,new THREE.Color(o.robe));
+      });
+      root.add(mesh);
     }
   }
+  function sync() {
+    for(const mesh of update) {
+      mesh.instanceMatrix.needsUpdate=true;
+      mesh.computeBoundingSphere();
+    }
+    update.clear();
+  }
+  sync();
+  return sync;
 }
 
 function placeResidents(entries,collisions,anchor,origin) {
   const landmarks=willowSites(anchor);
-  const placed=[];
-  for(const resident of entries) {
-    const radius=workerRadius*resident.width, height=workerHeight*resident.scale;
+  function place(resident) {
+    const radius=resident.solid.radius, height=workerHeight*resident.scale;
     for(let attempt=0;attempt<25;attempt++) {
       if(resident.bridge && attempt>0) break;
       const step=attempt ? .44*Math.ceil(attempt/8) : 0;
       const angle=(attempt%8)*Math.PI*.25+resident.yaw;
-      const x=resident.x+step*Math.cos(angle), z=resident.z+step*Math.sin(angle);
-      const y=resident.bridge ? resident.y : Math.max(resident.y,walkwayHeight(anchor,x,z));
+      const x=resident.source.x+step*Math.cos(angle), z=resident.source.z+step*Math.sin(angle);
+      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,walkwayHeight(anchor,x,z));
       if(!resident.bridge) {
         const along=x-anchor.x, across=Math.abs(z-anchor.z);
         if(along>-15.6 && along<20.1 && across<1.38+radius) continue;
@@ -99,13 +113,21 @@ function placeResidents(entries,collisions,anchor,origin) {
         if(canalDepth(origin,x,z)>.056 ||
            landmarks.some(t=>Math.hypot(x-t.x,z-t.z)<radius+.42*t.scale)) continue;
       }
-      if(collisions.blocking(x,z,y,radius+.022,height)) continue;
-      collisions.cylinder("resident",x,z,y,y+height,radius);
-      placed.push({...resident,x,y,z,shift:step});
-      break;
+      if(collisions.blocking(x,z,y,radius+.022,height,resident.solid)) continue;
+      Object.assign(resident.solid,{x,z,bottom:y,top:y+height,enabled:true});
+      Object.assign(resident,{x,y,z,shift:step,hidden:false});
+      return;
     }
+    resident.solid.enabled=false;
+    resident.hidden=true;
   }
-  return placed;
+  const placed=entries.map(o=>{
+    const solid=collisions.cylinder("resident",o.x,o.z,o.y,o.y,workerRadius*o.width);
+    const resident={...o,solid,source:o,instances:[]};
+    place(resident);
+    return resident;
+  }).filter(o=>!o.hidden);
+  return {placed,place};
 }
 
 function timberHouse(root,collisions,surface,x,z,w,d,story,shade) {
@@ -275,25 +297,17 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
   for(const o of entries) {
     if(!closedNames.has(o.label)) continue;
     const x=o.x;
-    let z=o.z;
-    if(x>-76 && x<-39 && Math.abs(z-anchor.z)<1.05) z=anchor.z+Math.sign(z-anchor.z||1)*1.75;
-    if(Math.abs(z-origin.y)<15 && canalDepth(origin,x,z)>.082) continue;
-    const y=o.y||0,n=digits(o), size=THREE.MathUtils.clamp(o.h/1.57,.65,1.31);
-    placement.position.set(x,y,z);
-    placement.rotation.y=n*1.38;
-    placement.scale.setScalar(size);
-    placement.updateMatrix();
-    const cell=Math.floor(x/18)+":"+Math.floor(z/14);
-    if(!buckets.has(cell)) buckets.set(cell,new Map());
-    const parts=buckets.get(cell);
+    const yaw=digits(o)*1.38, size=THREE.MathUtils.clamp(o.h/1.57,.65,1.31);
+    const parts=[], envelope=new THREE.Box3();
     function set(g,mat,lx,ly,lz,sx=1,sy=1,sz=1,angle=0) {
       local.position.set(lx,ly,lz);
       local.scale.set(sx,sy,sz);
       local.rotation.set(angle,0,0);
       local.updateMatrix();
-      g.applyMatrix4(local.matrix).applyMatrix4(placement.matrix);
-      if(!parts.has(mat)) parts.set(mat,[]);
-      parts.get(mat).push(g);
+      g.applyMatrix4(local.matrix);
+      g.computeBoundingBox();
+      envelope.union(g.boundingBox);
+      parts.push([mat,g]);
     }
     const sphere=()=>new THREE.SphereGeometry(1,14,10);
     function plank(w,h,d,x,y,z,mat=wood) { set(detailedBox(w,h,d,mat),mat,x,y,z); }
@@ -338,9 +352,35 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
         }
       }
     }
-    const radius=(o.label==="cart"?.65:o.label==="umbrella"?.15:.39)*size;
-    const b=solids.cylinder(o.label,x,z,y,y+1.37*size,radius);
-    if(o.label==="umbrella") b.camera=false;
+    const extents=envelope.getSize(new THREE.Vector3()).multiplyScalar(size*.5);
+    const offset=envelope.getCenter(new THREE.Vector3()).multiplyScalar(size)
+      .applyAxisAngle(THREE.Object3D.DEFAULT_UP,yaw);
+    const across=Math.abs(Math.sin(yaw))*extents.x+Math.abs(Math.cos(yaw))*extents.z;
+    const z=x>-77 && x<-39 && Math.abs(o.z+offset.z-anchor.z)<1.26+across ?
+      anchor.z+Math.sign(o.z-anchor.z||1)*(1.26+across)-offset.z : o.z;
+    if(Math.abs(z-origin.y)<15 && canalDepth(origin,x,z)>.082) {
+      for(const [,geometry] of parts) geometry.dispose();
+      continue;
+    }
+    const y=Math.max(o.y||0,walkwayHeight(anchor,x,z));
+    placement.position.set(x,y,z);
+    placement.rotation.y=yaw;
+    placement.scale.setScalar(size);
+    placement.updateMatrix();
+    const cell=Math.floor(x/18)+":"+Math.floor(z/14);
+    if(!buckets.has(cell)) buckets.set(cell,new Map());
+    const batchParts=buckets.get(cell);
+    for(const [material,geometry] of parts) {
+      if(!batchParts.has(material)) batchParts.set(material,[]);
+      batchParts.get(material).push(geometry.applyMatrix4(placement.matrix));
+    }
+    if(o.label==="umbrella"){
+      solids.cylinder("umbrella pole",x,z,y,y+1.91*size,.10*size);
+      solids.cylinder("umbrella canopy",x,z,y+1.36*size,y+1.85*size,.76*size);
+    } else {
+      const collider=solids.orientedBox(o.label,extents.x,extents.z,extents.y*2);
+      Object.assign(collider,{x:x+offset.x,z:z+offset.z,yaw,bottom:y+envelope.min.y*size,top:y+envelope.max.y*size});
+    }
     count++;
   }
   for(const parts of buckets.values()) batch(root,parts,"Volumetric market props");
@@ -383,7 +423,8 @@ export function createStreetScene(scene,objects,anchor) {
     }
   });
   for(const [i,[x,z]] of rail.entries()){
-    people.push({x,z:z+anchor.z,y:bridgeDeckHeight(anchor,x),yaw:i%2===0 ? -.16 : Math.PI+.15,scale:.98,
+    const slope=(bridgeDeckHeight(anchor,x+.05)-bridgeDeckHeight(anchor,x-.05))/.1;
+    people.push({x,z:z+anchor.z,y:bridgeDeckHeight(anchor,x),yaw:i%2===0 ? -.16 : Math.PI+.15,scale:.98,slope,
       width:.82,robe:robes[i],hatted:i%3===0,bridge:true});
   }
   const bank=[[-74.28,1.52],[-69.75,2.18],[-47.35,2.0],[-44.95,2.56],[-40.20,2.05]];
@@ -399,9 +440,20 @@ export function createStreetScene(scene,objects,anchor) {
     [71.79,-57.14,5.87,3.21,2.49,0xe1cbaa],
   ];
   for(const spec of buildings) timberHouse(root,collisions,surface,...spec);
-  const placed=placeResidents(people,collisions,anchor,origin);
-  residents(root,placed,surface);
-  return {root,bridge,replacements,collisions,inspect:()=>({people:placed.length,relocated:placed.filter(p=>p.shift>0).length,
-    bridgePeople:placed.filter(p=>p.bridge).length,trees:treeObjects.length,houses:buildings.length,props,
-    colliders:collisions.inspect()})};
+  const {placed,place}=placeResidents(people,collisions,anchor,origin);
+  const syncResidents=residents(root,placed,surface);
+  function registerHouse(object) {
+    const house=collisions.meshBox("existing house",object);
+    for(const p of placed) {
+      if(p.hidden || p.y+.045>=house.top || p.solid.top<=house.bottom) continue;
+      const dx=Math.max(house.minX-p.x,0,p.x-house.maxX), dz=Math.max(house.minZ-p.z,0,p.z-house.maxZ);
+      if(dx*dx+dz*dz>=p.solid.radius**2) continue;
+      place(p);
+      for(const placeInstance of p.instances) placeInstance();
+    }
+    syncResidents();
+  }
+  return {root,bridge,replacements,collisions,registerHouse,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+    relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
+    trees:treeObjects.length,houses:buildings.length,props,colliders:collisions.inspect()})};
 }

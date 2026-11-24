@@ -3,6 +3,15 @@ import { Box3, Ray, Vector3 } from "three";
 export const workerRadius=.355;
 export const workerHeight=1.76;
 
+export function sweepHorizontal(position,dx,dz,allows) {
+  const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.09));
+  const sx=dx/steps, sz=dz/steps;
+  for(let i=0;i<steps;i++) {
+    if(sx && allows(position.x+sx,position.z)) position.x+=sx;
+    if(sz && allows(position.x,position.z+sz)) position.z+=sz;
+  }
+}
+
 export function circleTouchesBox(x,z,radius,boxX,boxZ,halfX,halfZ,yaw) {
   const dx=x-boxX, dz=z-boxZ, cos=Math.cos(yaw), sin=Math.sin(yaw);
   const side=Math.max(Math.abs(dx*cos-dz*sin)-halfX,0);
