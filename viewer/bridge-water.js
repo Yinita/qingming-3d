@@ -1,10 +1,11 @@
 import * as THREE from "three";
 
-import { canalBankGLSL, canalHalfLength as halfLength, canalSpeed as flowSpeed, waterHeight } from "./bridge-canal-bed.js";
+import { canalDepth, canalBankGLSL, canalHalfLength as halfLength, canalSpeed as flowSpeed, waterHeight } from "./bridge-canal-bed.js";
 
-import { buildWaterContacts, contactCount } from "./bridge-canal-contacts.js";
+import { buildWaterContacts } from "./bridge-canal-contacts.js";
 import { buildCanalLeaves } from "./bridge-canal-leaves.js";
-import { createWaterField, surfaceGLSL } from "./bridge-water-field.js";
+import { createWaterField, surfaceGLSL, waterStateGLSL } from "./bridge-water-field.js";
+import { createShallowWater } from "./bridge-shallow-water.js";
 
 const worldToUV = new THREE.Matrix4().set(
   .5, 0, 0, .5, 0, .5, 0, .5, 0, 0, .5, .5, 0, 0, 0, 1
@@ -38,9 +39,7 @@ const fragmentShader = `
   uniform float refractionReady;
   ${canalBankGLSL}
   uniform vec2 piers[PIER_COUNT];
-  uniform vec4 hull;
-  uniform vec4 hullMotion;
-  uniform vec4 contacts[CONTACT_COUNT];
+  ${waterStateGLSL}
   varying vec3 worldPoint;
   varying vec4 reflected;
 
@@ -97,50 +96,11 @@ const fragmentShader = `
         if (abs(d.x)<1.31 && d.y>-.37 && d.y<2.9) wake += pierWake(p,piers[i]);
       }
     }
-    // Pressure ridges follow the hull; the wake contracts when the hull moves with the stream.
-    vec2 relative=vec2(-hullMotion.x,current-hullMotion.y);
-    float speed=length(relative);
-    vec2 alongHull=normalize(hull.zw);
-    vec2 flowAxis=normalize(relative+vec2(0.0,.001));
-    vec2 hullOffset=worldPoint.xz-hull.xy;
-    float boatLong=dot(hullOffset,alongHull);
-    float boatAcross=dot(hullOffset,vec2(alongHull.y,-alongHull.x));
-    float downstream=dot(hullOffset,flowAxis);
-    float across=dot(hullOffset,vec2(flowAxis.y,-flowAxis.x));
-    float hullFoam=0.;
-    if (abs(across)<2.6 && downstream>-.30 && downstream<5.7) {
-      float spread=abs(across)-(.37+.25*max(0.,downstream));
-      float trailing=exp(-spread*spread*34.)*smoothstep(-.30,.65,downstream)*(1.-smoothstep(1.75,5.7,downstream));
-      float slip=clamp(speed/.43,.12,1.64);
-      float turbulence=noise(vec2(across*8.1,downstream*5.4-time*(1.6+speed)));
-      grad+=trailing*vec2(sin(downstream*8.9-time*3.1),cos(across*16.-time*4.3))*.119*slip;
-      hullFoam=smoothstep(.54,.87,turbulence)*trailing*.55*slip;
-    }
-    if (abs(boatLong)<1.72 && abs(boatAcross)<1.13) {
-      float beam=.58-.42*smoothstep(.42,1.67,abs(boatLong));
-      float pressure=abs(boatAcross)-beam;
-      float ring=exp(-pressure*pressure*135.);
-      float pulse=min(.70,abs(hullMotion.w)*2.8+abs(hullMotion.z)*.7);
-      grad+=ring*vec2(alongHull.y,-alongHull.x)*sign(boatAcross)*(.038+pulse*.28);
-      hullFoam+=ring*(.08+pulse*.28)*smoothstep(.3,.77,noise(worldPoint.xz*18.+time));
-    }
-    float contactFoam=0.0;
-    for(int i=0;i<CONTACT_COUNT;i++){
-      vec4 impact=contacts[i];
-      float age=time-impact.z;
-      if(impact.w>.01 && age>=0.0 && age<2.4) {
-        vec2 d=worldPoint.xz-impact.xy-vec2(0.0,age*current*.26);
-        float radius=length(d);
-        float crest=.07+age*(.93+.35*impact.w);
-        if(abs(radius-crest)<(.36+age*.09)) {
-          float envelope=exp(-pow((radius-crest)/(.105+.11*age),2.0))*exp(-age*1.55);
-          float wave=cos((radius-crest)*35.0);
-          grad+=normalize(d+vec2(.0001))*wave*envelope*impact.w*.40;
-          float broken=noise(worldPoint.xz*21.0+vec2(0.0,-age*3.0));
-          contactFoam+=smoothstep(.62,.88,broken)*envelope*max(0.,wave)*impact.w*.76;
-        }
-      }
-    }
+    vec4 disturbance=sampleWaterState(worldPoint.xz);
+    float foamGrain=noise(q*vec2(15.7,10.3)+vec2(0.,-time*.84));
+    float crestFoam=smoothstep(.068,.39,disturbance.b);
+    float lingeringFoam=crestFoam*mix(.38,1.,smoothstep(.19,.73,foamGrain));
+    grad+=disturbance.a*.045*vec2(cos(p.y*13.6-p.x*6.1-time*2.3),sin(p.x*16.7+time*2.7));
     grad *= mix(.72,1.03,channel)*(.87+.19*gust);
     grad += .13*wake.y*vec2(sin(22.0*p.x-time*3.5), cos(13.0*p.y-time*4.9));
     vec3 geometryNormal=normalize(cross(dFdx(worldPoint),dFdy(worldPoint)));
@@ -184,7 +144,7 @@ const fragmentShader = `
     float filaments = smoothstep(.70,.91,streak) * (.50+.50*eddies);
     float strand = noise(vec2(shore*5.6,flow.y*3.2));
     float bankCrest = exp(-pow((shore-.61)*2.87,2.0)) * smoothstep(.57,.87,strand);
-    float pearl = (smoothstep(.22,.73,wake.x)*smoothstep(.32,.86,streak) + .19*bankCrest + hullFoam + contactFoam)
+    float pearl = (smoothstep(.22,.73,wake.x)*smoothstep(.32,.86,streak) + .19*bankCrest + lingeringFoam*.67)
                  * (1.0-smoothstep(.13,.43,fwidth(p.y)));
     color += vec3(.46,.44,.30)*(highlight*.29 + filaments*.12 + pearl*.58);
 
@@ -203,8 +163,20 @@ export function buildCanal(parent, origin, piers, hull, hullMotion) {
   const refractedCamera = new THREE.PerspectiveCamera();
   refractedCamera.layers.set(1);
   const contacts=buildWaterContacts(parent);
-  const field=createWaterField(origin,contacts.events);
+  const simulation=createShallowWater({
+    minX:origin.x-9.7,minZ:origin.y-halfLength,width:19.4,length:halfLength*2,
+    depthAt:(x,z)=>canalDepth(origin,x,z),piers,current:flowSpeed,
+  });
+  const surfaceState=new THREE.DataTexture(simulation.pack(),simulation.columns,simulation.rows,THREE.RGBAFormat);
+  surfaceState.name="Canal height and foam";
+  surfaceState.minFilter=surfaceState.magFilter=THREE.LinearFilter;
+  surfaceState.needsUpdate=true;
+  const field=createWaterField(origin,simulation);
   contacts.followSurface(field.height);
+  function hit(x,z,time,strength,kind,vx,vz) {
+    contacts.hit(x,z,time,strength,kind,vx,vz);
+    simulation.impact(x,z,strength,kind,vx,vz);
+  }
   const uniforms = {
     time: { value: 0 }, current: { value: flowSpeed }, origin: { value: origin },
     reflection: { value: target.texture }, reflectionUV: { value: new THREE.Matrix4() },
@@ -214,10 +186,11 @@ export function buildCanal(parent, origin, piers, hull, hullMotion) {
     refractionViewToWorld: { value: refractedCamera.matrixWorld },
     refractionProjectionInverse: { value: refractedCamera.projectionMatrixInverse },
     piers: { value: piers.map(point => point.clone().sub(origin)) },
-    hull: { value: hull }, hullMotion: { value: hullMotion }, contacts: { value: contacts.events },
+    waterState:{ value:surfaceState }, simulationHeight:{ value:simulation.maximumHeight },
+    simulationBounds:{ value:new THREE.Vector4(simulation.minX,simulation.minZ,1/simulation.width,1/simulation.length) },
   };
   const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms,
-    defines: { PIER_COUNT: piers.length, CONTACT_COUNT: contactCount },
+    defines: { PIER_COUNT: piers.length },
     transparent: true, depthWrite: false });
   const river = new THREE.Mesh(new THREE.PlaneGeometry(19.4,halfLength*2,160,216), material);
   river.name = "Canal surface";
@@ -225,15 +198,15 @@ export function buildCanal(parent, origin, piers, hull, hullMotion) {
   river.position.set(origin.x, waterHeight, origin.y);
   parent.add(river);
 
-  const leaves=buildCanalLeaves(parent,origin,contacts.events,contacts.hit,hull,field);
+  const leaves=buildCanalLeaves(parent,origin,hit,hull,field);
 
   const mirror = new THREE.PerspectiveCamera();
   const direction = new THREE.Vector3(), focus = new THREE.Vector3();
   const clip = new THREE.Plane(), clipVector = new THREE.Vector4(), corner = new THREE.Vector4();
   const frustum = new THREE.Frustum(), projectionView = new THREE.Matrix4();
   const bounds = new THREE.Box3(
-    new THREE.Vector3(origin.x - 9.7, waterHeight - .12, origin.y - halfLength),
-    new THREE.Vector3(origin.x + 9.7, waterHeight + .12, origin.y + halfLength)
+    new THREE.Vector3(origin.x - 9.7, waterHeight - .4, origin.y - halfLength),
+    new THREE.Vector3(origin.x + 9.7, waterHeight + .4, origin.y + halfLength)
   );
   const lastCamera = new THREE.Vector3(Infinity, Infinity, Infinity);
   const lastRotation = new THREE.Quaternion();
@@ -338,14 +311,18 @@ export function buildCanal(parent, origin, piers, hull, hullMotion) {
     prepare,
     frame(time,dt) {
       uniforms.time.value=time;
+      simulation.advance(dt,hull,hullMotion);
       leaves.frame(time,dt);
+      simulation.pack();
+      surfaceState.needsUpdate=true;
       contacts.frame(time);
     },
-    hit: contacts.hit,
+    hit,
+    probe:simulation.sample,
     field,
     leafSource: leaves.source,
     inspect() { return { time: uniforms.time.value, currentMetresPerSecond: flowSpeed,
       reflectionPasses, refractionPasses, contacts: contacts.inspect(uniforms.time.value), lastReflectionTime, visiblePiers: piers.length, driftingLeaves: leaves.seededLeaves, foliage:leaves.inspect(), reflectionSize: [target.width, target.height],
-      refractionSize:[refraction.width,refraction.height] }; },
+      refractionSize:[refraction.width,refraction.height], simulation:simulation.inspect() }; },
   };
 }

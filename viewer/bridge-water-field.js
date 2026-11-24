@@ -1,20 +1,34 @@
 import { MathUtils } from "three";
 import { canalBankGLSL, canalShoreRadius, canalSpeed, waterHeight } from "./bridge-canal-bed.js";
 
-// Wavelength, propagation and amplitude are shared by the mesh and physical samplers.
+// Wave numbers, propagation and amplitude are shared by the mesh and physical samplers.
 const waves = [
   [1.24,2.09,2.17,.022],
   [-2.25,2.61,3.12,.013],
   [.785,-1.38,1.27,.017],
 ];
-const impactDrift = canalSpeed*.26;
 const smooth = MathUtils.smoothstep;
+
+export const waterStateGLSL = `
+  uniform sampler2D waterState;
+  uniform vec4 simulationBounds;
+  uniform float simulationHeight;
+
+  vec4 sampleWaterState(vec2 world) {
+    vec2 uv=(world-simulationBounds.xy)*simulationBounds.zw;
+    return texture2D(waterState,clamp(uv,0.,1.));
+  }
+
+  float decodeWave(vec4 state) {
+    return (state.r*65280.+state.g*255.-32768.)*(simulationHeight/32767.);
+  }
+`;
 
 export const surfaceGLSL = `
   ${canalBankGLSL}
   uniform float time;
   uniform vec2 origin;
-  uniform vec4 contacts[CONTACT_COUNT];
+  ${waterStateGLSL}
 
   float surfaceOffset(vec2 world) {
     vec2 p=world-origin;
@@ -23,41 +37,20 @@ export const surfaceGLSL = `
     float h=0.;
     ${waves.map(([kx,kz,speed,amp]) =>
       `h+=${amp}*sin(dot(p,vec2(${kx},${kz}))-${speed}*time);`).join("\n    ")}
-    for(int i=0;i<CONTACT_COUNT;i++) {
-      vec4 impact=contacts[i];
-      float age=time-impact.z;
-      if(impact.w>.01 && age>=0. && age<2.4) {
-        float d=distance(world,impact.xy+vec2(0.,age*${impactDrift}));
-        float radius=.07+age*(.93+.35*impact.w);
-        float delta=d-radius;
-        if(abs(delta)<.46) {
-          float band=delta/(.15+.09*age);
-          h+=.028*impact.w*cos(delta*16.)*exp(-band*band-1.8*age);
-        }
-      }
-    }
-    return mask*h;
+    return mask*h+decodeWave(sampleWaterState(world));
   }
 `;
 
-export function createWaterField(origin, contacts) {
+export function createWaterField(origin, simulation) {
+  const scratch={};
   return {
     height(x,z,time) {
       const u=x-origin.x, v=z-origin.y;
       const shore=canalShoreRadius(v,Math.sign(u))-Math.abs(u);
       const mask=smooth(shore,0,.9)*(1-smooth(Math.abs(v),13.4,16.2));
-      if (!mask) return waterHeight;
       let h=0;
-      for(const [kx,kz,speed,amp] of waves) h+=amp*Math.sin(kx*u+kz*v-speed*time);
-      for(const hit of contacts) {
-        const age=time-hit.z;
-        if (hit.w<=.01 || age<0 || age>=2.4) continue;
-        const delta=Math.hypot(x-hit.x,z-hit.y-age*impactDrift)-(.07+age*(.93+.35*hit.w));
-        if (Math.abs(delta)>=.46) continue;
-        const band=delta/(.15+.09*age);
-        h+=.028*hit.w*Math.cos(delta*16)*Math.exp(-band*band-1.8*age);
-      }
-      return waterHeight+h*mask;
+      if(mask) for(const [kx,kz,speed,amp] of waves) h+=amp*Math.sin(kx*u+kz*v-speed*time);
+      return waterHeight+h*mask+simulation.sample(x,z,scratch).height;
     },
     velocity(x,z,time,out) {
       const u=x-origin.x,v=z-origin.y;
@@ -70,7 +63,9 @@ export function createWaterField(origin, contacts) {
         across+=orbit*kx/magnitude;
         along+=orbit*kz/magnitude;
       }
-      return out.set(across,along);
+      simulation.sample(x,z,scratch);
+      return out.set(across+scratch.u,along+scratch.v);
     },
+    disturbance(x,z,out) { return simulation.sample(x,z,out); },
   };
 }

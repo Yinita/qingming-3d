@@ -82,16 +82,29 @@ function waterStain(material, moisture) {
   material.customProgramCacheKey=()=>"river-worker-wet-cloth";
 }
 
-export function riverWorker(parent, surface, role) {
+export function riverWorker(parent, surface, role, residentHat=false) {
   const figure = new THREE.Group();
   parent.add(figure);
   const shades = {
     player: [0xc1cdd0, 0x717d76, 0x647378, 0xbfb28e],
     merchant: [0xd1b398, 0x766f60, 0x7e6d52, 0xc6b58f],
     helper: [0xa9b69e, 0x788275, 0x58604a, 0xc1aa7c],
+    resident: [0xfdf5e3, 0xaaa591, 0x6e6453, 0xc1aa86],
   }[role];
   const cloth = surface("indigo-linen", shades[0], .40);
   const trousers = surface("indigo-linen", shades[1], .49);
+  if(role==="resident"){
+    cloth.userData.streetCloth=true;
+    cloth.onBeforeCompile=shader=>{
+      shader.fragmentShader=shader.fragmentShader.replace("#include <map_fragment>",`
+        #ifdef USE_MAP
+          vec3 weave=texture2D(map,vMapUv).rgb;
+          float lightness=dot(weave,vec3(.2126,.7152,.0722));
+          diffuseColor.rgb*=mix(.53,.96,smoothstep(.035,.46,lightness));
+        #endif`);
+    };
+    cloth.customProgramCacheKey=()=>"resident-undyed-linen";
+  }
   const binding = plain(shades[2], .78);
   const dyed = plain(shades[3], .79);
   const skin = plain(0xb99074, .75);
@@ -153,7 +166,7 @@ export function riverWorker(parent, surface, role) {
     beard.scale.set(.76, .90, .47);
     for (const side of [-1,1]) ribbon(head, [0, -.052, -.12], [side*.065, -.068, -.102], .014, brow, .008);
   }
-  if (role !== "player") {
+  if (role !== "player" && (role!=="resident" || residentHat)) {
     const straw = plain(0xb49a62, .90);
     const rim = plain(0x7f6a4a, .94);
     const hat = new THREE.LatheGeometry([[0,.15],[.083,.162],[.163,.114],[.230,.086],[.348,.043],

@@ -1,12 +1,12 @@
 import * as THREE from "three";
-import { canalDepth, canalHalfLength, canalShoreRadius, canalSpeed, waterHeight } from "./bridge-canal-bed.js";
+import { canalDepth, canalHalfLength, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 
 const seededLeaves=45;
 const fallCapacity=10;
 const end=canalHalfLength;
 const smooth=THREE.MathUtils.smoothstep;
 
-export function buildCanalLeaves(parent,origin,events,hitWater,hull,field) {
+export function buildCanalLeaves(parent,origin,hitWater,hull,field) {
   const shape=new THREE.BufferGeometry();
   shape.setAttribute("position",new THREE.Float32BufferAttribute([
     0,0,-.5,-.142,.020,-.17,-.107,.058,.22,0,0,.5,
@@ -27,6 +27,7 @@ export function buildCanalLeaves(parent,origin,events,hitWater,hull,field) {
   const dummy=new THREE.Object3D();
   const point=new THREE.Vector3();
   const flow=new THREE.Vector2();
+  const disturbance={};
   const terrainNormal=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
   const heading=new THREE.Quaternion();
   let source=null;
@@ -38,7 +39,7 @@ export function buildCanalLeaves(parent,origin,events,hitWater,hull,field) {
     const bank=i%3===0 ? 1 : -1;
     const z=origin.y+((i*7.9241)%(2*end))-end;
     return { x:origin.x+bank*(2.2+5.90*noise), z, y:waterHeight, side:bank,
-      seed:noise, size:.11+.12*noise, previousHit:-10, began:-Infinity,
+      seed:noise, size:.11+.12*noise, disturbed:false, began:-Infinity,
       mode:i<seededLeaves ? "water" : "dormant", startX:0,startY:0,startZ:0,
     };
   });
@@ -56,7 +57,7 @@ export function buildCanalLeaves(parent,origin,events,hitWater,hull,field) {
     leaf.startY=leaf.y=point.y;
     leaf.startZ=leaf.z=point.z;
     leaf.began=time;
-    leaf.previousHit=-10;
+    leaf.disturbed=false;
   }
 
   function falling(leaf,time,i) {
@@ -85,22 +86,14 @@ export function buildCanalLeaves(parent,origin,events,hitWater,hull,field) {
     const current=flow.y*(.88+.22*leaf.seed);
     const wake=.061*Math.sin(2.47*leaf.z+.93*time+leaf.seed*10.);
     let across=flow.x+wake*.7, along=current;
-    for (const impulse of events) {
-      const age=time-impulse.z;
-      if (impulse.w<.14 || age<=0 || age>2.4) continue;
-      const dx=leaf.x-impulse.x, dz=leaf.z-impulse.y-age*canalSpeed*.26;
-      const distance=Math.hypot(dx,dz);
-      const ring=.07+age*(.93+.35*impulse.w);
-      if (Math.abs(distance-ring)>.35 || distance<.01) continue;
-      const energy=Math.exp(-Math.pow((distance-ring)/(.10+.095*age),2))*Math.exp(-1.12*age)*impulse.w;
-      const force=.84*energy;
-      across+=force*dx/distance;
-      along+=force*dz/distance;
-      maximumImpulse=Math.max(maximumImpulse,force);
-      if (force>.052 && leaf.previousHit<impulse.z) {
-        leaf.previousHit=impulse.z;
-        pushed++;
-      }
+    field.disturbance(leaf.x,leaf.z,disturbance);
+    const shove=Math.hypot(disturbance.u,disturbance.v);
+    maximumImpulse=Math.max(maximumImpulse,shove);
+    if (shove>.052 && !leaf.disturbed) {
+      leaf.disturbed=true;
+      pushed++;
+    } else if(shove<.025) {
+      leaf.disturbed=false;
     }
     const boatX=leaf.x-hull.x, boatZ=leaf.z-hull.y;
     const bow=boatX*hull.z+boatZ*hull.w;

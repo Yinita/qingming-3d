@@ -71,6 +71,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
 import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
+import { createStreetScene } from "./bridge-street.js";
 
 const params = new URLSearchParams(location.search);
 const base = (params.get("scene") || "../data/seg01/scene/").replace(/\/?$/, "/");
@@ -92,6 +93,28 @@ const tex = url => { const t = loader.load(base + url); t.colorSpace = THREE.SRG
 // Ground: the painting with objects removed, mapped affinely onto the ground plane.
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBasicMaterial({ map: tex(L.ground.tex) }));
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -GD / 2); scene.add(ground);
+ground.receiveShadow=true;
+ground.userData.archiveMaterial=ground.material;
+const walkingGround=new THREE.MeshStandardMaterial({map:ground.material.map,roughness:.94});
+ground.userData.perspectiveMaterial=walkingGround;
+const groundNormal=loader.load("../data/bridge-finish/worn-stone/normal.png");
+groundNormal.wrapS=groundNormal.wrapT=THREE.RepeatWrapping;
+groundNormal.anisotropy=8;
+walkingGround.onBeforeCompile=shader=>{
+  shader.uniforms.groundDetail={value:groundNormal};
+  shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec2 stoneXZ;")
+    .replace("#include <begin_vertex>","#include <begin_vertex>\nstoneXZ=(modelMatrix*vec4(position,1.)).xz;");
+  shader.fragmentShader=shader.fragmentShader.replace("#include <common>",`#include <common>
+    varying vec2 stoneXZ;
+    uniform sampler2D groundDetail;`)
+    .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
+      vec3 stone=2.*texture2D(groundDetail,stoneXZ*.86).xyz-1.;
+      vec3 tangent=(viewMatrix*vec4(1.,0.,0.,0.)).xyz;
+      vec3 bitangent=(viewMatrix*vec4(0.,0.,-1.,0.)).xyz;
+      normal=normalize(normal*max(.65,stone.z)+.37*(tangent*stone.x+bitangent*stone.y));`);
+};
+walkingGround.customProgramCacheKey=()=>"walkable-pbr-ground";
+
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
 apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.add(apron);
 
@@ -102,6 +125,8 @@ const sprites = [], swapCards = [], models = [], offPainting = [], trailCards = 
 const SHADOWED = new Set(["person", "horse", "donkey", "ox", "cart", "sedan chair", "tree", "umbrella"]);
 const shadowSpots = [];
 const riverOrigin=canalOrigin(bridgeAnchor);
+const street=createStreetScene(scene,L.objects,bridgeAnchor);
+const sourceReplacements=[];
 for (const o of L.objects) {
   const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
   const m = new THREE.MeshBasicMaterial({ map: tex(o.tex_hd || o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
@@ -118,13 +143,14 @@ for (const o of L.objects) {
       (o.label === "person" && o.y > 0 && Math.abs(o.z + 41.422) < 1.05)) {
     trailCards.push(mesh);
   }
+  if(street.replacements.has(o.id)) sourceReplacements.push(mesh);
   if (o.billboard === "sprite") sprites.push(mesh);
   if (o.mesh) swapCards.push(mesh);
   if (o.label === "tree") {
     // A second card at right angles: the tree keeps its volume when seen from the side.
     const x = new THREE.Mesh(g, m); x.rotation.y = Math.PI / 2; mesh.add(x); offPainting.push(x);
   }
-  if (SHADOWED.has(o.label)) shadowSpots.push(o);
+  if (SHADOWED.has(o.label) && !street.replacements.has(o.id)) shadowSpots.push(o);
 }
 // Contact shadows: one instanced soft ellipse per grounded object.
 {
@@ -161,16 +187,25 @@ const cardOf = new Map(swapCards.map(c => [c.userData.id, c]));
 // models take over as soon as the camera leaves it.
 function applyModelVisibility() {
   const bridgeCard = swapCards.find(c => c.userData.label === "bridge");
-  if (bridgeCard) bridgeCard.visible = mode !== "mission";
+  for(const card of swapCards) {
+    const bridge=card===bridgeCard;
+    const revised=street.replacements.has(card.userData.id);
+    card.visible=(!street.root.visible || (!showModels && mode!=="mission")) &&
+      !(street.root.visible && revised);
+    if(bridge && mode==="mission") card.visible=false;
+  }
   for (const m of models) {
     const bridge = m.userData.label === "bridge";
-    const use = !(mode === "mission" && bridge) &&
-      ((showModels && mode !== "paint" && mode !== "missionScroll") ||
+    const use = !(mode === "mission" && bridge) && !street.replacements.has(m.userData.id) &&
+      (((showModels || mode==="mission") && mode !== "paint" && mode !== "missionScroll") ||
        (mode === "missionScroll" && bridge));
     m.visible = use;
-    cardOf.get(m.userData.id).visible = !use && !(mode === "mission" && bridge);
+    const replacement=street.root.visible && street.replacements.has(m.userData.id);
+    cardOf.get(m.userData.id).visible = !use && !replacement &&
+      (!street.root.visible || (!showModels && mode!=="mission")) &&
+      !(mode === "mission" && bridge);
     for (const face of m.userData.finishFaces) {
-      face.material = mode === "mission" ? face.userData.nearbyMaterial : face.userData.archiveMaterial;
+      face.material = street.root.visible ? face.userData.nearbyMaterial : face.userData.archiveMaterial;
     }
   }
 }
@@ -197,15 +232,20 @@ function startModels() {
       const synth = /^(roof|wall)/.test(n.name);
       n.material = synth ? new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide })
                          : new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
-      if (synth) {
-        n.userData.archiveMaterial = n.material;
-        n.userData.nearbyMaterial = new THREE.MeshBasicMaterial({
-          map, color: map ? 0xece0cb : 0xaf9b76, side: THREE.DoubleSide,
+      if(o.label==="house"){
+        if(!n.geometry.attributes.normal) n.geometry.computeVertexNormals();
+        n.userData.archiveMaterial=n.material;
+        n.userData.nearbyMaterial=new THREE.MeshStandardMaterial({
+          map,color:map ? 0xf1e6d2 : 0xa99073,side:THREE.DoubleSide,roughness:synth ? .89 : .96,
         });
+        n.castShadow=n.receiveShadow=true;
         finishFaces.push(n);
       }
     });
     g.scene.position.set(...o.mesh.pos); g.scene.userData = { ...o, finishFaces }; scene.add(g.scene); models.push(g.scene);
+    if(o.label==="house" && !street.replacements.has(o.id)){
+      street.collisions.meshBox("existing house",g.scene);
+    }
     pending--; setModels(showModels);
   }, undefined, () => { pending--; setModels(showModels); });
 }
@@ -246,6 +286,9 @@ function placeMissionCam() {
 function setPaintingExact(on) {
   for (const e of offPainting) e.visible = !on;
   for (const card of trailCards) card.visible = mode !== "mission";
+  street.root.visible=!on;
+  ground.material=on ? ground.userData.archiveMaterial : walkingGround;
+  for (const card of sourceReplacements) card.visible=on;
   scene.fog = on ? null : haze;
   applyModelVisibility();
 }
@@ -257,7 +300,7 @@ const help = {
 };
 function setMode(m) {
   if (m === "mission" || m === "missionScroll") {
-    mission ||= createBridgeMission({ scene, camera: persp, renderer, ambient, sun, ground, apron, setMode });
+    mission ||= createBridgeMission({ scene, camera: persp, renderer, ambient, sun, ground, apron, street, setMode });
   }
   mode = m;
   for (const [id, k] of [["bPaint", "paint"], ["bWalk", "walk"], ["bOrbit", "orbit"]])
@@ -365,11 +408,18 @@ renderer.setAnimationLoop(now => {
   if (mode === "walk") {
     const v = (keys.has("shift") ? 9 : 3) * dt;
     fwd.set(-Math.sin(walk.yaw), 0, -Math.cos(walk.yaw)); right.set(-fwd.z, 0, fwd.x);
-    if (keys.has("w") || keys.has("arrowup")) walk.pos.addScaledVector(fwd, v);
-    if (keys.has("s") || keys.has("arrowdown")) walk.pos.addScaledVector(fwd, -v);
-    if (keys.has("d") || keys.has("arrowright")) walk.pos.addScaledVector(right, v);
-    if (keys.has("a") || keys.has("arrowleft")) walk.pos.addScaledVector(right, -v);
-    if (keys.has("e")) walk.pos.y += v; if (keys.has("q")) walk.pos.y = Math.max(0.3, walk.pos.y - v);
+    const forward=Number(keys.has("w")||keys.has("arrowup"))-Number(keys.has("s")||keys.has("arrowdown"));
+    const lateral=Number(keys.has("d")||keys.has("arrowright"))-Number(keys.has("a")||keys.has("arrowleft"));
+    const pace=v/(Math.hypot(forward,lateral)||1);
+    const nx=walk.pos.x+(fwd.x*forward+right.x*lateral)*pace;
+    const nz=walk.pos.z+(fwd.z*forward+right.z*lateral)*pace;
+    const feet=walk.pos.y-1.54;
+    const previous=street.collisions.blocking(walk.pos.x,walk.pos.z,feet,.31,1.67);
+    if(!street.collisions.blocking(nx,walk.pos.z,feet,.31,1.67,previous)) walk.pos.x=nx;
+    if(!street.collisions.blocking(walk.pos.x,nz,feet,.31,1.67,previous)) walk.pos.z=nz;
+    const ny=walk.pos.y+v*(Number(keys.has("e"))-Number(keys.has("q")));
+    if(!street.collisions.blocking(walk.pos.x,walk.pos.z,ny-1.54,.31,1.67,previous))
+      walk.pos.y=Math.max(.3,ny);
     applyWalk();
   }
   const camPos = cam.position;
@@ -384,7 +434,8 @@ document.getElementById("status").textContent =
   `${L.objects.length} 个物体 · ` + Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(" · ") +
   ` · 段 x=${L.x0}–${L.x1}px · 仰角 ${L.camera.elev_deg}°`;
 window.__scene = { L, setMode, startFly, setModels, models, renderer, scene, persp, orbit, walk,
-  mission: () => mission?.inspect() };
+  mission: () => mission?.inspect(),
+  waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect };
 </script>
 </body>
 </html>

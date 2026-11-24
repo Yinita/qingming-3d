@@ -30,7 +30,10 @@ export const canalBankGLSL = `
 `;
 
 function cutGround(groundMaterial,origin,cut) {
+  const previous=groundMaterial.onBeforeCompile;
+  const previousKey=groundMaterial.customProgramCacheKey();
   groundMaterial.onBeforeCompile = shader => {
+    previous.call(groundMaterial,shader);
     shader.uniforms.cutCanal = cut;
     shader.uniforms.canalOrigin = { value: origin };
     shader.vertexShader = shader.vertexShader
@@ -51,7 +54,7 @@ function cutGround(groundMaterial,origin,cut) {
         float damp=smoothstep(-.58,.01,shore)*(1.-smoothstep(13.5,16.2,abs(p.y)));
         diffuseColor.rgb*=mix(vec3(1.),vec3(.78,.80,.72),damp*cutCanal);`);
   };
-  groundMaterial.customProgramCacheKey = () => "canal-cut-paint";
+  groundMaterial.customProgramCacheKey = () => previousKey+"-canal-cut";
   groundMaterial.needsUpdate=true;
 }
 
@@ -59,7 +62,9 @@ function cutGround(groundMaterial,origin,cut) {
 // layers in the same footprint so the recessed bed is visible at the shoreline.
 export function buildCanalBed(parent,origin,paintedGround,apron) {
   const cut={ value:0 };
-  cutGround(paintedGround.material,origin,cut);
+  const archive=paintedGround.userData.archiveMaterial;
+  cutGround(archive,origin,cut);
+  cutGround(paintedGround.userData.perspectiveMaterial,origin,cut);
   cutGround(apron.material,origin,cut);
 
   const acrossSamples = 80, alongSamples = 128;
@@ -91,7 +96,7 @@ export function buildCanalBed(parent,origin,paintedGround,apron) {
 
   const clock = { value: 0 };
   const bedMaterial = new THREE.ShaderMaterial({
-    uniforms: { time: clock, painting: { value: paintedGround.material.map }, origin: { value: origin } },
+    uniforms: { time: clock, painting: { value: archive.map }, origin: { value: origin } },
     vertexShader: `
       varying vec2 paintingUV;
       varying vec3 p;
