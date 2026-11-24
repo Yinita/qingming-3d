@@ -81,6 +81,19 @@ export function createSurfaceLibrary() {
         varying vec3 finishPoint;
         uniform sampler2D finishColor,finishNormal,finishOrm;
         uniform float finishMetres,finishReady;
+        ${floor ? `
+        float soilHash(vec2 p) {
+          vec3 q=fract(vec3(p.xyx)*.1031);
+          q+=dot(q,q.yzx+33.33);
+          return fract((q.x+q.y)*q.z);
+        }
+        float soilNoise(vec2 p) {
+          vec2 i=floor(p), f=fract(p);
+          f=f*f*(3.-2.*f);
+          return mix(mix(soilHash(i),soilHash(i+vec2(1.,0.)),f.x),
+            mix(soilHash(i+vec2(0.,1.)),soilHash(i+vec2(1.)),f.x),f.y);
+        }
+        ` : ""}
         vec3 finishWeights() {
           ${floor ? "return vec3(0.,1.,0.);" : `
           vec3 v=abs(normalize(cross(dFdx(finishPoint),dFdy(finishPoint))));
@@ -99,7 +112,16 @@ export function createSurfaceLibrary() {
         vec3 relief=finishSample(finishOrm,finishUV,finishWeight);
         vec3 litSurface=diffuseColor.rgb*(.70+.62*smoothstep(.035,.46,dot(pigment,vec3(.2126,.7152,.0722))));
         litSurface*=mix(.78,1.,relief.r);
-        diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*${floor ? ".78" : ".81"});
+        ${floor ? `
+        vec2 soilPoint=finishPoint.xz;
+        float districts=soilNoise(soilPoint*.37);
+        float compaction=soilNoise(soilPoint*vec2(.84,1.42)+vec2(districts*1.8,-districts));
+        float mottling=soilNoise(soilPoint*5.7+13.2);
+        vec3 dust=mix(vec3(.74,.72,.65),vec3(1.12,1.04,.93),smoothstep(.22,.80,districts));
+        float aggregate=texture2D(finishColor,finishUV.zx*2.13+vec2(.21,.47)).r;
+        vec3 soil=litSurface*dust*(.77+.23*compaction+.12*mottling+.15*aggregate);
+        diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
+        ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
@@ -107,6 +129,10 @@ export function createSurfaceLibrary() {
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
         vec3 reliefVector=vec3(sy.x,0.,sy.y)*(finishWeight.y*.64);
+        ${floor ? `
+        vec2 grit=texture2D(finishNormal,finishUV.zx*2.13+vec2(.21,.47)).yx*2.-1.;
+        reliefVector=vec3(sy.x,0.,sy.y)*.44+vec3(grit.x,0.,grit.y)*.29;
+        ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;
         vec2 sz=texture2D(finishNormal,finishUV.xy).xy*2.-1.;

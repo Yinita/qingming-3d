@@ -35,6 +35,18 @@
   .mission-actions button { font-size:12px; padding:4px 8px; }
   .mission-actions button:disabled { opacity:.45; cursor:default; }
   #missionSpeech { color:#623a2e; }
+  #missionObjective { font-weight:600; }
+  #missionWaypoint { position:fixed; z-index:3; transform:translate(-50%,-100%); pointer-events:none;
+    background:#733a2d; color:#fff4df; border:1px solid #e4be86; border-radius:4px;
+    box-shadow:0 2px 9px #34261f66; padding:6px 11px; font-weight:600; font-size:16px; white-space:nowrap; }
+  #missionWaypoint[data-offscreen="false"]::after { position:absolute; left:calc(50% - 6px);
+    top:100%; content:""; border:6px solid transparent; border-top-color:#733a2d; }
+  body.scene-loading #missionWaypoint { visibility:hidden; }
+  #missionRestartDialog { max-width:min(320px,calc(100vw - 52px)); background:#faf1de; color:#3a2d25;
+    border:1px solid #b39b76; border-top:3px solid #843b30; padding:18px 21px; }
+  #missionRestartDialog::backdrop { background:#2c25226c; }
+  #missionRestartDialog h2 { font-size:20px; margin:0 0 8px; }
+  #missionRestartConfirm { background:#843b30; color:#fff5df; border-color:#843b30; }
   #missionHud .mission-controls { color:#635745; font-size:11px; }
   canvas:focus { outline:none; }
   #scene-loading { position:fixed; inset:0; z-index:10; display:grid; place-items:center; padding:22px;
@@ -160,7 +172,7 @@ const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBas
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -GD / 2); scene.add(ground);
 ground.receiveShadow=true;
 ground.userData.archiveMaterial=ground.material;
-const walkingGround=surfaces.project("worn-stone",{map:ground.material.map,roughness:.94},true);
+const walkingGround=surfaces.project("worn-stone",{color:0xc2ab86,roughness:.94},true);
 ground.userData.perspectiveMaterial=walkingGround;
 
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));

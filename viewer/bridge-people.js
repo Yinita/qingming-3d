@@ -220,7 +220,16 @@ function waterStain(material, moisture) {
   material.customProgramCacheKey=()=>key+"-wet-cloth";
 }
 
-export function riverWorker(parent, surface, role, residentHat=false) {
+const residentProfiles=[
+  {skin:0xbc956f,hair:0x302a23,head:[.83,.89,.82],jaw:.21,nose:1.03,shoulders:1.07,sleeve:.98,bun:.162},
+  {skin:0xc6a082,hair:0x555044,head:[.76,.96,.84],jaw:.32,nose:1.16,shoulders:.93,sleeve:1.03,bun:.144,beard:true},
+  {skin:0xd1ac89,hair:0x382e28,head:[.78,.90,.87],jaw:.36,nose:.85,shoulders:.91,sleeve:.94,bun:.092},
+  {skin:0xb79173,hair:0x3d352d,head:[.87,.84,.90],jaw:.14,nose:.90,shoulders:1.05,sleeve:1.06,bun:.136,wrap:true},
+];
+
+export function riverWorker(parent, surface, role, residentHat=false, variant=0) {
+  const profile=role==="resident" ? residentProfiles[variant] : null;
+  const shoulders=profile?.shoulders??1;
   const figure = new THREE.Group();
   parent.add(figure);
   const shades = {
@@ -248,7 +257,7 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   const binding = plain(shades[2], .78);
   const dyed = plain(shades[3], .79);
   binding.side=dyed.side=THREE.DoubleSide;
-  const skin = plain({player:0xcfab8c,merchant:0xb7896b,helper:0xc09576,resident:0xc6a182}[role],.72);
+  const skin=plain(profile?.skin??{player:0xcfab8c,merchant:0xb7896b,helper:0xc09576}[role],.72);
   const facePaint=skin.clone();
   facePaint.vertexColors=true;
   const lips = plain(0x785245, .80);
@@ -263,12 +272,13 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   }
   const detail=role!=="resident";
   const robe=[[0, .606], [.282, .619], [.293, .66], [.268, .77],
-    [.232, .91], [.229, 1.04], [.251, 1.17], [.267, 1.256], [.21, 1.32],
+    [.232, .91], [.229, 1.04], [.251*shoulders, 1.17], [.267*shoulders, 1.256], [.21*shoulders, 1.32],
     [.114, 1.357], [.101, 1.361], [0, 1.364]];
-  piece(figure,fabric(robe,.70,.012,detail ? 48 : 32),cloth,0,0,0).name="Outer robe shell";
+  const robeSegments=detail ? 48 : 32;
+  piece(figure,fabric(robe.slice(2),.70,.012,robeSegments),cloth,0,0,0).name="Outer robe shell";
+  piece(figure,fabric(robe.slice(0,3),.70,.012,robeSegments),binding,0,0,0);
   piece(figure, new THREE.CylinderGeometry(.072, .084, .105, 16), skin, 0, 1.382, -.005);
   piece(figure, fabric([[.232,.948],[.238,.961],[.236,1.008],[.229,1.015]], .72), hem, 0, 0, 0);
-  piece(figure,fabric([[.274,.618],[.294,.634],[.296,.657],[.287,.668]],.708,.012),binding,0,0,0);
   robeSeam(figure,robe,[[3.64,1.327],[3.24,1.268],[2.85,1.206],[2.51,1.151],[2.93,1.056],[3.41,.983]],binding,.046,detail);
   robeSeam(figure,robe,[[2.56,1.33],[2.74,1.281],[3.02,1.231]],dyed,.030,detail);
   ribbon(figure, [.179,.978,-.126],[.153,.803,-.171],.030,dyed);
@@ -281,14 +291,14 @@ export function riverWorker(parent, surface, role, residentHat=false) {
 
   const head = new THREE.Group();
   head.position.set(0, 1.50, -.016);
-  head.scale.set(.81,.89,.84);
+  head.scale.set(...(profile?.head??[.81,.89,.84]));
   figure.add(head);
   const skull = new THREE.SphereGeometry(.149, detail ? 52 : 30, detail ? 36 : 22);
   const position = skull.attributes.position;
   const faceColours=[];
   for (let i = 0; i < position.count; i++) {
     const x=position.getX(i), y=position.getY(i), z=position.getZ(i);
-    const chin=1-THREE.MathUtils.smoothstep(-y,.014,.144)*.29;
+    const chin=1-THREE.MathUtils.smoothstep(-y,.014,.144)*(profile?.jaw??.29);
     const front=THREE.MathUtils.smoothstep(-z,.059,.124);
     const cheek=Math.exp(-((Math.abs(x)-.081)**2/.0017+(y+.031)**2/.0011));
     const socket=Math.exp(-((Math.abs(x)-.053)**2/.00037+(y-.017)**2/.00026));
@@ -299,7 +309,7 @@ export function riverWorker(parent, surface, role, residentHat=false) {
     const nostril=Math.exp(-((Math.abs(x)-.017)**2/.00010+(y+.042)**2/.00010));
     const pores=.013*Math.sin(331*x+192*y)*Math.sin(259*y-138*z);
     position.setXYZ(i,x*chin,y*1.105,z*.87-front*(.021*cheek-.012*socket+.014*jaw+.008*muzzle+
-      .019*bridge+.035*noseTip-.004*nostril));
+      (.019*bridge+.035*noseTip)*(profile?.nose??1)-.004*nostril));
     faceColours.push(1-.14*socket-.23*nostril+pores,.97-.18*socket-.10*cheek-.28*nostril+pores,
       .93-.18*socket-.12*cheek-.29*nostril+pores);
   }
@@ -307,10 +317,19 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   skull.computeVertexNormals();
   piece(head, skull, facePaint, 0, 0, 0);
   const cap = new THREE.SphereGeometry(.151, 24, 17, 0, Math.PI * 2, 0, Math.PI * .62);
-  const hair = piece(head, cap, brow, 0, .045, .022);
-  hair.scale.set(.99, .91, .87);
-  const bun = piece(head, new THREE.SphereGeometry(.051, 14, 10), brow, 0, .170, .064);
-  bun.scale.set(.96, .79, .99);
+  const hairPigment=profile ? plain(profile.hair,.87) : brow;
+  const hair=piece(head,cap,hairPigment,0,.045,.022);
+  hair.scale.set(.99,.91,.87);
+  if(profile?.wrap && !residentHat) {
+    const headcloth=plain(0x656b60,.94);
+    piece(head,fabric([[.143,.063],[.154,.073],[.153,.114],[.143,.131],[.121,.151],[0,.157]],.91),
+      headcloth,0,0,.015);
+    const fold=piece(head,new THREE.SphereGeometry(.045,14,9),headcloth,.089,.108,.119);
+    fold.scale.set(.93,.54,.61);
+  } else {
+    const bun=piece(head,new THREE.SphereGeometry(.048,16,10),hairPigment,0,profile?.bun??.170,variant===2 ? .108 : .064);
+    bun.scale.set(.96,variant===2 ? 1.07 : .79,.99);
+  }
   for (const side of [-1, 1]) {
     const ear = piece(head, new THREE.SphereGeometry(.026, 10, 8), skin, side * .136, -.014, -.004);
     ear.scale.set(.55, 1, .67);
@@ -329,10 +348,11 @@ export function riverWorker(parent, surface, role, residentHat=false) {
   const mouth=new THREE.CatmullRomCurve3([[-.024,-.061,-.108],[-.012,-.063,-.121],
     [0,-.064,-.125],[.012,-.063,-.121],[.024,-.061,-.108]].map(x=>new THREE.Vector3(...x)));
   piece(head,new THREE.TubeGeometry(mouth,16,.0027,5,false),lips,0,0,0);
-  if (role === "merchant") {
-    const beard = piece(head, new THREE.SphereGeometry(.054, 14, 9), lips, 0, -.096, -.091);
-    beard.scale.set(.76, .90, .47);
-    for (const side of [-1,1]) ribbon(head, [0, -.052, -.12], [side*.065, -.068, -.102], .014, brow, .008);
+  if(role==="merchant" || profile?.beard) {
+    const beardTint=profile ? hairPigment : lips;
+    const beard=piece(head,new THREE.SphereGeometry(.053,18,12),beardTint,0,-.110,-.090);
+    beard.scale.set(.72,.91,.51);
+    for(const side of [-1,1]) ribbon(head,[0,-.054,-.125],[side*.052,-.065,-.113],.012,hairPigment,.007);
   }
   if (role !== "player" && (role!=="resident" || residentHat)) {
     const straw = plain(0xb49a62, .90);
@@ -389,15 +409,16 @@ export function riverWorker(parent, surface, role, residentHat=false) {
       limbs.legs.push(leg);
     }
     const arm = new THREE.Group();
-    arm.position.set(side * .247, 1.239, .012);
+    arm.position.set(side*.247*shoulders,1.239,.012);
+    arm.scale.y=profile?.sleeve??1;
     torso.add(arm);
     piece(arm, fabric([[.083,-.244],[.087,-.203],[.103,-.126],[.097,-.026],[.060,.045],[0,.053]],.86),
       cloth,0,0,0);
     const elbow=new THREE.Group();
     elbow.position.set(0,-.212,-.005);
     arm.add(elbow);
-    piece(elbow,fabric([[.070,-.166],[.081,-.139],[.085,-.081],[.085,-.030],[.082,.039]],.87),cloth,0,0,0);
-    piece(elbow,new THREE.CylinderGeometry(.077,.073,.033,20),binding,0,-.152,-.003);
+    piece(elbow,fabric([[.081,-.139],[.085,-.081],[.085,-.030],[.082,.039]],.87),cloth,0,0,0);
+    piece(elbow,fabric([[.066,-.169],[.075,-.166],[.081,-.139]],.87),binding,0,0,0);
     const hand = piece(elbow, new THREE.SphereGeometry(.045, 16, 12), skin, 0, -.196, -.009);
     hand.scale.set(.73,.96,.63);
     if(detail) for(let finger=0;finger<4;finger++) {

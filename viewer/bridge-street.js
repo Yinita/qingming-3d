@@ -4,7 +4,7 @@ import { riverWorker } from "./bridge-people.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
-import { walkwayHeight, willowSites } from "./bridge-foreground.js";
+import { flagstones, walkwayHeight, willowSites } from "./bridge-foreground.js";
 import { tileRoof } from "./bridge-architecture.js";
 
 const robes=[0x7b8777,0xa08a67,0x687c87,0xa78067,0xb2a283,0x758268,0x716570,0x979482];
@@ -29,18 +29,38 @@ function batch(root,parts,name,receive=true) {
   }
 }
 
-function characterParts(surface,hatted,slope,yaw) {
+function characterParts(surface,hatted,variant,slope,yaw) {
   const temp=new THREE.Group();
-  const worker=riverWorker(temp,surface,"resident",hatted);
-  worker.stand(x=>x*slope,0,0,0,yaw);
-  worker.head.rotation.y=hatted ? .12 : -.09;
+  const worker=riverWorker(temp,surface,"resident",hatted,variant);
+  const height=slope===0 ? .021 : 0;
+  worker.figure.position.y=height;
+  worker.stand(x=>x*slope,0,height,0,yaw);
+  worker.head.rotation.set([.01,-.04,.05,-.02][variant],[.14,-.17,.23,-.11][variant],.017*variant);
+  const [left,right]=worker.limbs.arms;
+  const [leftElbow,rightElbow]=worker.limbs.elbows;
+  left.rotation.set([.01,-.16,.13,-.42][variant],0,.068);
+  right.rotation.set([-.20,-.27,0,.14][variant],0,-.04);
+  leftElbow.rotation.x=[-.06,-.44,-.09,-.63][variant];
+  rightElbow.rotation.x=[-.34,-.51,-.04,-.05][variant];
   worker.figure.updateMatrixWorld(true);
-  const parts=new Map();
+  const parts=new Map(), point=new THREE.Vector3();
   worker.figure.traverse(node=>{
     if(!node.isMesh || node.parent===worker.straps) return;
     const material=node.material;
     if(!parts.has(material)) parts.set(material,[]);
-    parts.get(material).push(node.geometry.clone().applyMatrix4(node.matrixWorld));
+    const geometry=node.geometry.clone();
+    if(node.isSkinnedMesh) {
+      const positions=geometry.attributes.position;
+      for(let i=0;i<positions.count;i++) {
+        point.fromBufferAttribute(positions,i);
+        node.applyBoneTransform(i,point);
+        positions.setXYZ(i,point.x,point.y,point.z);
+      }
+      geometry.deleteAttribute("skinIndex");
+      geometry.deleteAttribute("skinWeight");
+      geometry.computeVertexNormals();
+    }
+    parts.get(material).push(geometry.applyMatrix4(node.matrixWorld));
     node.geometry.dispose();
   });
   const result=[];
@@ -55,7 +75,7 @@ function residents(root,entries,surface) {
   const pose=new THREE.Object3D();
   const chunks=new Map(), templates=new Map();
   for(const o of entries) {
-    const template=o.bridge ? [o.hatted,o.slope*o.width/o.scale,o.yaw] : [o.hatted,0,0];
+    const template=o.bridge ? [o.hatted,o.variant,o.slope*o.width/o.scale,o.yaw] : [o.hatted,o.variant,0,0];
     const shape=template.join(":");
     const key=[shape,Math.floor(o.x/15),Math.floor(o.z/12)].join(":");
     if(!templates.has(shape)) templates.set(shape,characterParts(surface,...template));
@@ -85,6 +105,39 @@ function residents(root,entries,surface) {
       root.add(mesh);
     }
   }
+  // Free exploration uses soft fill light. Give each pair of feet a local
+  // contact shadow that follows the instance when an arriving house moves it.
+  const groundResidents=entries.filter(person=>!person.bridge);
+  const image=document.createElement("canvas");
+  image.width=image.height=32;
+  const ink=image.getContext("2d");
+  const shade=ink.createRadialGradient(16,16,2,16,16,16);
+  shade.addColorStop(0,"rgba(56,43,31,.47)");
+  shade.addColorStop(.52,"rgba(56,43,31,.23)");
+  shade.addColorStop(1,"rgba(56,43,31,0)");
+  ink.fillStyle=shade;
+  ink.fillRect(0,0,32,32);
+  const shadowGeometry=new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2);
+  const shadowMap=new THREE.CanvasTexture(image);
+  shadowMap.colorSpace=THREE.SRGBColorSpace;
+  const shadowMaterial=new THREE.MeshBasicMaterial({map:shadowMap,transparent:true,depthWrite:false});
+  const shadows=new THREE.InstancedMesh(shadowGeometry,shadowMaterial,groundResidents.length);
+  shadows.name="Resident foot contact shadows";
+  groundResidents.forEach((person,i)=>{
+    const place=()=>{
+      const width=person.hidden ? 0 : person.width;
+      pose.position.set(person.x,person.y+.008,person.z);
+      pose.rotation.y=person.yaw;
+      pose.scale.set(.65*width,1,.78*width);
+      pose.updateMatrix();
+      shadows.setMatrixAt(i,pose.matrix);
+      update.add(shadows);
+    };
+    person.instances.push(place);
+    place();
+  });
+  root.add(shadows);
+
   function sync() {
     for(const mesh of update) {
       mesh.instanceMatrix.needsUpdate=true;
@@ -412,7 +465,7 @@ export function createStreetScene(scene,objects,anchor) {
       if(Math.abs(o.z-origin.y)<15 && canalDepth(origin,o.x,o.z)>.056) return;
       const n=digits(o), scale=THREE.MathUtils.clamp(o.h/standingY,.61,1.16);
       people.push({x:o.x,z:o.z,y:o.y||0,yaw:Math.PI+Math.sin(n*1.9)*1.85,scale,
-        width:scale*(.81+.24*(.5+.5*Math.sin(n))),robe:robes[n%robes.length],hatted:n%5===0});
+        width:scale*(.78+.28*(.5+.5*Math.sin(n))),robe:robes[n%robes.length],hatted:n%5===0,variant:n%4});
     } else if(o.label==="tree"){
       replacements.add(o.id);
       if(o.id==="o0288" || o.id==="o0400") return;
@@ -425,11 +478,11 @@ export function createStreetScene(scene,objects,anchor) {
   for(const [i,[x,z]] of rail.entries()){
     const slope=(bridgeDeckHeight(anchor,x+.05)-bridgeDeckHeight(anchor,x-.05))/.1;
     people.push({x,z:z+anchor.z,y:bridgeDeckHeight(anchor,x),yaw:i%2===0 ? -.16 : Math.PI+.15,scale:.98,slope,
-      width:.82,robe:robes[i],hatted:i%3===0,bridge:true});
+      width:.82,robe:robes[i],hatted:i%3===0,variant:i%4,bridge:true});
   }
   const bank=[[-74.28,1.52],[-69.75,2.18],[-47.35,2.0],[-44.95,2.56],[-40.20,2.05]];
   for(const [i,[x,z]] of bank.entries())
-    people.push({x,z:z+anchor.z,y:0,yaw:1.26+i*.44,scale:.99,width:.88,robe:robes[(i+3)%robes.length],hatted:i%2===0});
+    people.push({x,z:z+anchor.z,y:0,yaw:1.26+i*.44,scale:.99,width:.88,robe:robes[(i+3)%robes.length],hatted:i%2===0,variant:(i+1)%4});
   trees(root,treeObjects,surface,collisions);
   const props=marketProps(root,objects,surface,collisions,anchor,origin);
   const buildings=[
@@ -439,7 +492,11 @@ export function createStreetScene(scene,objects,anchor) {
     [-37.08,-28.31,5.44,3.30,2.75,0xe0cfad],
     [71.79,-57.14,5.87,3.21,2.49,0xe1cbaa],
   ];
-  for(const spec of buildings) timberHouse(root,collisions,surface,...spec);
+  for(const [i,spec] of buildings.entries()) {
+    timberHouse(root,collisions,surface,...spec);
+    const [x,z,width,depth]=spec;
+    flagstones(root,x,z+depth*.5+.57,width*.79,.94,surface,4379+i*37,.27);
+  }
   const {placed,place}=placeResidents(people,collisions,anchor,origin);
   const syncResidents=residents(root,placed,surface);
   function registerHouse(object) {

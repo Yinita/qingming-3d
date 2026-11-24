@@ -31,7 +31,7 @@ function tint(geometry, color) {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 }
 
-function flagstones(parent, x, z, width, depth, surface, seed) {
+export function flagstones(parent, x, z, width, depth, surface, seed, relief=1) {
   const random = seeded(seed);
   const mortar = surface("stone-paving", 0xaf9f84, .64);
   const rock = surface("worn-stone", 0xf5eddf, .79);
@@ -48,7 +48,7 @@ function flagstones(parent, x, z, width, depth, surface, seed) {
     let bottom = z - offset;
     while (bottom < z + offset - .18) {
       const d = Math.min(.34 + random() * .35, z + offset - bottom);
-      const h = .035 + random() * .025;
+      const h = (.035 + random() * .025)*relief;
       const block = detailedBox(w - .017, h, d - .017, rock, .017, random() * 11);
       block.rotateY((random() - .5) * .033);
       block.rotateX((random() - .5) * .040);
