@@ -37,16 +37,16 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   worker.figure.position.y=height;
   worker.stand(x=>x*slope,0,height,0,yaw);
   worker.torsoPivot.position.x=[.018,-.023,.012,-.019][variant];
-  worker.torsoPivot.rotation.set([-.035,.065,-.037,.021][variant],
-    [.12,-.24,.08,-.17][variant],[.039,-.025,.031,-.045][variant]);
-  worker.head.rotation.set([.042,-.081,.10,-.068][variant],
-    [.23,-.31,.35,-.20][variant],[-.03,.049,-.051,.041][variant]);
+  worker.torsoPivot.rotation.set([-.055,.084,-.033,.031][variant],
+    [.16,-.28,.12,-.19][variant],[.051,-.042,.022,-.051][variant]);
+  worker.head.rotation.set([.021,-.065,.145,-.048][variant],
+    [.38,-.39,.20,-.26][variant],[-.05,.059,-.035,.063][variant]);
   const [left,right]=worker.limbs.arms;
   const [leftElbow,rightElbow]=worker.limbs.elbows;
-  left.rotation.set([-.15,-.14,-.32,-.20][variant],[.06,-.31,.18,.21][variant],[.08,.14,.12,.16][variant]);
-  right.rotation.set([-.29,-.11,-.16,-.40][variant],[.15,.30,-.04,-.27][variant],[-.12,-.12,-.10,-.10][variant]);
-  leftElbow.rotation.set([-.56,-.28,-.88,-.44][variant],0,[-.16,-.15,-.23,-.24][variant]);
-  rightElbow.rotation.set([-.56,-.87,-.30,-.70][variant],0,[.18,.25,.09,.22][variant]);
+  left.rotation.set([.03,-.15,-.31,.07][variant],[.11,-.27,.21,.14][variant],[.14,.10,.14,.18][variant]);
+  right.rotation.set([-.34,.08,.05,-.54][variant],[.19,.18,.10,-.23][variant],[-.10,-.09,-.12,-.20][variant]);
+  leftElbow.rotation.set([-.17,-.30,-.95,-.21][variant],0,[-.08,-.20,-.30,-.13][variant]);
+  rightElbow.rotation.set([-.72,-.13,-.17,-.81][variant],0,[.23,.07,.12,.31][variant]);
   worker.figure.updateMatrixWorld(true);
   const parts=new Map(), point=new THREE.Vector3();
   worker.figure.traverse(node=>{
@@ -470,8 +470,12 @@ export function createStreetScene(scene,objects,anchor) {
       if(o.x>-49.0 && o.x<-39.8 && Math.abs(o.z-anchor.z)<2.3) return;
       if(Math.abs(o.z-origin.y)<15 && canalDepth(origin,o.x,o.z)>.056) return;
       const n=digits(o), scale=THREE.MathUtils.clamp(o.h/standingY,.61,1.16);
+      // Assign clothing, occupation silhouette and headwear independently of annotation order.
+      let appearance=Math.imul(n,0x9e3779b1);
+      appearance=Math.imul(appearance^(appearance>>>16),0x85ebca6b)>>>0;
       people.push({x:o.x,z:o.z,y:o.y||0,yaw:Math.PI+Math.sin(n*1.9)*1.85,scale,
-        width:scale*(.78+.28*(.5+.5*Math.sin(n))),robe:robes[n%robes.length],hatted:n%5===0,variant:n%4});
+        width:scale*(.78+.28*(.5+.5*Math.sin(n))),robe:robes[appearance%robes.length],
+        hatted:(appearance>>>8)%5===0,variant:(appearance>>>20)%4});
     } else if(o.label==="tree"){
       replacements.add(o.id);
       if(o.id==="o0288" || o.id==="o0400") return;

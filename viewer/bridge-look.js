@@ -66,6 +66,16 @@ export function createSurfaceLibrary() {
       finishColor:{value:null}, finishNormal:{value:null}, finishOrm:{value:null},
       finishMetres:{value:materialScale[id]}, finishReady:{value:0},
     };
+    if(street) {
+      detail.shoulderColor={value:null};
+      detail.shoulderNormal={value:null};
+      detail.shoulderReady={value:0};
+      maps("worn-stone").then(([color,normal])=>{
+        detail.shoulderColor.value=color;
+        detail.shoulderNormal.value=normal;
+        detail.shoulderReady.value=1;
+      },err=>console.warn("Street aggregate could not be loaded",err.message));
+    }
     maps(id).then(([color,normal,orm])=>{
       detail.finishColor.value=color;
       detail.finishNormal.value=normal;
@@ -73,7 +83,7 @@ export function createSurfaceLibrary() {
       detail.finishReady.value=1;
       material.userData.surfaceReady=true;
     },err=>console.warn("Projected material could not be loaded",id,err.message));
-    material.customProgramCacheKey=()=>street ? "projected-street-finish-v19" :
+    material.customProgramCacheKey=()=>street ? "packed-clay-and-stone-dust" :
       floor ? "projected-floor-finish" : "projected-building-finish";
     material.onBeforeCompile=shader=>{
       Object.assign(shader.uniforms,detail);
@@ -83,6 +93,8 @@ export function createSurfaceLibrary() {
         varying vec3 finishPoint;
         uniform sampler2D finishColor,finishNormal,finishOrm;
         uniform float finishMetres,finishReady;
+        ${street ? `uniform sampler2D shoulderColor,shoulderNormal;
+        uniform float shoulderReady;` : ""}
         ${floor ? `
         float soilHash(vec2 p) {
           vec3 q=fract(vec3(p.xyx)*.1031);
@@ -134,23 +146,31 @@ export function createSurfaceLibrary() {
         float rutDist=abs(track);
         float rutCentre=rutDist-(.83+.085*sin(mix(soilPoint.y+26.3,soilPoint.x+71.8,approach)*.56));
         float route=max(market,approach);
-        float wheel=(1.-smoothstep(.046,.27,abs(rutCentre)))*route;
+        float wornEdge=.094*(mottling-.5)+.052*(compaction-.5);
+        float wheel=(1.-smoothstep(.044,.235,abs(rutCentre+wornEdge)))*route;
         float tread=(1.-smoothstep(.91,2.37,rutDist))*route;
         float compressed=(.24*tread+.76*wheel)*(.64+.36*compaction);
         vec2 swale=soilPoint+vec2(districts-.5,compaction-.5)*1.6;
-        float looseDust=smoothstep(.36,.73,soilNoise(swale*.68+5.8))*(1.-.79*tread);
+        float looseDust=smoothstep(.31,.78,soilNoise(swale*.83+5.8))*(1.-.81*tread);
         float clay=smoothstep(.29,.73,soilNoise(swale*vec2(1.61,.91)+4.1));
         float gravelMix=smoothstep(.28,.74,soilNoise(swale*vec2(.53,.39)+23.8));
         mat2 soilTurn=mat2(.8,.6,-.6,.8);
         vec2 aggregateUV=soilTurn*finishUV.xz*1.73+vec2(.19,.53);
         vec3 aggregateColor=texture2D(finishColor,aggregateUV).rgb;
         vec3 tilePigment=mix(pigment,aggregateColor,gravelMix*.74);
-        vec3 earth=mix(vec3(.35,.261,.155),tilePigment,.57)*vec3(1.77,2.09,2.62);
-        vec3 stoneDust=grains*vec3(1.78,2.05,2.40);
-        soil=diffuseColor.rgb*mix(earth,stoneDust,.31*looseDust+.13);
-        soil*=mix(vec3(.85,.81,.76),vec3(1.13,1.10,1.04),districts);
-        soil*=mix(vec3(.80,.87,.92),vec3(1.11,1.07,.96),clay);
-        soil*=mix(.74,1.08,relief.r)*mix(1.,.73,compressed);
+        vec3 earth=mix(vec3(.39,.27,.16),tilePigment,.50)*vec3(1.52,1.72,1.93);
+        // The chalkier sediment is strongest at irregular shoulders and in pavement joints.
+        vec2 shoulderUV=soilTurn*soilPoint/.89+vec2(.18,.42);
+        vec3 stoneTexel=texture2D(shoulderColor,shoulderUV).rgb;
+        float stoneLuma=dot(stoneTexel,vec3(.2126,.7152,.0722));
+        vec3 stoneDust=mix(grains*vec3(1.6,1.83,2.05),
+          mix(vec3(.37,.36,.31),vec3(.77,.73,.61),smoothstep(.08,.59,stoneLuma)),shoulderReady);
+        float shoulder=route*smoothstep(1.14,2.79,rutDist)*(1.-smoothstep(2.8,5.4,rutDist));
+        float silt=clamp(.10+.40*looseDust+.33*shoulder+.16*gravelMix-.31*compressed,.05,.83);
+        soil=diffuseColor.rgb*mix(earth,stoneDust,silt);
+        soil*=mix(vec3(.92,.87,.82),vec3(1.10,1.10,1.05),districts);
+        soil*=mix(vec3(.90,.95,.99),vec3(1.09,1.01,.88),clay);
+        soil*=mix(.88,1.06,relief.r)*mix(1.,.67,compressed);
         float grainWidth=max(length(dFdx(swale)),length(dFdy(swale)));
         float gritMask=1.-smoothstep(.018,.077,grainWidth);
         float fineGrit=soilNoise(swale*22.7+17.)*soilNoise(swale*31.6);
@@ -176,7 +196,9 @@ export function createSurfaceLibrary() {
         vec2 crossSlope=mix(vec2(1.,-.08),vec2(0.,1.),approach);
         vec2 aggregateNormal=(texture2D(finishNormal,aggregateUV).xy*2.-1.)*soilTurn;
         reliefVector=mix(reliefVector,vec3(aggregateNormal.x,0.,aggregateNormal.y)*.68,gravelMix*.74);
-        reliefVector=reliefVector*(1.-.39*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.51;
+        vec2 stoneNormal=(texture2D(shoulderNormal,shoulderUV).xy*2.-1.)*soilTurn;
+        reliefVector=mix(reliefVector,vec3(stoneNormal.x,0.,stoneNormal.y)*.44,silt*shoulderReady);
+        reliefVector=reliefVector*(1.-.56*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.51;
         ` : ""}
         ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;

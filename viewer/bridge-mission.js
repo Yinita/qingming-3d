@@ -232,7 +232,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         <div id="missionStage" class="mission-kicker"></div>
         <h1>桥畔茶铺</h1>
       </div>
-      <button id="missionRestart" type="button" title="Shift + R" aria-keyshortcuts="Shift+R">重置任务</button>
+      <button id="missionRestart" type="button" title="Shift + R" aria-keyshortcuts="Shift+R"
+        aria-haspopup="dialog" aria-controls="missionRestartDialog">重置任务</button>
     </header>
     <progress id="missionProgress" max="2" value="0" aria-label="桥畔茶铺任务进度"></progress>
     <p id="missionObjective" aria-live="polite"></p>
@@ -286,7 +287,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <p id="missionIntroDetail"></p>
     <div class="entry-actions">
       <button id="missionBegin" type="button">开始送茶</button>
-      <button id="missionIntroReset" type="button">重置进度</button>
+      <button id="missionIntroReset" type="button" aria-haspopup="dialog"
+        aria-controls="missionRestartDialog">重置进度</button>
     </div>`;
   document.body.appendChild(intro);
   panels.observe(intro);
@@ -295,6 +297,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const begin=intro.querySelector("#missionBegin");
   const introReset=intro.querySelector("#missionIntroReset");
   introReset.onclick=()=>requestRestart(introReset);
+  const notice=document.createElement("div");
+  notice.id="missionNotice";
+  notice.setAttribute("role","status");
+  document.body.appendChild(notice);
   const waypoint=document.createElement("div");
   waypoint.id="missionWaypoint";
   waypoint.hidden=true;
@@ -318,6 +324,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let showStart=true;
   let introduced=null;
   let restartTrigger;
+  let noticeTimer, hasRestarted=false;
   let firstPerson = false;
   let teaShotStart = -Infinity;
   let lastPrepare = 0;
@@ -443,6 +450,22 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
   }
 
+  function clearNotice() {
+    clearTimeout(noticeTimer);
+    notice.textContent="";
+  }
+
+  function startMission() {
+    if(showStart) {
+      notice.textContent=state.started ? "已继续送茶" : "任务已开始";
+      noticeTimer=setTimeout(clearNotice,4400);
+    }
+    showStart=false;
+    hasRestarted=false;
+    state.started=true;
+    store();
+  }
+
   function finish(method) {
     state.phase = "delivered";
     state.method = method;
@@ -464,9 +487,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         return;
       }
       remember();
+      startMission();
       state.phase = "carrying";
-      state.started=true;
-      showStart=false;
       hint.textContent = "茶叶已取。沿桥走到对岸的茶铺。";
     } else if (state.phase === "carrying") {
       if (distance(player, counter) < deliveryReach) {
@@ -502,10 +524,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return;
     }
     remember();
+    startMission();
     state.coins -= 3;
     state.phase = "courier";
-    state.started=true;
-    showStart=false;
     courierLeg = 0;
     courierGait.reset();
     helper.figure.position.set(pickup.x, floor(pickup.x, routeZ), routeZ);
@@ -597,6 +618,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     stopTeaShot();
     tea.reset();
     showStart=true;
+    hasRestarted=true;
     store();
     positionCrate();
     if(view!=="mission") setMode("mission");
@@ -620,17 +642,18 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function updateBriefing() {
     const kind=state.phase==="delivered" ? "finished" : state.started ? "resume" : "new";
-    introReset.hidden=kind==="new";
-    if(kind!==introduced) {
+    const briefing=hasRestarted && kind==="new" ? "reset" : kind;
+    if(briefing!==introduced) {
       const [title,detail,action]={
         new:["任务开始 · 桥畔茶铺","在桥头取茶叶箱，过桥送到茶铺。","开始送茶"],
+        reset:["任务已重置 · 桥畔茶铺","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
         resume:["继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
         finished:["茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
-      }[kind];
+      }[briefing];
       introTitle.textContent=title;
       introDetail.textContent=detail;
       begin.textContent=action;
-      introduced=kind;
+      introduced=briefing;
     }
     intro.hidden=view!=="mission" || !showStart || restartDialog.open;
   }
@@ -718,6 +741,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function setView(mode) {
     view = mode;
+    clearNotice();
     if (mode !== "mission") stopTeaShot();
     if (!["mission","missionScroll"].includes(mode) && restartDialog.open) restartDialog.close();
     waypoint.hidden=true;
@@ -907,9 +931,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       requestRestart(begin);
       return;
     }
-    showStart=false;
-    state.started=true;
-    store();
+    startMission();
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
     ui();
     canvas.focus({preventScroll:true});
@@ -925,6 +947,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function requestRestart(trigger) {
     if(restartDialog.open) return;
     restartTrigger=trigger;
+    clearNotice();
     clearInput();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
     intro.hidden=waypoint.hidden=true;

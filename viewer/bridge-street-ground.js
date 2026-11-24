@@ -79,7 +79,8 @@ function paving(lane,origin,material,addSurface) {
   };
   const position=[],uv=[],color=[],indices=[];
   const pigment=new THREE.Color();
-  const palette=[0xc3bfb0,0xcec3b1,0xa8b0ab,0xd2caba,0xa5a7a4,0xbcb0a1,0xaca598];
+  const palette=[0xb9b6ac,0xc0b4a4,0xaeb6b1,0xc4bcad,0xb0b1ad,0xb9ac9c,0xb3a99d];
+  const sediment=new THREE.Color(0xa89274);
   const c=Math.cos(lane.angle),s=Math.sin(lane.angle);
   const point=(u,v)=>[lane.x+c*u+s*v,lane.z-s*u+c*v];
 
@@ -102,23 +103,25 @@ function paving(lane,origin,material,addSurface) {
     const mapU=random(),mapV=random();
     const grainAngle=random()*Math.PI;
     const grainX=Math.cos(grainAngle)/1.25,grainY=Math.sin(grainAngle)/1.25;
-    function vertex(du,dv,y,shade) {
+    function vertex(du,dv,y,shade,dust=0) {
       const [px,pz]=point(u+du,v+dv);
       position.push(px,streetSurfaceHeight(px,pz)+y,pz);
-      color.push(pigment.r*shade,pigment.g*shade,pigment.b*shade);
+      color.push(THREE.MathUtils.lerp(pigment.r,sediment.r,dust)*shade,
+        THREE.MathUtils.lerp(pigment.g,sediment.g,dust)*shade,
+        THREE.MathUtils.lerp(pigment.b,sediment.b,dust)*shade);
       uv.push(mapU+du*grainX+dv*grainY,mapV+dv*grainX-du*grainY);
     }
-    for(const [du,dv] of rim) vertex(du,dv,-.016,.58);
+    for(const [du,dv] of rim) vertex(du,dv,-.016,.65,.64);
     for(const [du,dv,chip] of rim) {
-      vertex(du,dv,height*.36+du*tiltU+dv*tiltV,.70+.12*chip);
+      vertex(du,dv,height*.36+du*tiltU+dv*tiltV,.79+.13*chip,.38+.20*chip);
     }
     for(const [du,dv,chip] of rim) {
       const inset=(gravel ? .72 : .96)-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.78+.14*chip);
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.89+.12*chip,.27+.25*chip);
     }
     for(const [du,dv,chip] of rim) {
       const inset=(gravel ? .72 : .96)-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.94+.09*chip);
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.007*chip,.99+.08*chip,.21+.22*chip);
     }
     vertex(width*(random()-.5)*.25,length*(random()-.5)*.31,height+.002,.98+.09*random());
     for(let i=0;i<8;i++) {
