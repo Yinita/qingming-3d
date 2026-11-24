@@ -37,6 +37,26 @@
   #missionSpeech { color:#623a2e; }
   #missionHud .mission-controls { color:#635745; font-size:11px; }
   canvas:focus { outline:none; }
+  #scene-loading { position:fixed; inset:0; z-index:10; display:grid; place-items:center; padding:22px;
+    background:var(--paper); }
+  #scene-loading .loading-sheet { width:min(420px,100%); box-sizing:border-box; padding:25px 26px 22px;
+    background:#faf5e8; border:1px solid #cbbda2; border-top:3px solid var(--zhu); box-shadow:0 10px 30px #392c2217; }
+  #scene-loading h2 { margin:0 0 9px; font-size:25px; letter-spacing:.08em; }
+  .loading-note { margin:0 0 15px; color:#6b5d49; font-size:13px; line-height:1.5; }
+  .loading-panel progress { display:block; width:100%; height:8px; margin:0 0 11px; accent-color:#963e32; }
+  .loading-status { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 10px;
+    font:12px/1.5 system-ui,sans-serif; font-variant-numeric:tabular-nums; color:#625849; }
+  .loading-metrics { overflow-wrap:anywhere; }
+  #scene-background { position:fixed; right:12px; bottom:12px; z-index:8; box-sizing:border-box;
+    width:min(265px,calc(100vw - 24px)); padding:10px 12px; background:var(--panel); border:1px solid #cbbfa6; }
+  #scene-background p { margin:0 0 7px; font-size:12px; }
+  #scene-background progress { height:5px; margin-bottom:5px; }
+  .loading-panel button { margin-top:10px; }
+  .loading-panel[hidden], .loading-panel [hidden] { display:none!important; }
+  body.scene-loading #hud, body.scene-loading #missionHud, body.scene-loading #seal { visibility:hidden; }
+  @media(max-width:640px) {
+    #scene-background { top:12px; bottom:auto; max-width: min(265px,75vw); }
+  }
   @media(max-width:640px) {
     #missionHud { top:auto; bottom:12px; left:12px; padding:8px 12px; }
     #missionHud h1 { font-size:19px; }
@@ -49,7 +69,23 @@
 } }
 </script>
 </head>
-<body>
+<body class="scene-loading">
+<section id="scene-loading" class="loading-panel" aria-labelledby="scene-loading-title">
+  <div class="loading-sheet">
+    <h2 id="scene-loading-title">正在展开画卷</h2>
+    <p class="loading-note">先准备可以游览的画面，远处房屋随后加载。</p>
+    <progress aria-label="首屏下载进度" max="100"></progress>
+    <div class="loading-status"><span class="loading-metrics">正在连接服务器</span><span class="loading-elapsed">正在测算剩余时间</span></div>
+    <button type="button" hidden>重新加载</button>
+  </div>
+</section>
+<aside id="scene-background" class="loading-panel" aria-label="后台资源下载" hidden>
+  <p>后台加载街景细节</p>
+  <progress aria-label="街景素材下载进度" max="100"></progress>
+  <div class="loading-status"><span class="loading-metrics"></span><span class="loading-elapsed"></span></div>
+  <button type="button" hidden>重试加载素材</button>
+</aside>
+<script type="module" src="./scene-loading.js"></script>
 <div id="hud">
   <h1>入卷 · 清院本清明上河图（一段）</h1>
   <div class="row">
@@ -72,12 +108,18 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
 import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetScene } from "./bridge-street.js";
-import { createSurfaceLibrary } from "./bridge-look.js";
+import { createSurfaceLibrary, setSurfaceTextureLoader } from "./bridge-look.js";
+import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js";
 import { sweepHorizontal } from "./bridge-collision.js";
 
 const params = new URLSearchParams(location.search);
 const base = (params.get("scene") || "../data/seg01/scene/").replace(/\/?$/, "/");
-const L = await fetch(base + "layout.json").then(r => r.json());
+await loadSceneSizes();
+const L = await sceneAsset(base+"layout.json","front",async blob=>JSON.parse(await blob.text())).catch(error=>{
+  failScene("场景清单未能下载，请检查网络后重试。");
+  throw error;
+});
+const startInMission=params.has("mission");
 const th = THREE.MathUtils.degToRad(L.camera.elev_deg);
 const s = L.camera.m_per_px, W = L.image.width, H = L.image.height;
 const GW = L.ground.width, GD = L.ground.depth;
@@ -90,12 +132,31 @@ document.body.appendChild(renderer.domElement);
 renderer.domElement.tabIndex = 0;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xEDE6D6);
-const loader = new THREE.TextureLoader();
+function textureFromImage(image) {
+  const texture=new THREE.Texture(image);
+  texture.needsUpdate=true;
+  return texture;
+}
+setSurfaceTextureLoader(url=>sceneImage(url,"background").then(textureFromImage));
 const surfaces=createSurfaceLibrary();
-const tex = url => { const t = loader.load(base + url); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
+const textures=new Map();
+function tex(file,phase,essential=false) {
+  if(textures.has(file)) return textures.get(file);
+  const t=new THREE.Texture();
+  t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=8;
+  sceneImage(base+file,phase).then(image=>{
+    t.image=image;
+    t.needsUpdate=true;
+  },()=>{
+    if(essential) failScene("地面图像未能下载，请检查网络后重试。");
+  });
+  textures.set(file,t);
+  return t;
+}
 
 // Ground: the painting with objects removed, mapped affinely onto the ground plane.
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBasicMaterial({ map: tex(L.ground.tex) }));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(GW, GD), new THREE.MeshBasicMaterial({ map: tex(L.ground.tex,"front",true) }));
 ground.rotation.x = -Math.PI / 2; ground.position.set(0, 0, -GD / 2); scene.add(ground);
 ground.receiveShadow=true;
 ground.userData.archiveMaterial=ground.material;
@@ -115,10 +176,6 @@ const riverOrigin=canalOrigin(bridgeAnchor);
 const street=createStreetScene(scene,L.objects,bridgeAnchor);
 const sourceReplacements=[];
 for (const o of L.objects) {
-  const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
-  const m = new THREE.MeshBasicMaterial({ map: tex(o.tex_hd || o.tex), alphaTest: 0.5, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(g, m);
-  mesh.position.set(o.x, o.y || 0, o.z); mesh.userData = o; scene.add(mesh);   // y > 0: standing on the bridge deck
   const canalCard = (o.y || 0)<.4 && (o.label==="person" || o.label==="umbrella") &&
     Math.abs(o.z-riverOrigin.y)<canalHalfLength &&
     canalDepth(riverOrigin,o.x,o.z)>.022;
@@ -126,10 +183,16 @@ for (const o of L.objects) {
   const onLanding=o.label==="person" && (o.y||0)<.4 &&
     o.x>bridgeAnchor.x-13 && o.x<bridgeAnchor.x-7 &&
     o.z>bridgeAnchor.z-7.15 && o.z<bridgeAnchor.z-1.45;
-  if (o.id === "o0288" || o.id === "o0400" || canalCard || onLanding ||
-      (o.label === "person" && o.y > 0 && Math.abs(o.z + 41.422) < 1.05)) {
-    trailCards.push(mesh);
-  }
+  const hideInMission=o.id==="o0288" || o.id==="o0400" || canalCard || onLanding ||
+    (o.label==="person" && o.y>0 && Math.abs(o.z+41.422)<1.05);
+  const near=Math.hypot(o.x-bridgeAnchor.x,o.z-bridgeAnchor.z)<40;
+  const needed=!hideInMission && o.label!=="bridge" && !street.replacements.has(o.id);
+  const phase=!startInMission || (near && needed) ? "front" : "background";
+  const g = new THREE.PlaneGeometry(o.w, o.h); g.translate(0, o.h / 2, 0);
+  const m=new THREE.MeshBasicMaterial({map:tex(o.tex_hd || o.tex,phase),alphaTest:.5,side:THREE.DoubleSide});
+  const mesh=new THREE.Mesh(g,m);
+  mesh.position.set(o.x,o.y || 0,o.z); mesh.userData=o; scene.add(mesh);
+  if(hideInMission) trailCards.push(mesh);
   if(street.replacements.has(o.id)) sourceReplacements.push(mesh);
   if (o.billboard === "sprite") sprites.push(mesh);
   if (o.mesh) swapCards.push(mesh);
@@ -205,12 +268,10 @@ function setModels(on) {
   b.setAttribute("aria-pressed", String(on));
   b.textContent = (on ? "远处房屋：3D 模型" : "远处房屋：原画裁片") + (pending ? ` · 加载中 ${withMesh.length - pending}/${withMesh.length}` : "");
 }
-// Start downloading models only once the ground and card textures are in (or after 8 s),
-// so the painting appears first instead of competing with ~45 MB of models for bandwidth.
-let modelsStarted = false;
-function startModels() {
-  if (modelsStarted) return; modelsStarted = true;
-  for (const o of withMesh) gltf.load(base + o.mesh.glb, g => {
+// Queue models with the secondary textures. Downloads start after the first draw.
+for(const o of withMesh) {
+  sceneAsset(base+o.mesh.glb,"background",async blob=>{
+    const g=await gltf.parseAsync(await blob.arrayBuffer(),new URL(base,location.href).href);
     const finishFaces = [];
     g.scene.traverse(n => {
       if (!n.isMesh) return;
@@ -235,11 +296,11 @@ function startModels() {
       street.registerHouse(g.scene);
       if(mode==="walk") clearWalkSpawn();
     }
-    pending--; setModels(showModels);
-  }, undefined, () => { pending--; setModels(showModels); });
+  }).catch(()=>{}).finally(()=>{
+    pending--;
+    setModels(showModels);
+  });
 }
-THREE.DefaultLoadingManager.onLoad = startModels;
-setTimeout(startModels, 8000);
 
 // --- cameras ---
 const dir = new THREE.Vector3(0, -Math.sin(th), -Math.cos(th));
@@ -398,10 +459,13 @@ function resize() {
 }
 addEventListener("resize", resize); resize(); setMode(params.has("mission") ? "mission" : "paint");
 
+let firstFrame=false, firstAssets=false;
+prepareFirstFrame().then(()=>{firstAssets=true;});
 const clock = new THREE.Clock();
 const fwd = new THREE.Vector3(), right = new THREE.Vector3();
 renderer.setAnimationLoop(now => {
   const elapsed = clock.getDelta();
+  if(!firstAssets) return;
 
   const dt = Math.min(elapsed, 0.05);
   if (mode === "fly") stepFly(now);
@@ -436,6 +500,10 @@ renderer.setAnimationLoop(now => {
     Math.atan2(camPos.x - sp.position.x, camPos.z - sp.position.z);
   if (mode === "mission") mission.prepare();
   renderer.render(scene, cam);
+  if(!firstFrame) {
+    firstFrame=true;
+    showFirstFrame();
+  }
 });
 const counts = {};
 for (const o of L.objects) counts[o.label] = (counts[o.label] || 0) + 1;

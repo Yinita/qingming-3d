@@ -6,6 +6,10 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const materialRoot = "../data/bridge-finish/";
 const finishLoader=new THREE.TextureLoader();
+let loadSurfaceTexture=url=>finishLoader.loadAsync(url);
+export function setSurfaceTextureLoader(load) {
+  loadSurfaceTexture=load;
+}
 const finishSets=new Map();
 export const bridgeRailOffset=1.23;
 export function bridgeDeckHeight(anchor,x) {
@@ -20,7 +24,7 @@ const materialScale = {
 
 export function createSurfaceLibrary() {
   function load(id, file, srgb = false) {
-    return finishLoader.loadAsync(materialRoot + id + "/" + file).then(map => {
+    return loadSurfaceTexture(materialRoot + id + "/" + file).then(map => {
       if (srgb) map.colorSpace = THREE.SRGBColorSpace;
       map.wrapS = map.wrapT = THREE.RepeatWrapping;
       map.anisotropy = 8;
