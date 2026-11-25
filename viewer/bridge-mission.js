@@ -472,7 +472,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function markObjective() {
     const phase=state.phase;
     const atMarket=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
-      guideMarket && state.cakeClaimed!==true;
+      guideMarket && state.cakeClaimed!==true && !market.atCounter(player);
     const shopper=view==="mission" && !showStart && !restartDialog.open && hasParcel() &&
       !market.sharing() && distance(player,market.shopperPosition)<9;
     groundMarker.visible=view==="mission" && !restartDialog.open && (phase!=="delivered" || atMarket);
@@ -494,7 +494,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       startPillar.scale.y=top-bottom;
     }
     beacon.rotation.y=elapsed*.92;
-    beacon.scale.setScalar(pending ? 1.39 : 1);
+    beacon.scale.setScalar(pending ? 1.39 : atMarket ? .72 : 1);
     waypoint.dataset.start=String(pending);
     waypoint.classList.toggle("market-waypoint",atMarket || shopper);
     markerPoint.set(x,hover+.35,z);
@@ -958,7 +958,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     updateBriefing();
     economy.textContent = `铜钱 ${state.coins} 文　·　茶铺库存 ${state.phase === "delivered" ? "1 箱" : "0 箱"}`+
       (state.cakeGifted ? "　·　蒸糕已送出" : hasParcel() ? "　·　蒸糕 1 份" : "");
-    marketGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" || state.cakeClaimed===true;
+    marketGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" ||
+      state.cakeClaimed===true || market.atCounter(player);
     marketGuideButton.setAttribute("aria-pressed",String(guideMarket));
     interactButton.textContent = state.phase === "carrying"
       ? (distance(player, counter) < deliveryReach ? "交给掌柜 E" : "放下茶箱 E") : "拿取茶箱 E";
