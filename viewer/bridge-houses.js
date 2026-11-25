@@ -452,6 +452,11 @@ function joinerRoom(parent,city,materials) {
   }
   reset();
   return {support,action,use,update,reset,detail,
+    materialAt(x,z,footY) {
+      const top=support(x,z);
+      if(top<footY-.009) return null;
+      return top===floorLevel ? "wood" : "stone";
+    },
     inspect:()=>({x,z,face,position,target,blocked,lit,floorLevel})};
 }
 

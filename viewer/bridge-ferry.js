@@ -23,6 +23,12 @@ export function ferryDeckHeight(x,z) {
   return -Infinity;
 }
 
+export function ferryLandingMaterial(x,z,footY) {
+  const top=ferryDeckHeight(x,z);
+  if(top<footY-.009) return null;
+  return top===deckY ? "wood" : "stone";
+}
+
 export function buildFerryLanding(root,city,surface) {
   const timber=surface("rail-wood",0xbba28a,.86,.88);
   const worn=surface("tea-wood",0xc6a789,.94,.83);

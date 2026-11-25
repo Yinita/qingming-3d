@@ -216,7 +216,7 @@ export function buildWoodenBridge(group,center,surface) {
   return piers;
 }
 
-export function buildBridgeLook(parent, center, surface, ground, apron) {
+export function buildBridgeLook(parent, center, surface, ground, apron, oarContact) {
   const model = new THREE.Group();
   model.name = "Close-range bridge and canal";
   parent.add(model);
@@ -227,6 +227,10 @@ export function buildBridgeLook(parent, center, surface, ground, apron) {
   const origin = canalOrigin(center);
   const bed = buildCanalBed(model,origin,ground,apron);
   const canal = buildCanal(model,origin,piers,skiff.wake,skiff.motion);
+  const oarHit=(x,z,time,strength,kind,vx,vz)=>{
+    canal.hit(x,z,time,strength,kind,vx,vz);
+    oarContact?.(x,z,strength);
+  };
   return {
     setVisible(visible,showFerry=false) {
       model.visible=visible;
@@ -235,7 +239,7 @@ export function buildBridgeLook(parent, center, surface, ground, apron) {
     },
     frame(time,dt) {
       skiff.update(time,dt,canal.field);
-      skiff.ferry.splash(canal.field,time,canal.hit);
+      skiff.ferry.splash(canal.field,time,oarHit);
       bed.frame(time);
       canal.frame(time,dt);
     },

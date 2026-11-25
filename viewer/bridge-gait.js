@@ -103,7 +103,7 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
         foot.plantAge=0;
         cadence+=Math.PI;
         landings++;
-        const wet=touchdown(foot.x,foot.y,foot.z,time,swing.velocityX,swing.velocityZ);
+        const wet=touchdown(foot.x,foot.y,foot.z,time,swing.velocityX,swing.velocityZ,foot);
         if(wet) wetLandings++;
         last={ foot:swing.index,x:foot.x,y:foot.y,z:foot.z,time,wet };
         next=1-swing.index;

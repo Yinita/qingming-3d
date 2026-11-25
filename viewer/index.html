@@ -79,6 +79,8 @@
   .mission-open #seal { display:none; }
   #missionTools[hidden], #missionJournal[hidden] { display:none; }
   #missionTools { position:fixed; z-index:8; top:22px; right:22px; display:flex; gap:6px; }
+  #missionSound { min-height:44px; padding:7px 8px; white-space:nowrap; }
+  #missionSound[aria-pressed="false"] { color:#665943; background:#e7dbc3; }
   #missionRestart { min-height:44px; white-space:nowrap;
     padding:9px 16px; color:#fff7e1; font-size:14px; font-weight:700; background:#733a2d;
     border:1px solid #e3bd82; box-shadow:0 3px 15px #38271c66; }
@@ -190,7 +192,7 @@
   }
   @media(max-width:760px), (max-height:525px) {
     body.mission-open #scene-background { top:10px; bottom:auto; left:10px; right:auto;
-      width:min(150px, calc(100vw - 196px)); padding:6px 8px; }
+      width:min(150px, calc(100vw - 226px)); padding:6px 8px; }
     body.mission-open #scene-background p { margin-bottom:4px; }
     body.mission-open #scene-background progress { margin:0; }
     body.mission-open #scene-background .loading-status { display:none; }
@@ -215,13 +217,14 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=131",
+  "./bridge-look.js": "./bridge-look.js?v=132",
   "./bridge-earth.js": "./bridge-earth.js?v=125",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=131",
-  "./bridge-gait.js": "./bridge-gait.js?v=125",
+  "./bridge-mission.js": "./bridge-mission.js?v=132",
+  "./bridge-audio.js": "./bridge-audio.js?v=132",
+  "./bridge-gait.js": "./bridge-gait.js?v=132",
   "./bridge-livestock.js": "./bridge-livestock.js?v=119",
-  "./bridge-houses.js": "./bridge-houses.js?v=120b",
+  "./bridge-houses.js": "./bridge-houses.js?v=132",
   "./bridge-architecture.js": "./bridge-architecture.js?v=120",
   "./bridge-collision.js": "./bridge-collision.js?v=128",
   "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=119",
@@ -231,13 +234,13 @@
   "./bridge-head.js": "./bridge-head.js?v=126",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
   "./bridge-street.js": "./bridge-street.js?v=131",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=131",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=132",
   "./bridge-foreground.js": "./bridge-foreground.js?v=131",
   "./bridge-boat.js": "./bridge-boat.js?v=124",
   "./bridge-consignment.js": "./bridge-consignment.js?v=128",
   "./bridge-freight.js": "./bridge-freight.js?v=128",
   "./bridge-freight-model.js": "./bridge-freight-model.js?v=128",
-  "./bridge-ferry.js": "./bridge-ferry.js?v=127",
+  "./bridge-ferry.js": "./bridge-ferry.js?v=132",
   "./bridge-tearoom.js": "./bridge-tearoom.js?v=127",
   "./bridge-tea.js": "./bridge-tea.js?v=126",
   "./bridge-dialogue.js": "./bridge-dialogue.js?v=129",

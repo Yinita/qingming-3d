@@ -1,5 +1,6 @@
 import { createMissionDialogue } from "./bridge-dialogue.js";
-import { buildFerryLanding, createFerry, ferryDeckHeight } from "./bridge-ferry.js";
+import { createStreetAudio } from "./bridge-audio.js";
+import { buildFerryLanding, createFerry, ferryDeckHeight, ferryLandingMaterial } from "./bridge-ferry.js";
 import { createMissionTouchPad } from "./bridge-touch.js";
 import * as THREE from "three";
 import { bridgeDeckHeight, bridgeRailOffset, buildBridgeLook, createPlayLighting, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
@@ -8,7 +9,7 @@ import { counterCeramics, riverWorker } from "./bridge-people.js";
 import { buildTea } from "./bridge-tea.js";
 import { buildTeaRoom } from "./bridge-tearoom.js";
 import { buildConsignment, parcelSize } from "./bridge-consignment.js";
-import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
+import { canalDepth, canalHalfLength, canalOrigin, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
 import { circleTouchesBox, sweepHorizontal, workerHeight, workerRadius } from "./bridge-collision.js";
@@ -91,8 +92,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
   const material = createSurfaceLibrary();
-  const bridgeLook = buildBridgeLook(root, center, material, ground, apron);
-  const stones = buildPebbleToss(root,depthAt,bridgeLook.hit,bridgeLook.field.height);
+  const audio=createStreetAudio(()=>player);
+  const bridgeLook = buildBridgeLook(root,center,material,ground,apron,(x,z,strength)=>{
+    audio.play("water",x,z,.13+.38*strength,"oar");
+  });
+  const stones = buildPebbleToss(root,depthAt,(x,z,time,strength,kind,vx,vz)=>{
+    bridgeLook.hit(x,z,time,strength,kind,vx,vz);
+    audio.play("water",x,z,.12+.34*strength,"pebble");
+  },bridgeLook.field.height);
   const light = createPlayLighting(scene, renderer, center, ambient, sun);
   const wood = material("tea-wood", 0xf1dbc1, .88);
   const agedWood = material("tea-wood", 0xd9c6ac, .88);
@@ -198,11 +205,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const passengerCarrier=()=>ferry.active() ? ferry : freight.active() ? freight : null;
   const cargoAttitude=new THREE.Quaternion(),oarGrip=new THREE.Vector3();
   const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
+  const onStall=(x,z)=>x>=stallFloor.min.x && x<=stallFloor.max.x && z>=stallFloor.min.z && z<=stallFloor.max.z;
   function floor(x,z) {
     if (onBridge(x,z)) return deck(x);
-    if(x>=stallFloor.min.x && x<=stallFloor.max.x && z>=stallFloor.min.z && z<=stallFloor.max.z) {
-      return stallFloor.max.y;
-    }
+    if(onStall(x,z)) return stallFloor.max.y;
     const depth=depthAt(x,z);
     const ground=Math.max(teaRoom.support(x,z),ferryDeckHeight(x,z),workshop.support(x,z),
       depth===0 ? street.streetHeight(x,z) : 0);
@@ -268,6 +274,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         <h1>桥畔茶铺</h1>
       </div>
       <div id="missionTools" role="group" aria-label="任务选项">
+        <button id="missionSound" type="button" aria-label="场景音效" aria-pressed="true">声音开</button>
         <button id="missionJournal" type="button" title="任务簿 J">任务簿</button>
         <button id="missionRestart" type="button" title="Shift + R" aria-keyshortcuts="Shift+R"
           aria-haspopup="dialog" aria-controls="missionRestartDialog">重置任务</button>
@@ -345,6 +352,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const progress=byId("missionProgress");
   const steps=byId("missionSteps").children;
   const tools=byId("missionTools");
+  const soundButton=tools.querySelector("#missionSound");
   const journalButton=tools.querySelector("#missionJournal");
   document.body.appendChild(tools);
   document.body.appendChild(restartDialog);
@@ -481,14 +489,37 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     return (walkable(x,z) || Number.isFinite(workshop.support(x,z)) || Number.isFinite(teaRoom.support(x,z))) &&
       !city.blocking(x,z,floor(x,z),radius,height,ignored,ignoredCargo);
   }
+  function footSurface(x,y,z) {
+    if(onBridge(x,z)) return "wood";
+    if(onStall(x,z)) return "stone";
+    const roomHeight=teaRoom.support(x,z);
+    if(roomHeight>=y-.009) return roomHeight>.12 ? "wood" : "stone";
+    return ferryLandingMaterial(x,z,y)??workshop.materialAt(x,z,y)??street.streetHeight.materialAt(x,z);
+  }
+  function footfall(x,y,z,vx,vz,emitter,wet=false) {
+    const speed=Math.hypot(vx,vz);
+    if(speed<.20) return;
+    const family=wet ? "water" : footSurface(x,y,z);
+    const laden=emitter==="player" ? hasCargo() : emitter==="courier" || emitter==="porter";
+    const force=THREE.MathUtils.smoothstep(speed,.2,3.1);
+    const volume=(emitter==="player" ? .22+.17*force : .20+.12*force)*(laden ? 1.18 : 1);
+    audio.play(family,x,z,volume,emitter,speed,laden);
+  }
   const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
     const depth=bridgeLook.field.height(x,z,time)-y;
-    if(onBridge(x,z) || depth<.032 || depthAt(x,z)<.024 || Math.hypot(vx,vz)<.22) return false;
-    const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
-    bridgeLook.hit(x,z,time,strength,"step",vx,vz);
-    return true;
+    const wet=!onBridge(x,z) && depth>=.032 && depthAt(x,z)>=.024 && Math.hypot(vx,vz)>=.22;
+    if(wet) {
+      const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
+      bridgeLook.hit(x,z,time,strength,"step",vx,vz);
+    }
+    footfall(x,y,z,vx,vz,"player",wet);
+    return wet;
   });
-  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),()=>false);
+  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),(x,y,z,t,vx,vz)=>{
+    footfall(x,y,z,vx,vz,"courier");
+    return false;
+  });
+  market.setGroundContact((role,foot,vx,vz)=>footfall(foot.x,foot.y,foot.z,vx,vz,role));
   const fwd = new THREE.Vector3();
   const side = new THREE.Vector3();
   const streetVelocity=new THREE.Vector2();
@@ -874,7 +905,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     labels.inert=awaitingStart() && !restartDialog.open;
     touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !freight.active() && !teaRoom.chairActive() && !Number.isFinite(teaShotStart));
     touchPad.rowing(ferry.active());
-    dialogue.activate(view==="mission" && intro.hidden && !restartDialog.open);
+    const inStreet=view==="mission" && intro.hidden && !restartDialog.open;
+    dialogue.activate(inStreet);
+    audio.setActive(inStreet);
     tools.hidden=labels.hidden;
     journalButton.hidden=awaitingStart();
   }
@@ -1429,6 +1462,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(teaRoom.leaveChair(player)) gait.reset();
       document.body.classList.remove("tea-room-open","tea-seated");
       dialogue.activate(false);
+      audio.setActive(false);
       teaRoom.speech(null,1);
       market.speech(dialogue.speech(0),1);
       merchant.face.speak(null,1);
@@ -1641,6 +1675,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       const y=aboard ? carrier.rider.y : chairBefore ? teaRoom.chair.y : floor(player.x,player.z);
       const indoors=teaRoom.contains(player.x,player.z);
+      const along=THREE.MathUtils.clamp(player.z-riverOrigin.y,-canalHalfLength,canalHalfLength);
+      const across=player.x-riverOrigin.x;
+      const shore=canalShoreRadius(along,Math.sign(across)||1);
+      const audibleX=riverOrigin.x+THREE.MathUtils.clamp(across,-shore,shore)*.91;
+      const audibleZ=riverOrigin.y+along;
+      const riverDistance=Math.hypot(player.x-audibleX,player.z-audibleZ);
+      audio.ambience(audibleX,audibleZ,(indoors ? .032 : .185)*Math.exp(-riverDistance/4.9),indoors);
       cameraObstacle=null;
       cameraClose=false;
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
@@ -1865,6 +1906,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       requestRestart(restartButton);
       return;
     }
+    audio.unlock();
     clearPlayerControl();
     startMission();
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
@@ -1874,6 +1916,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
   begin.onclick=beginMission;
   continueButton.onclick=()=>{
+    audio.unlock();
     showStart=false;
     ui();
     canvas.focus({preventScroll:true});
@@ -1917,8 +1960,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     groundMarker.visible=beacon.visible=startPillar.visible=false;
     touchPad.visible(false);
     dialogue.activate(false);
+    audio.setActive(false);
     restartDialog.showModal();
   }
+  function soundLabel() {
+    soundButton.setAttribute("aria-pressed",String(audio.enabled));
+    soundButton.textContent=audio.enabled ? "声音开" : "声音关";
+  }
+  soundButton.hidden=!audio.supported;
+  soundButton.onclick=event=>{
+    audio.toggle();
+    soundLabel();
+    if(event.detail) canvas.focus({preventScroll:true});
+  };
+  soundLabel();
   const restartButton=tools.querySelector("#missionRestart");
   restartButton.onclick=event=>requestRestart(event.currentTarget);
   restartDialog.addEventListener("close",()=>{
@@ -2015,7 +2070,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     inspect: () => ({ phase: state.phase, coins: state.coins, method: state.method, view, firstPerson,
       player: { ...player, y: ferry.active() ? ferry.rider.y : teaRoom.chairActive() ? teaRoom.chair.y : floor(player.x,player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
-      gait:gait.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
+      gait:gait.inspect(),audio:audio.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,

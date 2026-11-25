@@ -475,6 +475,11 @@ export function buildStreetGround(root,origin,surface,anchor,terrain) {
   const pavedHeight=(x,z)=>surfaceHeight(pavingCells,x,z);
   const rootHeight=(x,z)=>surfaceHeight(rootCells,x,z);
   const height=(x,z)=>Math.max(terrain(x,z),pavedHeight(x,z),rootHeight(x,z));
+  height.materialAt=(x,z)=>{
+    const dirt=terrain(x,z), paving=pavedHeight(x,z), roots=rootHeight(x,z);
+    if(roots>=Math.max(dirt+.008,paving)) return "wood";
+    return paving>dirt+.004 ? "stone" : "earth";
+  };
   height.addThreshold=(x,z,length,width,seed)=>addPaving({x,z,length,width,seed,angle:Math.PI/2,
     coursed:true,name:"Stone threshold"});
   height.addRootSurface=(position,a,b,c)=>addSurface(position,a,b,c,rootCells);
