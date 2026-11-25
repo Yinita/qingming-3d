@@ -29,10 +29,13 @@ const counter = { x: -43.15, z: center.z - 1.35 };
 const routeZ = center.z;
 const deliveryReach=2.35;
 const laneHalf=.63;
-const cargoWidth=.385, cargoDepth=.351, cargoHeight=.616;
+// A back-carried tea chest about 53 x 49 x 45 cm: three quarters of the earlier crate, so it
+// reads as a load one person can shoulder.
+const crateScale=.75;
+const cargoWidth=.385*crateScale, cargoDepth=.351*crateScale, cargoHeight=.616*crateScale;
 const mainCargoSize={halfX:cargoWidth,halfZ:cargoDepth,height:cargoHeight};
 // The back board sits against the robe; the crate rides directly behind it.
-const harnessBack=.541, harnessHeight=.79;
+const harnessBack=.190+cargoDepth, harnessHeight=.79;
 const riverOrigin=canalOrigin(center);
 const trees=willowSites(center);
 const trail = [[-70, routeZ], [-48.2, routeZ], [-44, routeZ], [counter.x, counter.z + .82]];
@@ -150,6 +153,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     for (const x of [-.371, .371]) box(crateMesh, iron, .023, .061, .65, x, y, 0);
   }
   box(crateMesh, signPaint, .14, .139, .009, .11, .32, .314);
+  crateMesh.scale.setScalar(crateScale);
   crateMesh.name = "茶叶货箱";
   root.add(crateMesh);
 

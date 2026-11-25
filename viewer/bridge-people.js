@@ -45,7 +45,7 @@ function robeVolume(theta,y) {
   const pull=theta*6+y*38+.9*Math.sin(theta*2);
   const folds=.016*Math.sin(theta*5+y*5)-.011*Math.cos(theta*9-y*11);
   return 1+folds+robePleats(theta,y)+kneeRoom+.079*chest*front+
-    shoulder*(.054+.037*back)-.057*tuck+.029*waistGather+
+    shoulder*(.030+.022*back)-.057*tuck+.029*waistGather+
     diagonal*(.036*Math.sin(pull)-.032*Math.max(0,Math.cos(pull))**5);
 }
 
@@ -623,8 +623,9 @@ function tailoredSleeve(arm, cloth, binding, cuffBinding, sections, cut, correct
   const profile=[
     [0,-.381],[.055,-.382],[.062,-.373],[.065,cuffHeight],[.071,-.332],
     [.075,-.305],[.079,-.265],[.080,-.221],[.082,-.181],
-    [.087,-.130],[.085,-.067],[.078,-.024],[.063,.012],[.040,.039],[0,.051],
-  ].map(([r,y])=>[r*THREE.MathUtils.lerp(1,.86,THREE.MathUtils.smoothstep(y,-.36,-.29)),y]); // slimmer arm, same cuff
+    [.087,-.130],[.085,-.067],[.078,-.024],[.060,.004],[.036,.026],[0,.036],
+  ].map(([r,y])=>[r*THREE.MathUtils.lerp(1,.86,THREE.MathUtils.smoothstep(y,-.36,-.29))*
+    THREE.MathUtils.lerp(1,.87,THREE.MathUtils.smoothstep(y,-.20,-.06)),y]); // slimmer arm and a lower shoulder cap, same cuff
   function drape(angle,y) {
     const elbow=Math.exp(-(((y-joint)/.092)**2));
     const fullness=Math.sin(Math.PI*clamp((y+.376)/.426,0,1));
@@ -1018,9 +1019,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     [.269*skirt,.722+hemOffset*.73],[.255*skirt,.798+hemOffset*.42],
     // Chest a little narrower and the waist drawn in, for a shoulders-over-waist line
     // rather than a barrel.
-    [.228*garmentWaist,.88],[.208*garmentWaist,.95],[.218*garmentWaist,1.04],
-    [.232*shoulders,1.13],[.240*shoulders,1.202],[.238*shoulders,1.246],
-    [.220*shoulders,1.286],[.178*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
+    [.226*garmentWaist,.88],[.206*garmentWaist,.95],[.214*garmentWaist,1.04],
+    [.220*shoulders,1.13],[.224*shoulders,1.202],[.222*shoulders,1.246],
+    [.207*shoulders,1.286],[.172*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
   const garmentSections=lowDetail ? 14 : 32;
   const robeSegments=lowDetail ? 16 : 64;
   piece(figure,robeClothGeometry(robe,robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
@@ -1354,7 +1355,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   for (const side of [-1, 1]) {
     articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     const arm = new THREE.Group();
-    arm.position.set(side*(fitted ? .222 : .228)*shoulders,1.228,.005);
+    arm.position.set(side*(fitted ? .208 : .214)*shoulders,1.228,.005);
     arm.scale.set(profile?.armWidth??1,profile?.sleeve??1,profile?.armWidth??1);
     // Hang the arm slightly away from the body so the hand clears the flared robe.
     arm.rotation.z=side*.11;

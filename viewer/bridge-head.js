@@ -116,29 +116,48 @@ function skinProgram(material) {
 // Facial structure on top of the MakeHuman base, in source units (one unit is about 15 cm).
 // Leads get a tapered jaw, a forward chin, high cheekbones, a straight raised nose bridge and a
 // firm brow; the eye sockets and lids are untouched so the blink and eyeball fit still hold.
-const sculptStrength={player:1,helper:.85,attendant:.8,shopper:.7,baker:.6,porter:.55,merchant:.45,
-  resident0:.65,resident1:.4,resident2:.75,resident3:.5};
+// Per-role face design. k scales the shared refinement; the other terms give each person
+// their own structure: longer or shorter lower face, jaw taper, cheek fullness, chin
+// projection and nose width, so residents can be told apart side on as well as head on.
+const faceDesign={
+  player:   {k:1,   length:.010, taper:1.00, full:0,    chin:1.0, nose:1.0},
+  helper:   {k:.85, length:-.012,taper:.80,  full:.35,  chin:.8,  nose:1.0},
+  attendant:{k:.8,  length:.006, taper:.95,  full:.10,  chin:1.0, nose:.9},
+  shopper:  {k:.7,  length:.000, taper:.70,  full:.25,  chin:.9,  nose:1.0},
+  baker:    {k:.6,  length:-.018,taper:.40,  full:.70,  chin:.6,  nose:1.25},
+  porter:   {k:.55, length:.014, taper:.55,  full:-.10, chin:1.3, nose:1.1},
+  merchant: {k:.45, length:.004, taper:.60,  full:.30,  chin:.9,  nose:1.1},
+  resident0:{k:.65, length:.030, taper:.70,  full:-.25, chin:1.35,nose:.9},
+  resident1:{k:.4,  length:-.022,taper:.15,  full:.85,  chin:.5,  nose:1.3},
+  resident2:{k:.75, length:.016, taper:1.10, full:0,    chin:1.1, nose:.85},
+  resident3:{k:.5,  length:-.006,taper:.35,  full:.55,  chin:.7,  nose:1.2},
+};
 function sculptFace(source,role) {
-  const k=sculptStrength[role]??.5;
+  const d=faceDesign[role]??{k:.5,length:0,taper:.6,full:.2,chin:1,nose:1};
+  const k=d.k;
   for(let i=0;i<source.length;i+=3) {
     const x=source[i],y=source[i+1],z=source[i+2];
     const a=Math.abs(x),sign=Math.sign(x)||1;
     const neck=smoothstep(y,6.02,6.30);
     const side=smoothstep(z,-.15,.65)*neck;
     const lower=smoothstep(7.02-y,0,.58);
-    const taper=.17*k*lower*smoothstep(a,.10,.62)*side;
+    const taper=.17*k*d.taper*lower*smoothstep(a,.10,.62)*side;
     const chin=gaussian(a,y,0,6.42,.21,.13)*smoothstep(z,1.08,1.40)*neck;
     const cheekbone=gaussian(a,y,.52,7.06,.15,.11)*smoothstep(z,.85,1.30);
     const hollow=gaussian(a,y,.49,6.80,.13,.10)*smoothstep(z,.75,1.25);
+    const cheek=gaussian(a,y,.46,6.78,.20,.17)*smoothstep(z,.70,1.25)*neck;
     const bridge=gaussian(a,y,0,7.11,.055,.16)*smoothstep(z,1.40,1.56);
     const wing=gaussian(a,y,.12,6.91,.075,.08)*smoothstep(z,1.28,1.50);
     const brow=gaussian(a,y,.30,7.44,.21,.05)*smoothstep(z,1.33,1.50);
+    // Lengthen or shorten the face below the eyes, fading out at the neck seam.
+    const drop=d.length*smoothstep(7.08-y,0,.62)*neck;
     // Open the eye: stretch lids away from the eyeball centre, more vertically than across.
     const eye=Math.exp(-(((a-.308)/.19)**2+((y-7.284)/.13)**2))*smoothstep(z,1.15,1.30);
     const open=.24*k*eye;
-    source[i]=x*(1-taper-.15*k*wing)+sign*k*(.015*cheekbone-.016*hollow)+sign*.05*open*(a-.308);
-    source[i+1]=y-.030*k*chin+open*(y-7.284);
-    source[i+2]=z+k*(.038*chin+.012*cheekbone+.032*bridge+.016*brow);
+    source[i]=x*(1-taper-.15*k*(2-d.nose)*wing)+sign*(k*(.015*cheekbone-.016*hollow*(1-d.full))+.030*d.full*cheek)+
+      sign*.05*open*(a-.308);
+    source[i+1]=y-.030*k*d.chin*chin+open*(y-7.284)-drop;
+    source[i+2]=z+k*(.038*d.chin*chin+.012*cheekbone+.032*bridge+.016*brow)+.010*d.full*cheek;
   }
 }
 
