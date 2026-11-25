@@ -414,6 +414,7 @@ export function createWorkyard(parent,city,surface,floor,dry) {
 
   return {
     grab, release, reset, frame, parked,
+    timberReady:()=>active!==items[0] && parkStatus(items[0]),
     action(player) {
       if(active) return "放开"+active.name+" E";
       const item=nearest(player);

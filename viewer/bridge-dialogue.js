@@ -13,6 +13,12 @@ const lines={
     "yi wen / gang zheng hao de , wo gei nin bao yi kuai"],
   shopper:["采买客","多谢，这一路正饿着。",
     "duo xie , zhe yi lu zheng e zhe"],
+  joinerWaiting:["木匠","木料还在院里。推到木料位，我就给你刨一块板。",
+    "mu liao hai zai yuan li / tui dao mu liao wei , wo jiu gei ni bao yi kuai ban"],
+  joinerWork:["木匠","看好了，顺着木纹走刨，回手时把刨子提起来。",
+    "kan hao le / shun zhe mu wen zou bao , hui shou shi ba bao zi ti qi lai"],
+  joinerDone:["木匠","这一面刨好了。顺着纹路摸过去，手上就不挂刺了。",
+    "zhe yi mian bao hao le / shun zhe wen lu mo guo qu , shou shang jiu bu gua ci le"],
 };
 
 const stop=[0,0,0];

@@ -15,7 +15,7 @@ export function createStreetAudio(listener) {
   let enabled=initialPreference(), sceneActive=false;
   let context, master, buffer, download, decoding, river;
   let rainBuffer,rainLoad,rainRetry=0,rainTrack;
-  const voices=new Set(), variants={}, counts={}, lastBySource={}, workyardCues={};
+  const voices=new Set(), variants={}, counts={}, lastBySource={}, scrapeCues={};
 
   function load() {
     download??=fetch(bankFile,{signal:AbortSignal.timeout(15_000)}).then(response=>{
@@ -114,10 +114,10 @@ export function createStreetAudio(listener) {
     if(!active() || context?.state!=="running" || voices.size>=14) return;
     const {distance,pan}=space(x,z,false);
     if(distance>7) return;
-    const strike=kind==="impact";
-    if(!workyardCues[kind]) {
+    const strike=kind==="impact", planing=kind==="plane";
+    if(!scrapeCues[kind]) {
       const sampleRate=context.sampleRate;
-      const cue=context.createBuffer(1,Math.round(sampleRate*(strike ? .18 : .24)),sampleRate);
+      const cue=context.createBuffer(1,Math.round(sampleRate*(strike ? .18 : planing ? .56 : .24)),sampleRate);
       const data=cue.getChannelData(0);
       let low=0,grit=0;
       for(let i=0;i<data.length;i++) {
@@ -130,14 +130,16 @@ export function createStreetAudio(listener) {
           data[i]=(.40*body+.28*(grit-low))*Math.exp(-36*t)*Math.min(1,t*510);
         } else {
           const envelope=Math.sin(Math.PI*i/(data.length-1))**.85;
-          data[i]=(grit-low*.66+.16*Math.sin(2*Math.PI*(62*t+12*t*t)))*envelope*.69;
+          const texture=planing ? (white-grit)*.58+grit*.39 : grit-low*.66;
+          const edge=planing ? .83+.17*Math.sin(371*t+1.13*Math.sin(92*t)) : 1;
+          data[i]=(texture+.16*Math.sin(2*Math.PI*(62*t+12*t*t)))*envelope*edge*.69;
         }
       }
-      workyardCues[kind]=cue;
+      scrapeCues[kind]=cue;
     }
     const source=context.createBufferSource(),gain=context.createGain();
     const level=(strike ? .39 : .21)*clamp(speed+.20,.20,1)/(1+(distance/2.4)**2);
-    source.buffer=workyardCues[kind];
+    source.buffer=scrapeCues[kind];
     source.playbackRate.value=.94+.10*Math.random();
     gain.gain.value=level;
     source.connect(gain);
@@ -151,7 +153,7 @@ export function createStreetAudio(listener) {
     };
     source.start();
     counts[kind]=(counts[kind]??0)+1;
-    lastBySource.workyard={surface:kind,level,pan};
+    lastBySource[planing ? "joiner" : "workyard"]={surface:kind,level,pan};
   }
 
   function loop(sound,start,end) {

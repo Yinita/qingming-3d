@@ -313,7 +313,7 @@ function joinerRoom(parent,city,materials) {
   city.box("joiner's workbench",x+bench.x-bench.depth*.5,x+bench.x+bench.depth*.5,
     z+bench.z-bench.length*.5,z+bench.z+bench.length*.5,floorLevel,.876);
   for(let i=0;i<5;i++)
-    fit(i%2 ? wood : boards,.139,.095, .72-i*.058,bench.x-.08+.055*i,.920+.061*i,bench.z-.22+i*.046,
+    fit(i%2 ? wood : boards,.146,.059,.27-i*.018,bench.x+.19+.021*i,.902+.047*i,bench.z-.693+i*.012,
       {tint:.78+i*.041,phase:1.3*i});
   fit(wood,.103,.070,.242,bench.x+.18,.895,bench.z+.49);
   fit(boards,.036,.052,.26,bench.x+.18,.910,bench.z+.34);
@@ -363,7 +363,7 @@ function joinerRoom(parent,city,materials) {
   Object.assign(gateSolid,{x,z:face+.173,bottom:floorLevel,top:floorLevel+gateHeight});
   let position=0,target=0,blocked=false,lit=false;
   const travel=1.465;
-  const lampLocal=new THREE.Vector3(-1.65,.996,.38);
+  const lampLocal=new THREE.Vector3(bench.x+.26,.996,.38);
   const lamp=new THREE.PointLight(0xffad66,0,3.4,1.92);
   lamp.position.copy(lampLocal);
   group.add(lamp);
@@ -451,7 +451,9 @@ function joinerRoom(parent,city,materials) {
     target=0;blocked=lit=false;setSlide(0);update(0,0,[]);
   }
   reset();
-  return {support,action,use,update,reset,detail,
+  const worktop={x:x+bench.x,z:z+bench.z,y:.870,floorLevel};
+  const lampAt={x:x+lampLocal.x,z:z+lampLocal.z};
+  return {support,action,use,update,reset,detail,worktop,lampAt,
     materialAt(x,z,footY) {
       const top=support(x,z);
       if(top<footY-.009) return null;

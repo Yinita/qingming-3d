@@ -723,6 +723,9 @@ const marketProfiles={
   porter:{head:[.93,.94,.87],
     colors:[0x758176,0x746a53,0x4f4639,0xab9776],skin:0xa97f61,shoulders:1.12,waist:1.10,hem:.119,skirt:1.02,
     coat:0x8c7559,headcloth:0x666b5f,hair:0x44352a},
+  joiner:{headModel:"porter",head:[.89,.91,.84],
+    colors:[0x8b9071,0x6b7569,0x504c39,0xb9a07c],skin:0xb08363,shoulders:1.04,waist:1.03,hem:.091,skirt:.94,
+    apron:0xb09773,hair:0x55443c,headcloth:0x6c5950},
   shopper:{head:[.79,.94,.85],
     colors:[0x99898f,0x788476,0x5c5d69,0xbeaa87],skin:0xc29e80,shoulders:.87,waist:.91,hem:.042,skirt:.95,
     hair:0x38332d,headcloth:0x646b72,hairPart:-.21,satchel:0xb4a383},
@@ -1336,18 +1339,18 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       sleeve.morphTargetInfluences[0]=THREE.MathUtils.smoothstep(flex,.013,.31);
     }
   }
-  let graspWorkyard;
-  if(role==="player") {
+  let graspProp;
+  if(role==="player" || role==="joiner") {
     const contacts=limbs.arms.map((arm,i)=>{
       const hand=limbs.hands[i],side=i===0 ? -1 : 1;
       const palm=new THREE.Vector3(-side*.014,-.058,0);
       const marker=new THREE.Object3D();
-      marker.name="Workyard palm contact";
+      marker.name=role==="player" ? "Workyard palm contact" : "Joiner's palm contact";
       marker.position.copy(palm);
       hand.group.add(marker);
       return handContact(arm,limbs.elbows[i],hand,palm,new THREE.Vector3(side*.42,-.91,.19));
     });
-    graspWorkyard=(i,position,orientation,weight)=>{
+    graspProp=(i,position,orientation,weight)=>{
       contacts[i](position,orientation,weight);
       limbs.hands[i].setGrip(.12+.72*weight);
     };
@@ -1545,7 +1548,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       if(carrying) set(grip.getWorldPosition(gripPosition),grip.getWorldQuaternion(gripFrame),carryWeight);
     }
   }
-  return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,graspWorkyard,poseFeet,poseSleeves,stand,walkBody,
+  return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,graspProp,poseFeet,poseSleeves,stand,walkBody,
     face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value,rainWear};
 }
 

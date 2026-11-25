@@ -11,6 +11,7 @@ import { buildTea } from "./bridge-tea.js";
 import { buildTeaRoom } from "./bridge-tearoom.js";
 import { buildConsignment, parcelSize } from "./bridge-consignment.js";
 import { createWorkyard, workyardEntry } from "./bridge-workyard.js";
+import { createJoinery } from "./bridge-joinery.js";
 import { canalDepth, canalHalfLength, canalOrigin, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
@@ -221,6 +222,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     water:bridgeLook.field.height});
   const consignment=buildConsignment(root,city,material,freight);
   const yard=createWorkyard(root,city,material,floor,(x,z)=>walkable(x,z) && depthAt(x,z)===0);
+  const joinery=createJoinery(root,city,material,floor,workshop.worktop,yard.timberReady,audio.scrape);
   const yardGrip=new THREE.Vector3(),yardFrame=new THREE.Quaternion();
   const standByYard=(x,z,solid)=>canStep(x,z,workerRadius,solid);
   function wadeDepth(x,z) {
@@ -298,6 +300,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <p class="mission-metrics" id="missionFreightStatus" hidden></p>
     <p class="mission-metrics" id="missionRainStatus" hidden></p>
     <p class="mission-metrics" id="missionYardStatus" hidden></p>
+    <p class="mission-metrics" id="missionJoinerStatus" hidden></p>
     <div class="mission-actions">
       <button id="missionInteract">拿取</button>
       <button id="missionHire">委托伙计</button>
@@ -326,6 +329,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionMooring" hidden>拉缆绳 R</button>
       <button id="missionAnimal" hidden type="button" aria-keyshortcuts="P">伸手 P</button>
       <button id="missionWorkshop" hidden type="button" aria-keyshortcuts="E">拉开木格门 E</button>
+      <button id="missionJoiner" hidden type="button" aria-keyshortcuts="E">问木匠 E</button>
     </div>
     <div class="mission-actions">
       <button id="missionScroll">查看任务画卷</button>
@@ -422,6 +426,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const mooringButton=byId("missionMooring");
   const animalButton=byId("missionAnimal");
   const workshopButton=byId("missionWorkshop");
+  const joinerButton=byId("missionJoiner"),joinerStatus=byId("missionJoinerStatus");
   const yardButton=byId("missionYardAction"),yardGuideButton=byId("missionYardGuide"),yardStatus=byId("missionYardStatus");
   const marketGuideButton=byId("missionMarketGuide");
   const ferryButton=byId("missionFerry"), ferryGuideButton=byId("missionFerryGuide");
@@ -838,6 +843,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     livestock.cancel();
     workshop.reset();
     yard.reset();
+    joinery.reset();
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
@@ -1005,6 +1011,25 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const label=canUseWorkshop() ? workshop.action(player) : null;
     workshopButton.hidden=!label;
     if(label && workshopButton.textContent!==label) workshopButton.textContent=label;
+    const nearby=canUseWorkshop() && !yard.active() && joinery.near(player);
+    const action=nearby ? joinery.action() : null, status=nearby ? joinery.status() : null;
+    joinerButton.hidden=!action;
+    joinerStatus.hidden=!status;
+    if(action && joinerButton.textContent!==action) joinerButton.textContent=action;
+    if(status && joinerStatus.textContent!==status) joinerStatus.textContent=status;
+  }
+
+  function speakToJoiner() {
+    if(!canUseWorkshop() || yard.active()) return;
+    const line=joinery.use(player);
+    if(!line) return;
+    dialogue.speak(line);
+    if(line==="joinerWaiting") hint.textContent="松手后，木料位标记变绿就算归位。";
+    if(line==="joinerWork") hint.textContent="看木匠在工案上刨板。";
+    if(line==="joinerDone") hint.textContent="刨好的木板留在案上。";
+    clearPlayerControl();
+    canvas.focus({preventScroll:true});
+    ui();
   }
 
   function useWorkshop() {
@@ -1188,7 +1213,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const courierFacing=facing(helper.figure.position);
       if(courierFacing>.78 && courierFacing>facing(state.crate)+.12) crate=talkButton;
     }
-    return [consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,yardButton,workshopButton,
+    const workshopPriority=workshopButton.textContent.includes("油灯") ? distance(player,workshop.lampAt)<.63 : true;
+    return [consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,yardButton,
+      workshopPriority ? workshopButton : null,joinerButton,workshopButton,
       cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton,mooringButton,pebbleButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
   }
@@ -1559,6 +1586,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     teaRoom.show(mode==="mission");
     consignment.visible(mode==="mission" && state.phase==="delivered");
     yard.show(mode==="mission");
+    joinery.show(mode==="mission");
     foreground.setVisible(mode === "mission");
     bridgeLook.setVisible(mode==="mission",mode==="missionScroll" && ferry.active());
     if(view==="mission" && ferryViewPausedAt!==null) {
@@ -1905,7 +1933,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       settleShare();
     }
     if(haulWeight>0) {
-      for(let i=0;i<2;i++) playerBody.graspWorkyard(i,yard.grip(i,yardGrip,yardFrame),yardFrame,haulWeight);
+      for(let i=0;i<2;i++) playerBody.graspProp(i,yard.grip(i,yardGrip,yardFrame),yardFrame,haulWeight);
     }
 
     let courierVX=0,courierVZ=0;
@@ -1942,6 +1970,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,state.phase==="courier",dt);
     helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
     const speech=dialogue.speech(dt);
+    if(view==="mission") joinery.frame(dt,player,speech,attend);
     const nod=THREE.MathUtils.clamp((elapsed-deliveryTime)/1.18,0,1);
     const greeting=state.phase==="delivered" ? Math.sin(Math.PI*nod) : 0;
     const pourAge=tea.age();
@@ -2055,6 +2084,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   mooringButton.onclick=pullMooring;
   animalButton.onclick=greetAnimal;
   workshopButton.onclick=useWorkshop;
+  joinerButton.onclick=speakToJoiner;
   yardButton.onclick=useYard;
   yardGuideButton.onclick=()=>{
     guideYard=!guideYard;
@@ -2075,7 +2105,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restartTrigger=trigger;
     restartDetail.textContent=(state.phase==="delivered" ?
       "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
-      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场的货物也会归位。";
+      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场和作坊也会恢复初始状态。";
     clearNotice();
     clearPlayerControl();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
@@ -2208,7 +2238,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
         bodyOverlap:passengerCarrier() || teaRoom.chairActive() ? null : city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
-      freight:freight.inspect(player,walkable),consignment:inspectConsignment(),teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),yard:yard.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
+      freight:freight.inspect(player,walkable),consignment:inspectConsignment(),teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),yard:yard.inspect(),joinery:joinery.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }
