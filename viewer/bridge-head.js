@@ -37,9 +37,11 @@ function skinColour(x,y,z,role) {
   const cavity=.62*(1-smoothstep(z,1.35,1.57))*gaussian(a,y,.078,6.719,.262,.112);
   const flush=.10*cheek+.11*nose+.16*ears+.046*lids;
   const underEye=.096*lids;
-  const mottle=.016*Math.sin(x*48+y*32)*Math.sin(y*39-z*82);
+  const mottle=.008*Math.sin(x*48+y*32)*Math.sin(y*39-z*82);
+  const lashU=a-.31;
+  const lash=Math.exp(-(((y-7.346+.38*lashU*lashU)/.015)**2))*(1-smoothstep(Math.abs(lashU),.115,.155))*smoothstep(z,1.30,1.40);
   const beard=role==="merchant" ? .24*gaussian(a,y,.149,6.45,.358,.32)*front : 0;
-  const tone=1+mottle-.078*jaw-.071*brow-.66*cavity-beard;
+  const tone=1+mottle-.078*jaw-.071*brow-.66*cavity-beard-.42*lash;
   return [
     tone+flush+.017*lip,
     tone-.43*flush-.23*lip-underEye,
@@ -108,6 +110,35 @@ function skinProgram(material) {
   };
 }
 
+// Facial structure on top of the MakeHuman base, in source units (one unit is about 15 cm).
+// Leads get a tapered jaw, a forward chin, high cheekbones, a straight raised nose bridge and a
+// firm brow; the eye sockets and lids are untouched so the blink and eyeball fit still hold.
+const sculptStrength={player:1,helper:.85,attendant:.8,shopper:.7,baker:.6,porter:.55,merchant:.45,
+  resident0:.65,resident1:.4,resident2:.75,resident3:.5};
+function sculptFace(source,role) {
+  const k=sculptStrength[role]??.5;
+  for(let i=0;i<source.length;i+=3) {
+    const x=source[i],y=source[i+1],z=source[i+2];
+    const a=Math.abs(x),sign=Math.sign(x)||1;
+    const neck=smoothstep(y,6.02,6.30);
+    const side=smoothstep(z,-.15,.65)*neck;
+    const lower=smoothstep(7.02-y,0,.58);
+    const taper=.17*k*lower*smoothstep(a,.10,.62)*side;
+    const chin=gaussian(a,y,0,6.42,.21,.13)*smoothstep(z,1.08,1.40)*neck;
+    const cheekbone=gaussian(a,y,.52,7.06,.15,.11)*smoothstep(z,.85,1.30);
+    const hollow=gaussian(a,y,.49,6.80,.13,.10)*smoothstep(z,.75,1.25);
+    const bridge=gaussian(a,y,0,7.11,.055,.16)*smoothstep(z,1.40,1.56);
+    const wing=gaussian(a,y,.12,6.91,.075,.08)*smoothstep(z,1.28,1.50);
+    const brow=gaussian(a,y,.30,7.44,.21,.05)*smoothstep(z,1.33,1.50);
+    // Open the eye: stretch lids away from the eyeball centre, more vertically than across.
+    const eye=Math.exp(-(((a-.308)/.19)**2+((y-7.284)/.13)**2))*smoothstep(z,1.15,1.30);
+    const open=.24*k*eye;
+    source[i]=x*(1-taper-.15*k*wing)+sign*k*(.015*cheekbone-.016*hollow)+sign*.05*open*(a-.308);
+    source[i+1]=y-.030*k*chin+open*(y-7.284);
+    source[i+2]=z+k*(.038*chin+.012*cheekbone+.032*bridge+.016*brow);
+  }
+}
+
 function makeHeadGeometry(role,animated,beard) {
   const source=Float32Array.from(base,value=>value/10000);
   for(let i=1;i<source.length;i+=3) source[i]+=7;
@@ -117,6 +148,7 @@ function makeHeadGeometry(role,animated,beard) {
     const start=delta[i]*3;
     for(let a=0;a<3;a++) source[start+a]+=delta[i+a+1]/10000;
   }
+  sculptFace(source,role);
   const lipRegion=new Map();
   for(const [upper,lower] of headData.mouth) {
     const a=upper*3,b=lower*3;
@@ -212,8 +244,11 @@ function coverLine(x,z,wrapped) {
   const earDistance=Math.abs(x);
   const earClearance=.74*smoothstep(earDistance,.655,.790);
   const temple=.114*smoothstep(earDistance,.49,.67)*smoothstep(z,.92,1.28);
-  const point=.036*Math.sin(x*6.9)*front;
-  return 6.91+.743*front+earClearance+temple+point+(wrapped ? .035 : 0);
+  const point=wrapped ? .036*Math.sin(x*6.9)*front : 0;
+  // A combed hairline: a slight peak at the centre and recessed temples, not a level cap edge.
+  const shape=wrapped ? 0 : front*(.062*smoothstep(earDistance,.10,.40)*(1-smoothstep(earDistance,.50,.66))
+    -.034*Math.exp(-((x/.13)**2)));
+  return 6.91+.743*front+earClearance+temple+point+shape+(wrapped ? .035 : 0);
 }
 
 function scalpGeometry(skin,source,wrapped) {
@@ -236,7 +271,7 @@ function scalpGeometry(skin,source,wrapped) {
     p.addScaledVector(axis,thickness);
     const id=vertices.length/3;
     vertices.push(p.x,p.y,p.z);
-    const tone=.94+.047*ribs;
+    const tone=wrapped ? .94+.047*ribs : .965+.018*ribs;
     rgb.push(tone,tone*.977,tone*.944);
     lookup.set(key,id);
     return id;
@@ -296,7 +331,7 @@ function roundScalp(mesh) {
 }
 
 function hairFinish(color,wrapped) {
-  const material=new THREE.MeshStandardMaterial({color,vertexColors:true,roughness:wrapped ? .91 : .69});
+  const material=new THREE.MeshStandardMaterial({color,vertexColors:true,roughness:wrapped ? .91 : .52});
   material.customProgramCacheKey=()=>wrapped ? "fitted-woven-headwrap" : "combed-scalp-hair";
   material.onBeforeCompile=shader=>{
     shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nattribute vec3 scalpPoint; varying vec3 headCloth;")
@@ -309,7 +344,7 @@ function hairFinish(color,wrapped) {
           ? "headCloth.y*3300.+sin(az*7.)*2.+sin(az*227.)*.7"
           : "az*96.+sin(headCloth.y*23.+az*3.)*3."};
         float line=sin(strand)*(1.-smoothstep(.35,2.5,fwidth(strand)));
-        diffuseColor.rgb*=.99+${wrapped?".053":".17"}*line;
+        diffuseColor.rgb*=.99+${wrapped?".053":".085"}*line;
       `);
   };
   return material;
@@ -342,18 +377,26 @@ function eyebrows(head,skin,color,role) {
     tones.push(shade,shade*.96,shade*.90,opacity);
     return true;
   }
+  // Elders keep a soft arch; everyone else gets a straighter, lower brow that rises towards
+  // the tail and turns down at the very end.
+  const elder=role==="merchant";
   function height(t,side) {
-    const arch=Math.sin(Math.PI*t**.76);
-    return .0244+.0101*arch-.0028*t+(role==="merchant" ? -.0018 : .0013)*side;
+    if(elder) {
+      const arch=Math.sin(Math.PI*t**.76);
+      return .0244+.0101*arch-.0028*t-.0018*side;
+    }
+    return .0228+.0052*t-.0058*smoothstep(t,.72,1)**1.4+.0006*side;
   }
+  const thickness=t=>elder ? .0027*Math.sin(Math.PI*t)**.42
+    : (.0041-.0017*t)*Math.sin(Math.PI*(.12+.88*t))**.36;
   for(const side of [-1,1]) {
     const first=points.length/3;
     let previous=first-3;
     for(let i=0;i<=28;i++) {
       const row=points.length/3;
-      const t=i/28,x=side*lerp(.024,.087,t),y=height(t,side);
+      const t=i/28,x=side*lerp(elder ? .024 : .019,.088,t),y=height(t,side);
       const taper=Math.sin(Math.PI*t)**.42;
-      for(let k=-1;k<=1;k++) put(x,y+.0027*k*taper,.78,k===0 ? .68*taper : 0);
+      for(let k=-1;k<=1;k++) put(x,y+k*thickness(t),elder ? .78 : .62,k===0 ? (elder ? .68 : .88)*taper : 0);
       if(points.length/3-row!==3) {
         points.length=row*3;
         tones.length=row*4;
@@ -366,9 +409,10 @@ function eyebrows(head,skin,color,role) {
       }
       previous=row;
     }
-    for(let i=0;i<59;i++) {
-      const t=clamp((i+.47*Math.sin(i*19.4))/58,0,1);
-      const x=side*lerp(.024,.087,t),y=height(t,side)+.0016*Math.sin(i*31.1);
+    const strokes=elder ? 59 : 96;
+    for(let i=0;i<strokes;i++) {
+      const t=clamp((i+.47*Math.sin(i*19.4))/(strokes-1),0,1);
+      const x=side*lerp(elder ? .024 : .019,.088,t),y=height(t,side)+(elder ? .0016 : .0024)*Math.sin(i*31.1);
       const length=(.0038-.0019*t)*(.55+.45*Math.sin(i*5.41)**2);
       const shift=side*(.0015+.0031*t);
       const start=points.length/3;
@@ -461,10 +505,20 @@ export function buildAnatomicalHead(head,role,tone,style) {
     knot.scale.set(.034,.019,.022);
     knot.rotation.z=.53;
   } else {
-    const knot=attach(head,new THREE.SphereGeometry(1,22,14),
-      new THREE.MeshStandardMaterial({color:style.hair,roughness:.73}),"Tied hair knot");
-    knot.position.set(.009,.167,.034);
-    knot.scale.set(.034,.028,.026);
+    // A neat topknot: a smooth bun, a cloth band at its root and a slim wooden hairpin.
+    const knot=attach(head,new THREE.SphereGeometry(1,24,16),
+      new THREE.MeshStandardMaterial({color:style.hair,roughness:.5}),"Tied hair knot");
+    knot.position.set(.009,.171,.034);
+    knot.scale.set(.032,.030,.029);
+    const band=attach(head,new THREE.TorusGeometry(.027,.0045,8,28),
+      new THREE.MeshStandardMaterial({color:0x3a2c22,roughness:.8}),"Topknot band");
+    band.position.set(.009,.150,.034);
+    band.rotation.x=Math.PI/2;
+    const pin=attach(head,new THREE.CylinderGeometry(.0022,.0016,.094,8),
+      new THREE.MeshStandardMaterial({color:0x5b3b22,roughness:.45}),"Wooden hairpin");
+    pin.position.set(.009,.172,.034);
+    pin.rotation.z=Math.PI/2-.12;
+    pin.castShadow=false;
   }
   cap.castShadow=true;
   if(!animated) return {};

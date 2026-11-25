@@ -1,6 +1,8 @@
 import { MathUtils } from "three";
 
-export const legRig={separation:.109, hip:.717, upper:.351, lower:.326, ankle:.067, heel:.070, toe:-.149};
+// Hip height leaves the legs almost straight at rest (about 4 degrees of knee flex), so a
+// standing figure does not sink into a crouch.
+export const legRig={separation:.109, hip:.752, upper:.351, lower:.326, ankle:.067, heel:.070, toe:-.149};
 const {separation,hip,upper,lower,ankle:ankleHeight,heel,toe}=legRig;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 const {clamp,damp,smoothstep}=MathUtils;
@@ -123,7 +125,7 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
       swing.age+=dt*rate;
       const t=Math.min(1,swing.age/swing.duration);
       if (t<.73 || (swing.pivot || redirect || stopping) && t<.90) {
-        const anticipation=Math.max(moving ? .084 : 0,swing.duration*(1.34-t)/rate);
+        const anticipation=Math.max(moving ? .084 : 0,swing.duration*(1.53-t)/rate);
         const [px,pz]=destination(foot,x,z,footYaw,vx,vz,anticipation);
         const correction=redirect || stopping ? 25 : 17;
         swing.toX=damp(swing.toX,px,correction,dt);
@@ -180,7 +182,7 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
           const lead=((support.x-x)*vx+(support.z-z)*vz)/speed;
           duration=MathUtils.clamp((lead+strideReach)/speed-exchange,.088,natural);
         }
-        const [toX,toZ]=destination(foot,x,z,footYaw,vx,vz,duration*1.34);
+        const [toX,toZ]=destination(foot,x,z,footYaw,vx,vz,duration*1.53);
         const stride=Math.hypot(toX-foot.x,toZ-foot.z);
         swing={ index,age:0,fromX:foot.x,fromY:foot.y,fromZ:foot.z,
           toX,toY:floor(toX,toZ),toZ,yaw:foot.yaw,targetYaw:footYaw,duration,pivot,
@@ -194,7 +196,7 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
     const motion=MathUtils.smoothstep(speed,.10,.92);
     const amount=swing ? Math.sin(Math.PI*Math.min(1,swing.age/swing.duration)) : 0;
     rise=MathUtils.damp(rise,(-.025+.027*amount)*motion,13,dt);
-    let bound=Infinity;
+    let bound=Infinity, support=-Infinity;
     for (const [i,foot] of feet.entries()) {
       if (swing?.index===i) continue;
       const [hipX,hipZ]=nominal(foot,x,z,yaw);
@@ -203,11 +205,16 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
       const ankleShift=contact*(1-cos)+ankleHeight*sin;
       const ankleLift=ankleHeight*(cos-1)+contact*sin;
       const reach=Math.hypot(foot.x+ankleShift*Math.sin(foot.yaw)-hipX,foot.z+ankleShift*Math.cos(foot.yaw)-hipZ);
-      const upperBound=foot.y+ankleHeight+ankleLift+Math.sqrt(Math.max(.012,(upper+lower-.029)**2-reach*reach))-hip;
+      // The boot sole sits about 1 cm below the ankle rig, and only a few millimetres of slack are
+      // kept so the supporting knee flexes slightly instead of holding a crouch.
+      const upperBound=foot.y+ankleHeight+ankleLift+.010+Math.sqrt(Math.max(.012,(upper+lower-.004)**2-reach*reach))-hip;
       bound=Math.min(bound,upperBound);
+      support=support===-Infinity ? foot.y : Math.min(support,foot.y);
     }
     // The pelvis leaves a low support gradually after the other boot takes the load.
-    const target=Math.min(ground+rise,bound);
+    // Stand on the lower planted boot rather than the paving under the body centre, so a boot
+    // on a raised stone does not leave the other leg crouched.
+    const target=Math.min(Math.max(ground,support)+rise,bound);
     height=Math.max(ground-.244,Math.min(bound,MathUtils.damp(height,target,11,dt)));
   }
 

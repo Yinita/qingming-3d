@@ -28,7 +28,8 @@ const deliveryReach=2.35;
 const laneHalf=.63;
 const cargoWidth=.385, cargoDepth=.351, cargoHeight=.616;
 const mainCargoSize={halfX:cargoWidth,halfZ:cargoDepth,height:cargoHeight};
-const harnessBack=.596, harnessHeight=.79;
+// The back board sits against the robe; the crate rides directly behind it.
+const harnessBack=.541, harnessHeight=.79;
 const riverOrigin=canalOrigin(center);
 const trees=willowSites(center);
 const trail = [[-70, routeZ], [-48.2, routeZ], [-44, routeZ], [counter.x, counter.z + .82]];
