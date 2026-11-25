@@ -584,7 +584,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const toDrain=view==="mission" && !showStart && !restartDialog.open && backlane.carrying();
     if(guideCourt && player.x<-78.70) guideCourt=false;
     const toCourt=view==="mission" && guideCourt && !restartDialog.open;
-    const toSaw=view==="mission" && !showStart ? backlane.sawGuide(player) : null;
+    const courtGoal=view==="mission" && !showStart ? backlane.courtGuide(player) : null;
     if(guideYard && yard.near(player)) guideYard=false;
     const toYard=view==="mission" && !showStart && !restartDialog.open && guideYard && !hasCargo();
     const atMarket=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
@@ -604,7 +604,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const stop=ferry.stands[0];
     const atDock=toDock && ferry.nearby(player)>=0;
     groundMarker.visible=view==="mission" && !restartDialog.open && !yard.active() && !atDock &&
-      !backlane.locked() && (toDrain || toCourt || toSaw || phase!=="delivered" || atMarket || atRoom || toFreight || toYard);
+      !backlane.locked() && (toDrain || toCourt || courtGoal || phase!=="delivered" || atMarket || atRoom || toFreight || toYard);
     beacon.visible=groundMarker.visible;
     const pending=phase==="waiting" && !state.started;
     startPillar.visible=beacon.visible && pending;
@@ -615,14 +615,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const freightAim=toFreight ? freightGoal() : null;
     const aroundFence=toDrain && player.x>-75.39 && player.z<-42.1;
     const at=toDrain ? (aroundFence ? {x:-74.42,z:drainBridgeApproach.z} : drainBridgeApproach) :
-      toCourt ? {x:-79.2,z:drainBridgeApproach.z} : toSaw ??
+      toCourt ? {x:-79.2,z:drainBridgeApproach.z} : courtGoal ??
       (toYard ? workyardEntry : freightAim?.point??(atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
       phase==="waiting" ? state.crate : counter));
-    const x=at.x, z=at.z+(toDrain || toCourt || toSaw || toYard || phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
+    const x=at.x, z=at.z+(toDrain || toCourt || courtGoal || toYard || phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
     markerGold.material.color.setHex(atMarket ? 0xcbd49b : state.started ? 0xefd99a : 0xffc863);
-    const hover=y+(phase==="waiting" || toSaw ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
+    const hover=y+(phase==="waiting" || courtGoal ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
     if(startPillar.visible) {
       const bottom=y+.26, top=hover-.23;
@@ -657,7 +657,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" : toSaw ? "锯台" :
+    const target=toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" : courtGoal ? courtGoal.label :
       toYard ? "西岸料场" : freightAim?.label??(atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
       phase==="waiting" ? "取茶叶箱" : "茶铺 · 交货处");
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
@@ -1710,15 +1710,21 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         hint.textContent={
           repaired:"小桥已修好。过桥可进西岸木料后院。",
           sawStroke:"锯口深了一层。再按 E 继续，也可以晚些回来。",
-          sawDone:"木板锯成了两段，短木块已落在锯台边。",
+          sawDone:"木板锯成了两段。短木料可以给后院横闸做配重。",
           sawRetry:"站到锯台正面，再拉锯。",
+          timberOffcutHeld:"沿石板路把短木料送到横闸的铁箍旁。",
+          timberTakeRetry:"站在锯台前的空地上，再拿短木料。",
+          timberGateRetry:"站到铁箍旁的西侧石沿，再装配重。",
+          timberGateRepaired:"配重装好了。横闸升起，从石过道能绕回作坊外。",
+          timberGateOpen:"横闸已升起。",
+          timberGateClosed:"横闸已放下。",
         }[courtEvent];
         ui();
       }
       weather.frame(dt,elapsed,player);
       light.storm(weather.intensity);
       updateRainStatus();
-      const courtLocked=backlane.locked(), sawStation=backlane.sawStation();
+      const courtLocked=backlane.locked(), workStation=backlane.workStation();
       const input=awaitingStart() || courtLocked ? noInput : keys;
       if(courtLocked) heading=player.yaw=backlane.facing();
       if(backlane.sawing()) player.pitch=THREE.MathUtils.damp(player.pitch,firstPerson ? -.575 : -.13,8,dt);
@@ -1740,15 +1746,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       side.set(-fwd.z, 0, fwd.x);
       const beforeDepth=passengerCarrier() ? 0 : wadeDepth(player.x,player.z);
       const drag=1-.69*THREE.MathUtils.smoothstep(beforeDepth,.025,.51);
-      const carrying=hasCargo(), handsLoaded=carrying || backlane.carrying();
+      const carrying=hasCargo(), handsLoaded=carrying || backlane.loaded();
       const backpedaling=dz<0;
       const pace=backpedaling ? (handsLoaded ? 1.03 : 1.21) :
         input.has("shift") ? (handsLoaded ? 2.72 : 3.51) : (handsLoaded ? 1.40 : 1.64);
       const movementScale=pace*drag*weather.traction(player.x,player.z)/(Math.hypot(dx,dz)||1);
       let targetX=(fwd.x*dz+side.x*dx)*movementScale;
       let targetZ=(fwd.z*dz+side.z*dx)*movementScale;
-      if(sawStation) {
-        const approachX=sawStation.x-player.x, approachZ=sawStation.z-player.z;
+      if(workStation) {
+        const approachX=workStation.x-player.x, approachZ=workStation.z-player.z;
         const speed=Math.min(7,1.06/Math.max(.01,Math.hypot(approachX,approachZ)));
         targetX=approachX*speed;
         targetZ=approachZ*speed;
@@ -1808,15 +1814,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       const oldX=player.x, oldZ=player.z;
       const previousVX=streetVelocity.x, previousVZ=streetVelocity.y;
-      if(aboard || landed || freightTransfer || chairBefore || awaitingStart() || courtLocked && !sawStation) clearStreetMotion();
+      if(aboard || landed || freightTransfer || chairBefore || awaitingStart() || courtLocked && !workStation) clearStreetMotion();
       else if(yard.active()) {
         yard.frame(dt,player,bodyYaw,dx,dz,weather.traction(player.x,player.z),standByYard,audio.scrape);
         streetVelocity.set((player.x-oldX)/dt,(player.z-oldZ)/dt);
       }
       else {
         advanceStreetVelocity(streetVelocity,targetX,targetZ,dt,handsLoaded);
+        const clearance=backlane.playerClearance(workerRadius);
         sweepHorizontal(player,streetVelocity.x*dt,streetVelocity.y*dt,
-          (x,z)=>canStep(x,z) && !cargoCollision(x,z,bodyYaw));
+          (x,z)=>canStep(x,z,clearance) && !cargoCollision(x,z,bodyYaw));
         streetVelocity.set((player.x-oldX)/dt,(player.z-oldZ)/dt);
       }
       const vx=streetVelocity.x,vz=streetVelocity.y;
@@ -2169,7 +2176,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restartTrigger=trigger;
     restartDetail.textContent=(state.phase==="delivered" ?
       "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
-      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场、作坊、排水沟小桥和锯台也会恢复初始状态。";
+      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场、作坊、排水沟小桥、锯台和横闸也会恢复初始状态。";
     clearNotice();
     clearPlayerControl();
     if(document.pointerLockElement===canvas) document.exitPointerLock();

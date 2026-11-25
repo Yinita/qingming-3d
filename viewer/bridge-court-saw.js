@@ -7,7 +7,7 @@ const angleBetween=(from,to)=>Math.atan2(Math.sin(to-from),Math.cos(to-from));
 const strokes=5, border=.12, kerf=.012;
 const plankBottom=.815, plankHeight=.106, plankWidth=.244;
 const top=plankBottom+plankHeight;
-const workDistance=.79;
+const workDistance=.79, takeDistance=1.166;
 const cycle=1.05, cutStart=.21, cutEnd=.73;
 const settleTime=.40, flakesPerCut=12;
 
@@ -71,7 +71,7 @@ export function createCourtSaw(parent,horse,materials,sound) {
     const section=new THREE.Group();
     section.name=name;
     const length=max-min, center=(max+min)/2;
-    section.position.x=center;
+    section.position.set(center,plankBottom+plankHeight/2,0);
     root.add(section);
     const shape=detailedBox(length,plankHeight,plankWidth,fresh,.004,0);
     const pos=shape.attributes.position,uv=shape.attributes.uv;
@@ -80,10 +80,10 @@ export function createCourtSaw(parent,horse,materials,sound) {
       uv.setXY(i,((face===3 ? -1 : 1)*(pos.getX(i)+center)+.55)*.42,
         .127+(face<4 ? pos.getZ(i) : pos.getY(i))*.57);
     }
-    mesh(section,shape,fresh,0,plankBottom+plankHeight/2,0);
+    mesh(section,shape,fresh,0,0,0);
     if(cutFace) {
       const cross=mesh(section,new THREE.PlaneGeometry(plankWidth-.004,plankHeight-.004),endGrain,
-        cutFace*(length/2+.0005),plankBottom+plankHeight/2,0);
+        cutFace*(length/2+.0005),0,0);
       cross.rotation.y=cutFace*Math.PI*.5;
       cross.castShadow=false;
     }
@@ -157,9 +157,10 @@ export function createCourtSaw(parent,horse,materials,sound) {
     fibres.visible=remaining>.001;
     fibres.scale.y=Math.max(.001,remaining);
     left.userData.cutDepth=depth*plankHeight;
-    right.position.x=centreX+.067*loose;
-    right.position.z=.079*loose;
-    right.rotation.y=.135*loose;
+    if(right.parent===root) {
+      right.position.set(centreX+.067*loose,plankBottom+plankHeight/2,.079*loose);
+      right.rotation.set(0,.135*loose,0);
+    }
   }
   function toolPose(t,depth) {
     const pull=smoothstep(t,cutStart,cutEnd);
@@ -278,7 +279,17 @@ export function createCourtSaw(parent,horse,materials,sound) {
     near,use,update,pose,
     viewAligned:player=>near(player) && Math.cos(player.yaw-yaw)>.72,
     unfinished:()=>cut<strokes,
+    finished:()=>cut===strokes,
+    takeOffcut(holder) {
+      holder.attach(right);
+      return right;
+    },
+    returnOffcut() {
+      root.add(right);
+      idle();
+    },
     approach:station,
+    takeStand:{x:horse.position.x+sin*takeDistance,z:horse.position.z+cos*takeDistance},
     action(player) {
       return !active && cut<strokes && near(player) ? "拉锯 "+(cut+1)+" / "+strokes+" E" : null;
     },
