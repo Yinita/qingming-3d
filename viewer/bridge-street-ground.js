@@ -92,7 +92,8 @@ function paving(lane,origin,material,addSurface) {
   const position=[],uv=[],color=[],indices=[];
   const joints=[],jointColor=[],jointIndices=[];
   const pigment=new THREE.Color();
-  const palette=[0xa2a795,0x778983,0xadb4a5,0xbead8b,0x89949b,0x9c9e89,0xbaab98];
+  const palette=[0x949e96,0x718781,0xa9b4ae,0xb4a58a,0x78868f,0x9e9d88,0xaba495];
+  const fragments=[0x86755a,0xaaa08a,0xa29881,0x7e8579,0x908470,0xb29c7e];
   const gutterPalette=[0x777c70,0x80918a,0x90978b,0x646f68];
   const sediment=new THREE.Color(0xaa9575);
   const seam=new THREE.Color(0x78694e);
@@ -112,7 +113,7 @@ function paving(lane,origin,material,addSurface) {
         const du=(a+(random()-.5)*.083)*width,dv=(b+(random()-.5)*.14)*length;
         return [du*ca+dv*sa,-du*sa+dv*ca,random()];
       });
-    const colors=gutter ? gutterPalette : palette;
+    const colors=gutter ? gutterPalette : gravel ? fragments : palette;
     pigment.setHex(colors[Math.floor(random()*colors.length)]);
     const tiltU=(random()-.5)*.061,tiltV=(random()-.5)*.059;
     const offset=position.length/3;
@@ -133,22 +134,22 @@ function paving(lane,origin,material,addSurface) {
     }
     for(const [du,dv] of rim) vertex(du,dv,-.022,.48,.72);
     for(const [du,dv,chip] of rim) {
-      vertex(du,dv,height*.25+du*tiltU+dv*tiltV,.66+.18*chip,.42+.27*chip);
+      vertex(du,dv,height*(.15+.22*chip)+du*tiltU+dv*tiltV,.55+.23*chip,.43+.25*chip);
     }
     for(const [du,dv,chip] of rim) {
-      const inset=lip-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.012*chip,.81+.16*chip,wear+.20*chip);
+      const inset=lip-chip*.135;
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-(gravel ? height*.23 : .015)*chip,.81+.16*chip,wear+.20*chip);
     }
     for(const [du,dv,chip] of rim) {
-      const inset=lip-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.012*chip,.87+.19*chip,wear+.14*chip);
+      const inset=lip-chip*.135;
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-(gravel ? height*.23 : .015)*chip,.87+.19*chip,wear+.14*chip);
     }
     const centreU=width*(random()-.5)*.37, centreV=length*(random()-.5)*.38;
     const centreShade=.97+.14*random(), crown=height+.004;
     const bevel=offset+24, inside=offset+32;
     if(!gravel) for(const [du,dv,chip] of rim) {
       const pu=du*.52+centreU*.48,pv=dv*.52+centreV*.48;
-      const fracture=.006*Math.sin(pu*19+pv*17+x*.21);
+      const fracture=.009*Math.sin(pu*19+pv*17+x*.21)*Math.cos(pu*13-pv*23);
       vertex(pu,pv,crown+pu*tiltU+pv*tiltV+fracture,
         .93+.17*chip+.06*traffic,wear*(.6-.36*traffic));
     }
@@ -176,7 +177,7 @@ function paving(lane,origin,material,addSurface) {
       const r=1+spread*(.72+chip*.67)/radius;
       const [px,pz]=point(u+du*r,v+dv*r);
       joints.push(px,streetSurfaceHeight(px,pz)+.005,pz);
-      jointColor.push(seam.r,seam.g,seam.b,spread===0 ? .43 : spread<.04 ? .13+.07*chip : 0);
+      jointColor.push(seam.r,seam.g,seam.b,spread===0 ? .60 : spread<.04 ? .12+.13*chip : 0);
     }
     for(let i=0;i<8;i++) {
       const a=start+i,b=start+(i+1)%8;
@@ -332,18 +333,39 @@ export function buildStreetGround(root,origin,surface) {
   const stone=surface("worn-stone",0xf9ffff,1.14,.94);
   stone.vertexColors=true;
   stone.onBeforeCompile=shader=>{
-    shader.fragmentShader=shader.fragmentShader.replace("#include <map_fragment>",`#include <map_fragment>
-      #ifdef USE_MAP
-        // Suppress under-pixel ridges as the road recedes.
-        vec2 shale=vMapUv*vec2(1.,.71);
-        float laminations=shale.y*131.+sin(shale.x*12.)*1.2+sin(shale.x*27.+shale.y*19.)*.41;
-        float mineral=shale.x*20.+shale.y*12.;
-        float relief=pow(max(0.,sin(laminations)),8.)*(1.-smoothstep(.31,1.85,fwidth(laminations)));
-        float weathering=.52+.29*sin(mineral)+.17*sin(shale.x*28.-shale.y*22.);
-        diffuseColor.rgb*=mix(vec3(.86,.88,.82),vec3(1.15,1.10,1.01),weathering)-relief*.079;
-      #endif`);
+    shader.fragmentShader=shader.fragmentShader
+      .replace("#include <common>",`#include <common>
+        float mineralHash(vec2 p) {
+          vec3 q=fract(vec3(p.xyx)*.1031);
+          q+=dot(q,q.yzx+33.33);
+          return fract((q.x+q.y)*q.z);
+        }
+        float mineralNoise(vec2 p) {
+          vec2 i=floor(p), f=fract(p);
+          f=f*f*(3.-2.*f);
+          return mix(mix(mineralHash(i),mineralHash(i+vec2(1.,0.)),f.x),
+            mix(mineralHash(i+vec2(0.,1.)),mineralHash(i+1.),f.x),f.y);
+        }`)
+      .replace("#include <color_fragment>",`#include <color_fragment>
+        #ifdef USE_MAP
+          vec2 shale=vMapUv*vec2(1.,.71);
+          float mineral=mineralNoise(shale*vec2(12.,28.));
+          float erosion=mineralNoise(shale*vec2(35.,57.)+vec2(9.,1.));
+          float laminate=shale.y*94.+2.4*mineralNoise(shale*vec2(7.,19.))+.8*erosion;
+          float seamMask=1.-smoothstep(.31,1.85,fwidth(laminate));
+          float fissure=pow(max(0.,sin(laminate)),22.)*smoothstep(.40,.66,mineral)*seamMask;
+          float quartz=smoothstep(.61,.81,mineral*.62+erosion*.38);
+          float pit=smoothstep(.57,.81,mineralNoise(shale*146.))*smoothstep(.31,.66,erosion);
+          pit*=1.-smoothstep(.24,1.17,max(length(dFdx(shale*146.)),length(dFdy(shale*146.))));
+          vec3 weathering=mix(vec3(.84,.86,.85),vec3(1.12,1.11,1.06),erosion);
+          diffuseColor.rgb*=weathering*(1.-.32*fissure-.19*pit)+quartz*vec3(.20,.20,.17);
+        #endif`)
+      .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
+        #ifdef USE_MAP
+          roughnessFactor=clamp(roughnessFactor-.24*quartz+.19*pit+.11*fissure,.53,1.);
+        #endif`);
   };
-  stone.customProgramCacheKey=()=>"weathered-street-paving";
+  stone.customProgramCacheKey=()=>"weathered-street-paving-minerals";
   const cells=new Map();
   function addSurface(p,i,j,k) {
     const ax=p[i], az=p[i+2], bx=p[j]-ax, bz=p[j+2]-az, cx=p[k]-ax, cz=p[k+2]-az;

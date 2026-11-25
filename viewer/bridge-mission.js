@@ -240,6 +240,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       </div>
     </header>
     <progress id="missionProgress" max="2" value="0" aria-label="桥畔茶铺任务进度"></progress>
+    <ol id="missionSteps" aria-label="送茶路线">
+      <li>桥头取箱</li>
+      <li>茶铺交货</li>
+    </ol>
     <p id="missionObjective" aria-live="polite"></p>
     <p class="mission-metrics" id="missionEconomy"></p>
     <div class="mission-actions">
@@ -284,6 +288,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const restartConfirm=byId("missionRestartConfirm");
   const restartDetail=byId("missionRestartDetail");
   const progress=byId("missionProgress");
+  const steps=byId("missionSteps").children;
   const tools=byId("missionTools");
   const journalButton=tools.querySelector("#missionJournal");
   document.body.appendChild(tools);
@@ -306,7 +311,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <div class="entry-actions">
       <button id="missionBegin" type="button">开始送茶</button>
       <button id="missionIntroReset" type="button" aria-haspopup="dialog"
-        aria-controls="missionRestartDialog">重置进度</button>
+        aria-controls="missionRestartDialog">重置任务</button>
       <button id="missionIntroExit" type="button">返回画卷</button>
     </div>`;
   document.body.appendChild(intro);
@@ -709,7 +714,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
-    // Restart stays accessible while the initial briefing owns the gameplay controls.
+    // The briefing already has a reset button. Restore the toolbar when play begins.
+    tools.hidden=labels.hidden || !intro.hidden;
     journalButton.disabled=awaitingStart();
   }
 
@@ -720,10 +726,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(stage.textContent!==phaseTitle) stage.textContent=phaseTitle;
     const step=state.phase==="delivered" ? 2 : state.phase==="waiting" ? 0 : 1;
     if(progress.value!==step) progress.value=step;
+    for(let i=0;i<steps.length;i++) {
+      steps[i].dataset.complete=String(i<step);
+      if(i===step) steps[i].setAttribute("aria-current","step");
+      else steps[i].removeAttribute("aria-current");
+    }
     updateBriefing();
     economy.textContent = `铜钱 ${state.coins} 文　·　茶铺库存 ${state.phase === "delivered" ? "1 箱" : "0 箱"}`;
     interactButton.textContent = state.phase === "carrying"
-      ? (distance(player, counter) < deliveryReach ? "交货 E" : "放下 E") : "拿取 E";
+      ? (distance(player, counter) < deliveryReach ? "交给掌柜 E" : "放下茶箱 E") : "拿取茶箱 E";
     interactButton.disabled = view !== "mission" || awaitingStart() || ["delivered", "courier"].includes(state.phase) ||
       (state.phase === "waiting" && distance(player, state.crate) >= 1.9);
     hireButton.disabled = view !== "mission" || awaitingStart() || state.phase !== "waiting" ||
@@ -1061,7 +1072,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
     if (e.code === "KeyR" && e.shiftKey) {
       e.preventDefault();
-      requestRestart(restartButton);
+      requestRestart(intro.hidden ? restartButton : introReset);
       return;
     }
     if(awaitingStart()) return;

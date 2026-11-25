@@ -197,6 +197,18 @@ export function createSurfaceLibrary() {
         soil*=mix(vec3(1.),vec3(.79,.81,.80),wheelScrape*.53);
         soil=mix(soil,soil*vec3(.84,.89,.93)+stoneDust*.052,shoulderChips*.52);
         soil*=mix(vec3(1.),vec3(1.10,1.09,1.04),looseDust);
+        // Aggregate collects in pockets outside the ruts. Grains in the ruts
+        // are embedded, while eroded shoulders expose coarser fractured clay.
+        vec2 clayCells=soilPoint*vec2(24.,29.)+vec2(11.7,3.4);
+        vec2 cell=floor(clayCells);
+        vec2 fragment=fract(clayCells)-.5;
+        fragment+=vec2(soilHash(cell)-.5,soilHash(cell+18.7)-.5)*.43;
+        float chip=1.-smoothstep(.16,.40,abs(fragment.x)+.72*abs(fragment.y));
+        float pocket=smoothstep(.49,.71,soilNoise(swale*vec2(2.8,4.2)+19.));
+        float exposed=(1.-.79*compressed)*(.28+.72*pocket)*gritMask;
+        float facet=mix(.60,1.32,smoothstep(-.065,.035,fragment.x+.52*fragment.y));
+        vec3 chipTint=mix(vec3(.42,.32,.24),stoneDust,soilHash(cell+12.9));
+        soil=mix(soil,diffuseColor.rgb*chipTint*facet,chip*exposed*.63);
         vec2 marketLocal=mat2(.9982,.05996,-.05996,.9982)*(soilPoint-vec2(25.18,-25.65));
         float gutterLine=2.78+.11*sin(marketLocal.y*.82)+.14*cos(marketLocal.y*.37);
         float gutter=(1.-smoothstep(.074,.25,abs(abs(marketLocal.x)-gutterLine)))
@@ -210,7 +222,7 @@ export function createSurfaceLibrary() {
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
-        ${street ? "roughnessFactor=clamp(roughnessFactor+(.07+.12*looseDust-.24*compressed-.15*dampClay)*finishReady,.51,1.);" : ""}
+        ${street ? "roughnessFactor=clamp(roughnessFactor+(.07+.12*looseDust-.24*compressed-.15*dampClay+.10*chip*exposed)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;

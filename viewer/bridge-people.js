@@ -202,10 +202,10 @@ function sleevelessCoat(figure,robe,material,short,lowDetail) {
     for(let col=0;col<=columns;col++) {
       const u=col/columns, theta=THREE.MathUtils.lerp(-Math.PI+gap,Math.PI-gap,u);
       const side=Math.sin(theta)**2;
-      const armhole=.143*side**2*Math.exp(-(t*t)/.12)*(1-t);
+      const armhole=.102*side**2*Math.exp(-(t*t)/.13)*(1-t);
       const y=THREE.MathUtils.lerp(collar,bottom,t)-armhole+.018*t*Math.cos(theta);
-      const waist=.021*Math.exp(-(((y-1.026)/.061)**2));
-      const relief=.038+.006*Math.cos(theta*11+t*4)*t+.012*t**4+waist;
+      const waist=.012*Math.exp(-(((y-1.026)/.061)**2));
+      const relief=.025+.006*Math.cos(theta*11+t*4)*t+.017*t**4+waist;
       positions.push(...surfacePoint(robe,theta,y,relief));
       uv.push(u*1.34,y);
       const edge=trim || col===0 || col===columns;
@@ -471,6 +471,51 @@ function shoulderSatchel(figure,robe,cloth,edge,lowDetail) {
   piece(bag,new THREE.SphereGeometry(.011,10,7),edge,0,.024,-.066);
 }
 
+function residentBelongings(figure,robe,variant,sash,surface,binding,cord,lowDetail) {
+  // Keep accessories below the elbow arc and attach their loops to the sash.
+  // The stitching and vessel profiles also survive crowd mesh batching.
+  const segments=lowDetail ? 10 : 24;
+  const item=new THREE.Group();
+  const theta=[3.66,3.88,0,2.61][variant];
+  const [x,y,z]=surfacePoint(robe,theta,sash-.082,.030);
+  item.position.set(x,y,z);
+  item.rotation.set(.11,theta,.12);
+  figure.add(item);
+  const lifted=new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-.019,.131,-.024),new THREE.Vector3(-.031,.075,.051),
+    new THREE.Vector3(.011,.043,.060),new THREE.Vector3(.025,.131,-.019),
+  ]);
+  piece(item,new THREE.TubeGeometry(lifted,lowDetail ? 7 : 15,.006,5),cord,0,0,0).name="Sash hanging loop";
+  if(variant===0) {
+    const linen=surface("indigo-linen",0xa08765,.93);
+    piece(item,fabric([[0,-.114],[.071,-.109],[.093,-.074],[.088,-.017],
+      [.063,.031],[.051,.043],[.057,.061]],.55,0,segments,0,foldFactor),
+      linen,0,0,.026).name="Gathered cloth coin pouch";
+    piece(item,new THREE.TorusGeometry(.053,.006,5,segments).rotateX(Math.PI/2).scale(1,1,.59),
+      binding,0,.042,.026).name="Pouch drawstring";
+  } else if(variant===1) {
+    const paper=plain(0xb69d74,.93), cover=surface("indigo-linen",0x53666c,.92);
+    item.rotation.z=-.24;
+    piece(item,detailedBox(.136,.164,.025,paper,.008),paper,0,-.025,.035).name="Bound account ledger pages";
+    for(const offset of [-.016,.016]) {
+      piece(item,detailedBox(.146,.174,.009,cover,.005),cover,0,-.024,.035+offset).name="Cloth ledger cover";
+    }
+    const spine=new THREE.CatmullRomCurve3([new THREE.Vector3(-.054,-.093,.055),
+      new THREE.Vector3(-.063,-.057,.056),new THREE.Vector3(-.054,-.016,.055),
+      new THREE.Vector3(-.063,.026,.056),new THREE.Vector3(-.054,.051,.055)]);
+    piece(item,new THREE.TubeGeometry(spine,lowDetail ? 8 : 18,.0025,5),cord,0,0,0).name="Ledger binding thread";
+  } else {
+    const shell=plain(0x997445,.73);
+    const outline=[[0,-.181],[.038,-.178],[.068,-.148],[.076,-.104],
+      [.067,-.068],[.052,-.052],[.051,-.035],[.061,-.012],
+      [.056,.015],[.040,.030],[.018,.036],[.014,.056],[.014,.068],[0,.068]];
+    piece(item,fabric(outline,.75,0,segments,0,(angle)=>1+.069*Math.cos(angle*5)),
+      shell,0,0,.025).name="Dried gourd flask";
+    piece(item,new THREE.CylinderGeometry(.018,.013,.021,segments),
+      binding,0,.074,.025).name="Carved flask stopper";
+  }
+}
+
 function sculptedEye(feature,side,opening,slant,look,lowDetail) {
   const strips=lowDetail ? 8 : 24, rows=lowDetail ? 4 : 10;
   const points=[],uv=[],colors=[],indices=[];
@@ -650,11 +695,15 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     [sashBottom+sashHeight-.009,.012],[sashBottom+sashHeight,.006]];
   const sashRim=sashRows.map(([y,rise])=>[robeRadius(robe,y)+rise,y]);
   piece(figure,fabric(sashRim,.70,.012,garmentSections,0,robeVolume),sash,0,0,0).name="Tied cloth sash";
-  const lapel=profile?.beard ? .081 : profile?.wrap ? .046 : .064;
-  robeSeam(figure,robe,[[3.64,1.324],[3.30,1.281],[3.00,1.229],[2.67,1.173],
-    [2.48,1.115],[2.35,sashBottom+sashHeight*.77]],binding,lapel,detail,.018);
-  robeSeam(figure,robe,[[2.47,1.329],[2.64,1.281],[2.86,1.25],[2.99,1.236]],
-    dyed,.032,detail,.018);
+  const lapel=profile?.beard ? .074 : profile?.wrap ? .046 : .060;
+  const overlap=[[3.52,1.334],[3.36,1.303],[3.19,1.257],[2.93,1.218],
+    [2.69,1.173],[2.47,1.109],[2.35,sashBottom+sashHeight*.77]];
+  // A separate folded edge catches light where the cloth crosses the chest.
+  robeSeam(figure,robe,overlap,binding,lapel,detail,.015);
+  robeSeam(figure,robe,overlap.map(([theta,y])=>[theta-.045,y+.013]),
+    dyed,.007,detail,.019);
+  robeSeam(figure,robe,[[2.53,1.335],[2.69,1.305],[2.86,1.264],[3.03,1.239]],
+    dyed,.028,detail,.016);
   if(role==="player" || role==="helper" || (role==="resident" && variant===2)) {
     wrapSkirt(figure,robe,bodyLinen,binding,.685+hemOffset,sashBottom,lowDetail);
   }
@@ -688,6 +737,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   if(coatLinen) {
     coatLinen.side=THREE.DoubleSide;
     sleevelessCoat(figure,robe,coatLinen,profile.wrap,lowDetail);
+  }
+
+  if(profile && variant!==2) {
+    residentBelongings(figure,robe,variant,sashBottom,surface,binding,dyed,lowDetail);
   }
 
   const head = new THREE.Group();
