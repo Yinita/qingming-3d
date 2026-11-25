@@ -5,6 +5,7 @@
 <link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>入卷 · 清明上河图一段</title>
+<link rel="stylesheet" href="./mission-dialogue.css?v=124">
 <style>
   :root { --paper:#EDE6D6; --ink:#2A2620; --zhu:#B0362B; --panel:rgba(250,246,236,.92); }
   html,body { margin:0; height:100%; background:var(--paper); color:var(--ink);
@@ -40,11 +41,11 @@
   #missionSteps [data-complete="true"] { color:#385443; border-color:#94a38b; background:#e1e7d5; }
   #missionSteps [data-complete="true"]::before { content:"✓ "; }
   #missionInteract:not(:disabled), #missionAnimal, #missionWorkshop,
-  #missionCake:not(:disabled), #missionShareCake:not(:disabled) { color:#fff4dc; background:#793b30; border-color:#793b30;
+  #missionCake:not(:disabled), #missionShareCake:not(:disabled), #missionFerry { color:#fff4dc; background:#793b30; border-color:#793b30;
     font-weight:700; }
   @media (pointer:coarse) {
     #missionInteract, #missionJournal, #missionAnimal, #missionWorkshop,
-    #missionCake, #missionShareCake { min-height:44px; }
+    #missionCake, #missionShareCake, #missionFerry { min-height:44px; }
   }
   #missionTouchPad { display:none; }
   @media (any-pointer:coarse) {
@@ -55,6 +56,9 @@
     #missionTouchPad button { min-height:44px; font:22px/1 system-ui,sans-serif; padding:0;
       background:#46392ed9; color:#fff1d4; border:1px solid #e4c99e; touch-action:none; }
     #missionTouchPad [data-move="w"] { grid-column:2; }
+    #missionTouchPad[data-rowing="true"] { grid-template-columns:44px; }
+    #missionTouchPad[data-rowing="true"] [data-move] { grid-column:1; }
+    #missionTouchPad[data-rowing="true"] :is([data-move="a"],[data-move="d"]) { display:none; }
     #missionTouchPad [data-move="a"] { grid-column:1; }
     #missionTouchPad [data-held] { background:#743b2c; border-color:#f5d38b; }
   }
@@ -201,26 +205,30 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=118",
+  "./bridge-look.js": "./bridge-look.js?v=124",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=122b",
+  "./bridge-mission.js": "./bridge-mission.js?v=124",
   "./bridge-livestock.js": "./bridge-livestock.js?v=119",
   "./bridge-houses.js": "./bridge-houses.js?v=120b",
   "./bridge-architecture.js": "./bridge-architecture.js?v=120",
   "./bridge-collision.js": "./bridge-collision.js?v=120",
   "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=119",
-  "./bridge-quests.js": "./bridge-quests.js?v=113",
+  "./bridge-quests.js": "./bridge-quests.js?v=124",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
   "./bridge-people.js": "./bridge-people.js?v=122",
   "./bridge-head.js": "./bridge-head.js?v=117",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
   "./bridge-street.js": "./bridge-street.js?v=123",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=123",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=124",
+  "./bridge-boat.js": "./bridge-boat.js?v=124",
+  "./bridge-ferry.js": "./bridge-ferry.js?v=124",
+  "./bridge-dialogue.js": "./bridge-dialogue.js?v=124",
+  "./bridge-ferry-oars.js": "./bridge-ferry-oars.js?v=124",
   "./bridge-streetworks.js": "./bridge-streetworks.js?v=121",
   "./bridge-market.js": "./bridge-market.js?v=122",
   "./bridge-market-gesture.js": "./bridge-market-gesture.js?v=122",
   "./bridge-steamer.js": "./bridge-steamer.js?v=122",
-  "./bridge-touch.js": "./bridge-touch.js?v=122",
+  "./bridge-touch.js": "./bridge-touch.js?v=124",
   "./bridge-street-trees.js": "./bridge-street-trees.js?v=123",
   "./bridge-leaf-light.js": "./bridge-leaf-light.js?v=123"
 } }

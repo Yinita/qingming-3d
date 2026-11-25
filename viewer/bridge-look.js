@@ -397,13 +397,23 @@ export function buildBridgeLook(parent, center, surface, ground, apron) {
   const bed = buildCanalBed(model,origin,ground,apron);
   const canal = buildCanal(model,origin,piers,skiff.wake,skiff.motion);
   return {
-    setVisible(visible) { model.visible = visible; bed.setVisible(visible); },
-    frame(time,dt) { skiff.update(time,dt,canal.field); bed.frame(time); canal.frame(time,dt); },
+    setVisible(visible,showFerry=false) {
+      model.visible=visible;
+      bed.setVisible(visible);
+      skiff.placeHull(showFerry ? parent : model);
+    },
+    frame(time,dt) {
+      skiff.update(time,dt,canal.field);
+      skiff.ferry.splash(canal.field,time,canal.hit);
+      bed.frame(time);
+      canal.frame(time,dt);
+    },
     field:canal.field,
     probe:canal.probe,
     mooring:skiff.anchor,
     hull:skiff.wake,
     tug:skiff.tug,
+    ferry:skiff.ferry,
     hit: canal.hit,
     leafSource:canal.leafSource,
     prepare: canal.prepare,

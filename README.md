@@ -10,11 +10,12 @@
 
 ## 桥畔茶铺试玩
 
-在查看器的「桥畔茶铺任务」卡片点「进入送茶任务」，也可以[直接进入 v1.23 试玩](https://yinita.github.io/qingming-3d/viewer/?mission&v=1.23)。打开[任务重置页](https://yinita.github.io/qingming-3d/viewer/?mission&restart&v=1.23)可确认从桥头重新开始。
+在查看器的「桥畔茶铺任务」卡片点「进入送茶任务」，也可以[直接进入 v1.24 试玩](https://yinita.github.io/qingming-3d/viewer/?mission&v=1.24)。打开[任务重置页](https://yinita.github.io/qingming-3d/viewer/?mission&restart&v=1.24)可确认从桥头重新开始。
 
 - 点「开始送茶」后，画面上方显示「任务已开始」。直接取箱或委托伙计也可以开始。目标标牌显示方向和距离。
 - 开场卡有「重置进度」。试玩时点右上角「重置任务」或按 `Shift+R`。确认后回到桥头，茶箱归位，铜钱恢复为六文，开场卡显示「任务已重置」。漫游和画卷也可以重置。
 - 用 WASD 移动，E 拿放货箱，V 切换第一或第三人称。可以亲自过桥交货，也可以委托伙计。
+- 拿起茶箱后可选择「指路到渡口」。靠近渡口按 E 叫船、登船或下船，船上用 W 和 S 划行。角色对白以宋体风格显示在屏幕底部。
 - 交货后点「指路到蒸糕摊」。走近后可查看竹蒸笼，花一文买糕，再送给采买客。手机上可按屏幕方向键移动。
 - 按 J 或点「任务簿」查看当前目标、可选路线和铜钱账目。任务数据在 `viewer/bridge-quests.js`，规则见[任务设计](docs/quest-design.md)。
 - 人物使用程序化体型、IK 贴地步态和可握持的关节手（`viewer/bridge-hands.js`），规格见[近景人物建模](docs/character-modeling.md)。

@@ -1,0 +1,58 @@
+@font-face {
+  font-family: "Qingming Caption Serif";
+  src: url("./fonts/qingming-caption-serif.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+#missionDialogue {
+  position: fixed;
+  z-index: 7;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(560px, calc(100vw - 28px));
+  pointer-events: none;
+}
+#missionDialogue[hidden], #missionDialogue [hidden] { display: none; }
+body.scene-loading #missionDialogue { visibility: hidden; }
+#missionContext {
+  min-height: 44px;
+  padding: 6px 14px;
+  background: #3c2d23ef;
+  border: 1px solid #dec49b;
+  color: #fff1d3;
+  pointer-events: auto;
+  font: 600 14px/1.25 system-ui, sans-serif;
+}
+#missionContext kbd {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  margin-right: 8px;
+  color: #47261b;
+  background: #f5dfb2;
+  border-radius: 3px;
+  font: 700 14px/1 system-ui, sans-serif;
+}
+#missionCaption {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 16px 10px;
+  color: #fff2db;
+  background: #201714ed;
+  border-bottom: 2px solid #a27e5b;
+  font: 400 clamp(16px, 2vw, 22px)/1.45 "Qingming Caption Serif", "Songti SC", "SimSun", "Noto Serif CJK SC", "Noto Serif SC", serif;
+  text-align: center;
+}
+#missionCaption b { margin-right: .6em; color: #edc995; font-size: .78em; font-weight: 600; }
+@media (max-width:760px), (max-height:525px) {
+  #missionHud { margin-bottom: var(--mission-dialogue-height, 0px); }
+  #missionTouchPad:not([hidden]) { margin-bottom: var(--mission-dialogue-height, 0px); }
+  #missionCaption { padding: 7px 12px; }
+}

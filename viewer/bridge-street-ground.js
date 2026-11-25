@@ -10,6 +10,12 @@ const lanes=[
   {x:-42.86,z:-39.12,angle:1.61,length:8.55,width:1.36,seed:428},
 ];
 
+const ferryLanes=[
+  {x:-68.30,z:-49.46,length:2.01,width:1.01,angle:.004,seed:4033},
+  {x:-44.23,z:-50.57,length:8.79,width:1.33,angle:Math.PI/2,seed:5457},
+  {x:-40.19,z:-46.57,length:8.03,width:1.33,angle:.017,seed:8943},
+].map(lane=>({...lane,ferry:true}));
+
 // Shared by the terrain, slabs and foot placement. Strength fades before each
 // patch reaches the canal or the undecorated outskirts of the scroll.
 const streets=[
@@ -66,7 +72,7 @@ export function createStreetTerrain(width,depth) {
   }
   const apronRanges=pavedAprons.map(({x,w})=>[x-w*.5-.5,x+w*.5+.5]);
   const xs=coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges]);
-  const zs=coordinates(-depth,0,[[-50,-14],[-14,-11]]);
+  const zs=coordinates(-depth,0,[[-52,-14],[-14,-11]]);
   const position=[],uv=[],index=[];
   for(const z of zs) for(const x of xs) {
     position.push(x,-(z+depth/2),streetSurfaceHeight(x,z));
@@ -385,7 +391,7 @@ export function buildStreetGround(root,origin,surface) {
       cells.get(key).push(tri);
     }
   }
-  for(const lane of lanes) root.add(...paving(lane,origin,stone,addSurface));
+  for(const lane of [...lanes,...ferryLanes]) root.add(...paving(lane,origin,stone,addSurface));
   root.add(roadsideGrass(origin));
   const streetworks=buildStreetworks(root,surface,streetSurfaceHeight,addSurface);
   function surfaceHeight(cells,x,z) {

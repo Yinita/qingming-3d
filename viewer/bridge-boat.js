@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { buildFerryOars, createOarSpray } from "./bridge-ferry-oars.js";
 import { waterHeight } from "./bridge-canal-bed.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -57,7 +58,7 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
         positions.push(side*r*width,y,z);
         uv.push(.27+z*.74,y*1.4+j*.31);
         const a = i*7+j, b = a+7;
-        if (i<shape.length-1 && j<6) indices.push(...(side>0 ? [a,b,a+1,a+1,b,b+1] : [a,a+1,b,a+1,b+1,b]));
+        if (i<shape.length-1 && j<6) indices.push(...(side>0 ? [a,a+1,b,a+1,b+1,b] : [a,b,a+1,a+1,b,b+1]));
       }
     }
     const hull = new THREE.BufferGeometry();
@@ -72,6 +73,22 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
         .047,.058,Math.hypot(to-from,w2-w1)+.019,timber,Math.atan2((w2-w1)*side,to-from));
       rail.rotation.x = Math.atan2(h1-h2,to-from);
     }
+  }
+  for(const [span,y,bottom] of [[.48,-.091,true],[.625,.006,false]]) {
+    const position=[],uv=[],index=[];
+    for(const [i,[z,width]] of shape.entries()) {
+      position.push(-width*span,y,z,width*span,y,z);
+      uv.push(.5-width*span,.57*z,.5+width*span,.57*z);
+      if(i===shape.length-1) continue;
+      const a=2*i, top=[a,a+2,a+1,a+1,a+2,a+3];
+      index.push(...(bottom ? top.reverse() : top));
+    }
+    const skin=new THREE.BufferGeometry();
+    skin.setAttribute("position",new THREE.Float32BufferAttribute(position,3));
+    skin.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+    skin.setIndex(index);
+    skin.computeVertexNormals();
+    solid(skin,trim,boat);
   }
   for (let i=0; i<6; i++) plank(boat,(i-2.5)*.103,.026,0,.095,.045,2.32,timber);
   for (const [width,z] of [[.91,-.78],[1.10,.05],[.92,.83]]) {
@@ -143,6 +160,10 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
   const tangent=new THREE.Vector3(), across=new THREE.Vector3(), normal=new THREE.Vector3();
   const centerline=new THREE.Vector3();
 
+  const sculls=buildFerryOars(boat,timber,boxGeometry,solid);
+  const spray=createOarSpray(parent);
+  const ferry={active:false,x,z,yaw:.23,effort:0,phase:0,direction:0,entries:0};
+  const deckOrigin=new THREE.Vector3(),deckNormal=new THREE.Vector3();
   function renderRope() {
     const slack=Math.max(0,rest-span);
     const sag=Math.sqrt(span*slack*.36);
@@ -171,7 +192,7 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
     const age=time-tuggedAt;
     const haul=.51*THREE.MathUtils.smoothstep(age,0,.60)*
       (1-THREE.MathUtils.smoothstep(age,.90,1.95));
-    rest=maximum-haul;
+    rest=ferry.active ? maximum : maximum-haul;
     const c=Math.cos(angle.y), s=Math.sin(angle.y);
     function level(side,along) {
       return field.height(boat.position.x+side*c+along*s,boat.position.z-side*s+along*c,time);
@@ -194,23 +215,30 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
       const distance=tangent.length();
       tangent.multiplyScalar(1/distance);
       const taut=Math.max(0,distance-rest);
-      const tension=taut>.0001 ? Math.max(0,54*taut+4.8*tangent.dot(velocity)) : 0;
-      velocity.x+=(1.48*(flow.x-velocity.x)+.86*(x-boat.position.x)-tangent.x*tension)*h;
-      velocity.z+=(1.32*(flow.y-velocity.z)+1.12*(z-boat.position.z)-tangent.z*tension)*h;
+      const tension=!ferry.active && taut>.0001 ? Math.max(0,54*taut+4.8*tangent.dot(velocity)) : 0;
+      if(ferry.active) {
+        velocity.x=THREE.MathUtils.clamp(velocity.x+((ferry.x-boat.position.x)*15-7*velocity.x)*h,-2.32,2.32);
+        velocity.z=THREE.MathUtils.clamp(velocity.z+((ferry.z-boat.position.z)*18-8*velocity.z)*h,-1.48,1.48);
+      } else {
+        velocity.x+=(1.48*(flow.x-velocity.x)+.86*(x-boat.position.x)-tangent.x*tension)*h;
+        velocity.z+=(1.32*(flow.y-velocity.z)+1.12*(z-boat.position.z)-tangent.z*tension)*h;
+      }
       velocity.y+=(32*(heaveTarget-boat.position.y)-5.2*velocity.y-tangent.y*tension*.16)*h;
-      yawVelocity+=(5.2*(.23+.26*flow.x-angle.y)-3.8*yawVelocity+
-        (offset.x*tangent.z-offset.z*tangent.x)*tension*.66)*h;
+      yawVelocity+=ferry.active ? (14*(ferry.yaw-angle.y)-6.6*yawVelocity)*h :
+        (5.2*(.23+.26*flow.x-angle.y)-3.8*yawVelocity+
+          (offset.x*tangent.z-offset.z*tangent.x)*tension*.66)*h;
       pitchVelocity+=(19*(pitch-angle.x)-4.8*pitchVelocity-tension*.015)*h;
-      rollVelocity+=(27*(roll-angle.z)-5.5*rollVelocity+tension*.026)*h;
+      const riderLean=ferry.active ? .026*Math.sin(ferry.phase)*ferry.effort : 0;
+      rollVelocity+=(27*(roll+riderLean-angle.z)-5.5*rollVelocity+tension*.026)*h;
       boat.position.addScaledVector(velocity,h);
       angle.x=THREE.MathUtils.clamp(angle.x+h*pitchVelocity,-.16,.16);
-      angle.y=THREE.MathUtils.clamp(angle.y+h*yawVelocity,-.52,.65);
+      angle.y=THREE.MathUtils.clamp(angle.y+h*yawVelocity,ferry.active ? -1.74 : -.52,.65);
       angle.z=THREE.MathUtils.clamp(angle.z+h*rollVelocity,-.22,.22);
       boat.rotation.copy(angle);
       offset.copy(cleat).applyQuaternion(boat.quaternion);
       tangent.copy(boat.position).add(offset).sub(anchor);
       const extra=tangent.length()-rest-.043;
-      if (extra>0) {
+      if (!ferry.active && extra>0) {
         const horizontal=Math.hypot(tangent.x,tangent.z);
         const allowed=Math.sqrt(Math.max(.001,(rest+.043)**2-tangent.y**2));
         tangent.set(tangent.x/horizontal,0,tangent.z/horizontal);
@@ -221,26 +249,95 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
     boat.rotation.copy(angle);
     boat.localToWorld(tie.copy(cleat));
     span=anchor.distanceTo(tie);
-    stretch=Math.max(0,span-rest);
+    stretch=ferry.active ? 0 : Math.max(0,span-rest);
     forward.set(0,0,1).applyQuaternion(boat.quaternion).setY(0).normalize();
     wake.set(boat.position.x,boat.position.z,forward.x,forward.z);
     if (dt>0) {
       motion.set((boat.position.x-frameStart.x)/dt,(boat.position.z-frameStart.z)/dt,
         yawVelocity,(boat.position.y-frameStart.y)/dt);
     }
-    renderRope();
+    if(cord.visible) renderRope();
   }
 
   return {
     anchor, update, wake, motion,
+    placeHull(group) {
+      if(boat.parent!==group) group.add(boat);
+    },
+    ferry:{
+      command(px,pz,heading,direction) {
+        Object.assign(ferry,{active:true,x:px,z:pz,yaw:heading,direction});
+        cord.visible=false;
+      },
+      stroke(phase,effort,direction,deployed) {
+        Object.assign(ferry,{phase,effort});
+        for(const {side,mount,oar} of sculls) {
+          mount.visible=deployed;
+          oar.rotation.set(0,side*Math.sin(phase)*.30*effort*(direction||1),
+            -side*(.18+.29*(.5+.5*Math.cos(phase))*effort),"YZX");
+        }
+      },
+      splash(field,time,hit) {
+        for(const scull of sculls) {
+          const {mount,oar,side,tip}=scull;
+          if(!mount.visible || ferry.effort<.23) {
+            scull.lastGap=Infinity;
+            continue;
+          }
+          oar.localToWorld(tip.set(side*1.156,-.011,0));
+          const gap=tip.y-field.height(tip.x,tip.z,time);
+          if(gap<=0 && scull.lastGap>0 && time-scull.hitAt>.24) {
+            scull.hitAt=time;
+            ferry.entries++;
+            spray.emit(tip.x,tip.y-gap,tip.z,time,motion.x,motion.y,ferry.effort);
+            hit(tip.x,tip.z,time,.19+.28*ferry.effort,"boat",motion.x*.83,motion.y*.83);
+          }
+          scull.lastGap=gap;
+        }
+        spray.frame(time,field);
+      },
+      at(px,pz,heading) {
+        return Math.hypot(boat.position.x-px,boat.position.z-pz)<.125 &&
+          Math.abs(angle.y-heading)<.13 && Math.hypot(velocity.x,velocity.z)<.21;
+      },
+      grip(hand,target) {
+        const {side,oar}=sculls[hand===0 ? 1 : 0];
+        return oar.localToWorld(target.set(-side*.408,0,0));
+      },
+      toWorld(point) { return boat.localToWorld(point); },
+      attitude(target) { return boat.getWorldQuaternion(target); },
+      deckHeight(point,height) {
+        boat.localToWorld(deckOrigin.set(0,height,0));
+        deckNormal.set(0,1,0).applyQuaternion(boat.quaternion);
+        return deckOrigin.y-(deckNormal.x*(point.x-deckOrigin.x)+deckNormal.z*(point.z-deckOrigin.z))/deckNormal.y;
+      },
+      reset() {
+        if(!ferry.active) return;
+        ferry.active=false;ferry.effort=ferry.phase=ferry.direction=ferry.entries=0;
+        cord.visible=true;
+        spray.clear();
+        for(const scull of sculls) {
+          scull.mount.visible=false;scull.lastGap=Infinity;scull.hitAt=-Infinity;
+        }
+        angle.set(0,.23,0,"YXZ");
+        boat.rotation.copy(angle);
+        boat.position.set(x,waterHeight+deckOffset,z);
+        velocity.set(0,0,0);motion.set(0,0,0,0);
+        yawVelocity=rollVelocity=pitchVelocity=0;
+        tuggedAt=-Infinity;
+        boat.localToWorld(tie.copy(cleat));
+        wake.set(x,z,Math.sin(.23),Math.cos(.23));
+      },
+    },
     tug(time) {
-      if(time-tuggedAt<2.2) return false;
+      if(ferry.active || time-tuggedAt<2.2) return false;
       tuggedAt=time;
       pulls++;
       return true;
     },
     inspect: time => ({ position:boat.position.toArray(), rotation:[angle.x,angle.y,angle.z],
-      velocity:[motion.x,motion.w,motion.y], heaveTarget, pulls, stage:time-tuggedAt<2.2 ? "tug" : "moored",
+      velocity:[motion.x,motion.w,motion.y], heaveTarget, pulls, stage:ferry.active ? "ferry" : time-tuggedAt<2.2 ? "tug" : "moored",
+      oarEntries:ferry.entries, spray:spray.inspect(),
       line:{ rest,span,stretch, anchor:anchor.toArray(), tie:tie.toArray() } }),
   };
 }

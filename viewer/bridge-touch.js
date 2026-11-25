@@ -42,6 +42,12 @@ export function createMissionTouchPad() {
       panel.hidden=hidden;
       if(hidden) clear();
     },
+    rowing(active) {
+      if(panel.dataset.rowing===String(active)) return;
+      panel.dataset.rowing=String(active);
+      panel.querySelector('[data-move="w"]').setAttribute("aria-label",active ? "划向对岸" : "向前");
+      panel.querySelector('[data-move="s"]').setAttribute("aria-label",active ? "划向出发岸" : "后退");
+    },
     size:h=>panel.style.setProperty("--mission-hud-height",h+"px"),
   };
 }
