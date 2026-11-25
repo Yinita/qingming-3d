@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { detailedBox } from "./bridge-look.js";
 import { legRig } from "./bridge-gait.js";
 import { buildHand } from "./bridge-hands.js";
@@ -580,11 +581,47 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   return { upper,calf,ankle,footprint,hip };
 }
 
-function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
+function sewnCuff(profile, joint, sections, drape) {
+  const depth=.88;
+  const cuff=fabric(profile.map(([r,y])=>[r,y-joint]),depth,0,sections,joint,drape);
+  const colorize=(geometry,shade)=>{
+    const colors=new Float32Array(geometry.attributes.position.count*3).fill(shade);
+    geometry.setAttribute("color",new THREE.BufferAttribute(colors,3));
+  };
+  colorize(cuff,1);
+  const parts=[cuff];
+  const thread=new THREE.SphereGeometry(1,6,4);
+  const y=-.363;
+  const [lowerRadius,lowerY]=profile.at(-2), [upperRadius,upperY]=profile.at(-1);
+  const r=THREE.MathUtils.lerp(lowerRadius,upperRadius,(y-lowerY)/(upperY-lowerY));
+  function point(angle) {
+    const radius=r*drape(angle,y)+.0006;
+    return new THREE.Vector3(radius*Math.sin(angle),y-joint,depth*radius*Math.cos(angle));
+  }
+  for(let i=0;i<32;i++) {
+    const theta=(i+.5)*Math.PI/16;
+    const center=point(theta);
+    const tangent=point(theta+.02).sub(point(theta-.02));
+    const stitch=thread.clone();
+    stitch.scale(.00265,.00068,.00072);
+    stitch.rotateZ(.21);
+    stitch.rotateY(Math.atan2(-tangent.z,tangent.x));
+    stitch.translate(center.x,center.y,center.z);
+    colorize(stitch,1.28+.12*Math.sin(i*1.84));
+    parts.push(stitch);
+  }
+  // The thread shares the cuff's material and draw call.
+  const sewn=mergeGeometries(parts);
+  for(const part of parts) part.dispose();
+  thread.dispose();
+  return sewn;
+}
+
+function tailoredSleeve(arm, cloth, binding, cuffBinding, sections, cut, corrective) {
   const joint=-.212;
-  const cuffRow=3;
+  const cuffRow=3, cuffHeight=-.351;
   const profile=[
-    [0,-.381],[.055,-.382],[.062,-.373],[.065,-.351],[.071,-.332],
+    [0,-.381],[.055,-.382],[.062,-.373],[.065,cuffHeight],[.071,-.332],
     [.075,-.305],[.079,-.265],[.080,-.221],[.082,-.181],
     [.087,-.130],[.085,-.067],[.078,-.024],[.063,.012],[.040,.039],[0,.051],
   ].map(([r,y])=>[r*THREE.MathUtils.lerp(1,.86,THREE.MathUtils.smoothstep(y,-.36,-.29)),y]); // slimmer arm, same cuff
@@ -597,7 +634,13 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
     return 1+cut*fullness+.13*cut*fall+.063*Math.cos(angle*4+y*14)*(1-.61*shoulder)+
       elbow*(.092*Math.sin(crease)-.061*Math.cos(crease*2));
   }
-  const contour=fabric(profile.slice(cuffRow),.88,0,sections,0,drape);
+  const outer=profile.slice(cuffRow);
+  const sleeveProfile=corrective ? outer.flatMap(([r,y],i)=>{
+    if(y<joint-.094 || y>joint+.097) return [[r,y]];
+    const [previousRadius,previousY]=outer[i-1];
+    return [.25,.5,.75,1].map(t=>[THREE.MathUtils.lerp(previousRadius,r,t),THREE.MathUtils.lerp(previousY,y,t)]);
+  }) : outer;
+  const contour=fabric(sleeveProfile,.88,0,sections,0,drape);
   const positions=contour.attributes.position;
   const indices=new Uint16Array(positions.count*4);
   const weights=new Float32Array(positions.count*4);
@@ -612,14 +655,14 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   if(corrective) {
     // Restore the elbow's volume, gathering the inner cloth and tensioning the outside.
     const expanded=positions.clone();
-    const cuffHeight=profile[cuffRow][1];
     for(let i=0;i<positions.count;i++) {
       const y=positions.getY(i),x=positions.getX(i),z=positions.getZ(i);
       const band=Math.exp(-(((y-joint)/.063)**2))*THREE.MathUtils.smoothstep(y,cuffHeight,cuffHeight+.035);
       const inside=clamp(z/.070,0,1), outside=clamp(-z/.070,0,1);
-      const crease=Math.cos((y-joint)*158+x*21);
-      const width=1+band*(.31+.065*outside+inside*(.044+.16*crease));
-      const bunch=band*inside*(.0059*Math.sin((y-joint)*158+x*21)-.14*(y-joint));
+      const fold=(y-joint)*172+x*30;
+      const crease=Math.sin(fold)+.30*Math.sin(2*fold+.7);
+      const width=1+band*(.28+.068*outside+inside*(.073+.113*crease));
+      const bunch=band*inside*(.0047*Math.cos(fold)-.14*(y-joint));
       expanded.setXYZ(i,x*width,y+bunch,z*width);
     }
     const normals=contour.clone();
@@ -640,8 +683,12 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   arm.updateWorldMatrix(true,true);
   sleeve.bind(new THREE.Skeleton([shoulder,elbow]));
   // Below the elbow blend the sleeve and its folded cuff use the same bone and contour.
-  const edge=fabric(profile.slice(0,cuffRow+1).map(([radius,y])=>[radius,y-joint]),.88,0,sections,joint,drape);
-  piece(elbow,edge,binding,0,0,.005).name="Bound sleeve cuff";
+  const rim=cuffBinding ? [[.050,-.350],[.049,-.374],[.052,-.382],[.056,-.383],
+    [.060,-.380],...profile.slice(2,cuffRow+1)] : profile.slice(0,cuffRow+1);
+  const edge=cuffBinding ? sewnCuff(rim,joint,sections,drape) :
+    fabric(rim.map(([radius,y])=>[radius,y-joint]),.88,0,sections,joint,drape);
+  const cuff=piece(elbow,edge,cuffBinding||binding,0,0,.005);
+  cuff.name="Bound sleeve cuff";
   return {elbow,sleeve};
 }
 
@@ -964,6 +1011,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     for (const mat of [trousers,footwear,hem,dyed,cloth,bodyLinen]) waterStain(mat,moisture,rainWear);
   }
   const detail=!lowDetail;
+  const cuffBinding=detail ? binding.clone() : null;
+  if(cuffBinding) cuffBinding.vertexColors=true;
   const hemOffset=profile?.hem??market?.hem??0, skirt=profile?.skirt??market?.skirt??1;
   const robe=[[0,.606+hemOffset],[.263*skirt,.619+hemOffset],[.276*skirt,.66+hemOffset],
     [.269*skirt,.722+hemOffset*.73],[.255*skirt,.798+hemOffset*.42],
@@ -1310,7 +1359,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     // Hang the arm slightly away from the body so the hand clears the flared robe.
     arm.rotation.z=side*.11;
     torso.add(arm);
-    const {elbow,sleeve}=tailoredSleeve(arm,cloth,binding,garmentSections,profile?.cuff??.04,detail && !profile);
+    const {elbow,sleeve}=tailoredSleeve(arm,cloth,binding,cuffBinding,garmentSections,profile?.cuff??.04,detail && !profile);
     if(sleeve.morphTargetInfluences) sleeveFits.push({sleeve,elbow});
     // A relaxed elbow carries the hand in front of the thigh, clear of the flared robe.
     elbow.rotation.x=-restElbow;
