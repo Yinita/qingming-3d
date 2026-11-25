@@ -30,9 +30,9 @@ function batch(root,parts,name,receive=true) {
   }
 }
 
-function characterParts(surface,hatted,variant,slope,yaw) {
+function characterParts(surface,hatted,variant,slope,yaw,distantMaterial=null) {
   const temp=new THREE.Group();
-  const worker=riverWorker(temp,surface,"resident",hatted,variant);
+  const worker=riverWorker(temp,surface,"resident",hatted,variant,!!distantMaterial);
   const height=slope===0 ? .009 : 0;
   worker.figure.position.y=height;
   const feet=worker.stand(x=>x*slope,0,height,0,yaw);
@@ -50,7 +50,7 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   const grips=[[.18,.34],[.37,.23],[.53,.18],[.24,.47]][variant];
   worker.limbs.hands.forEach((hand,i)=>hand.setGrip(grips[i]));
   worker.figure.updateMatrixWorld(true);
-  const parts=new Map(), point=new THREE.Vector3();
+  const parts=new Map(), point=new THREE.Vector3(),combined=[];
   worker.figure.traverse(node=>{
     if(!node.isMesh || node.parent===worker.straps) return;
     const material=node.material;
@@ -67,9 +67,34 @@ function characterParts(surface,hatted,variant,slope,yaw) {
       geometry.deleteAttribute("skinWeight");
       geometry.computeVertexNormals();
     }
-    parts.get(material).push(geometry.applyMatrix4(node.matrixWorld));
+    geometry.applyMatrix4(node.matrixWorld);
+    if(distantMaterial) {
+      const count=geometry.attributes.position.count, vertexColor=geometry.attributes.color;
+      const colors=new Float32Array(count*3), dye=new Float32Array(count);
+      const tint=material.color.clone();
+      if(material.userData.tileMetres===1) {
+        // Average linear pigment of the linen's close-up weave shading.
+        tint.r*=.495;
+        tint.g*=.483;
+        tint.b*=.450;
+      }
+      dye.fill(Number(material.userData.streetCloth===true));
+      for(let i=0;i<count;i++) {
+        colors[3*i]=tint.r*(vertexColor?.getX(i)??1);
+        colors[3*i+1]=tint.g*(vertexColor?.getY(i)??1);
+        colors[3*i+2]=tint.b*(vertexColor?.getZ(i)??1);
+      }
+      geometry.setAttribute("color",new THREE.BufferAttribute(colors,3));
+      geometry.setAttribute("residentDye",new THREE.BufferAttribute(dye,1));
+      combined.push(geometry);
+    } else parts.get(material).push(geometry);
     node.geometry.dispose();
   });
+  if(distantMaterial) {
+    const geometry=mergeGeometries(combined);
+    combined.forEach(part=>part.dispose());
+    return {parts:[{material:distantMaterial,geometry,colored:true}],feet};
+  }
   const result=[];
   for(const [material,geometries] of parts) {
     result.push({material,geometry:mergeGeometries(geometries),colored:material.userData.streetCloth===true});
@@ -78,26 +103,75 @@ function characterParts(surface,hatted,variant,slope,yaw) {
   return {parts:result,feet};
 }
 
+function distantResidentMaterial() {
+  const material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.86,
+    side:THREE.DoubleSide,shadowSide:THREE.FrontSide});
+  material.onBeforeCompile=shader=>{
+    shader.vertexShader=shader.vertexShader.replace("#include <common>",
+      "#include <common>\nattribute float residentDye;");
+    shader.vertexShader=shader.vertexShader.replace("#include <color_vertex>",`
+      vColor=color;
+      #ifdef USE_INSTANCING_COLOR
+        vColor*=mix(vec3(1.),instanceColor,residentDye);
+      #endif`);
+  };
+  material.customProgramCacheKey=()=>"distant-resident-garment-dye";
+  return material;
+}
+
+const eye=new THREE.Vector3();
+class ResidentDetail extends THREE.LOD {
+  constructor(entries,near,far) {
+    super();
+    const envelope=new THREE.Box3();
+    for(const {source} of entries) envelope.expandByPoint(eye.set(source.x,.87,source.z));
+    envelope.getCenter(this.position);
+    this.radius=envelope.getSize(eye).length()*.5+1.42;
+    this.detailByCamera=new WeakMap();
+    this.name="Street resident detail by projected size";
+    this.addLevel(near,0);
+    this.addLevel(far,1);
+    near.position.copy(this.position).negate();
+    far.position.copy(near.position);
+    far.visible=false;
+  }
+
+  update(camera) {
+    const range=eye.setFromMatrixPosition(camera.matrixWorld).distanceTo(this.position)-this.radius;
+    const raster=camera.userData.residentRasterHeight ?? Math.min(2,devicePixelRatio)*innerHeight;
+    const projectedHeight=.86*raster*Math.abs(camera.projectionMatrix.elements[5])/Math.max(1,range);
+    const near=this.levels[0].object, far=this.levels[1].object;
+    const wasDetailed=this.detailByCamera.get(camera)??true;
+    const keepDetail=range<9 || projectedHeight>(wasDetailed ? 148 : 168);
+    this.detailByCamera.set(camera,keepDetail);
+    near.visible=keepDetail;
+    far.visible=!keepDetail;
+  }
+}
+
 function residents(root,entries,surface,floor) {
   const pose=new THREE.Object3D();
   const chunks=new Map(), templates=new Map();
+  const distantMaterial=distantResidentMaterial();
   for(const o of entries) {
     const template=o.bridge ? [o.hatted,o.variant,o.slope*o.width/o.scale,o.yaw] : [o.hatted,o.variant,0,0];
     const shape=template.join(":");
     const key=[shape,Math.floor(o.x/15),Math.floor(o.z/12)].join(":");
-    if(!templates.has(shape)) templates.set(shape,characterParts(surface,...template));
-    o.feet=templates.get(shape).feet;
+    if(!templates.has(shape)) templates.set(shape,{near:characterParts(surface,...template),
+      far:characterParts(surface,...template,distantMaterial)});
+    o.feet=templates.get(shape).near.feet;
     if(!chunks.has(key)) chunks.set(key,{shape,entries:[]});
     chunks.get(key).entries.push(o);
   }
   const update=new Set();
-  for(const group of chunks.values()) {
-    for(const {material,geometry,colored} of templates.get(group.shape).parts) {
-      const mesh=new THREE.InstancedMesh(geometry,material,group.entries.length);
-      mesh.name="Volumetric street residents";
-      mesh.castShadow=!material.transparent;
+  function batchResidents(parts,people,name) {
+    const group=new THREE.Group();
+    for(const {material,geometry,colored} of parts) {
+      const mesh=new THREE.InstancedMesh(geometry,material,people.length);
+      mesh.name=name;
+      mesh.castShadow=true;
       mesh.receiveShadow=true;
-      group.entries.forEach((o,i)=>{
+      people.forEach((o,i)=>{
         const place=()=>{
           pose.position.set(o.x,o.y,o.z);
           pose.rotation.y=o.yaw;
@@ -110,8 +184,14 @@ function residents(root,entries,surface,floor) {
         place();
         if(colored) mesh.setColorAt(i,new THREE.Color(o.robe));
       });
-      root.add(mesh);
+      group.add(mesh);
     }
+    return group;
+  }
+  for(const {shape,entries:people} of chunks.values()) {
+    const {near,far}=templates.get(shape);
+    root.add(new ResidentDetail(people,batchResidents(near.parts,people,"Volumetric street residents"),
+      batchResidents(far.parts,people,"Batched distant street residents")));
   }
   // Follow the paved surface at each sole instead of projecting one flat oval
   // through both shoes and the neighbouring slabs.

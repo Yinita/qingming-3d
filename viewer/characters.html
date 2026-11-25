@@ -27,7 +27,9 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-people.js": "./bridge-people.js?v=116",
+  "./bridge-people.js": "./bridge-people.js?v=117",
+  "./bridge-head.js": "./bridge-head.js?v=117",
+  "./bridge-head-data.js": "./bridge-head-data.js?v=117",
   "./bridge-look.js": "./bridge-look.js?v=116"
 } }
 </script>
@@ -35,9 +37,15 @@
 <body>
 <div id="panel">
   <h1>人物检视台</h1>
-  <p>试玩中的程序化人物：玩家、掌柜、伙计和四套居民体型。上排为近景模型，下排为远景低模。拖动旋转，滚轮缩放。</p>
+  <p>玩家、掌柜、伙计和四套居民体型。上排为近景，下排为远景。选择面部特写后，可拖动旋转或用滚轮缩放。</p>
   <label>握持 <input id="grip" type="range" min="0" max="1" step="0.01" value="0.08"><span id="gripValue">0.08</span></label>
   <label>步态 <input id="phase" type="range" min="0" max="6.283" step="0.01" value="0"></label>
+  <label>人物 <select id="portrait">
+    <option value="0">玩家</option><option value="1">掌柜</option><option value="2">伙计</option>
+    <option value="3">居民一</option><option value="4">居民二</option><option value="5">居民三</option><option value="6">居民四</option>
+  </select></label>
+  <label>眨眼 <input id="eyelids" type="range" min="0" max="1" step="0.01" value="0"></label>
+  <label>开口 <input id="speech" type="range" min="0" max="1" step="0.01" value="0"></label>
   <div class="row">
     <button id="walk" aria-pressed="false">行走</button>
     <button id="carry" aria-pressed="false">背货</button>
@@ -47,7 +55,7 @@
     <button data-view="faces">面部特写</button>
   </div>
   <div id="stats"></div>
-  <p style="margin:10px 0 0"><a href="./?mission&amp;v=1.16">返回试玩</a> · <a href="../docs/character-modeling.md">建模规格</a></p>
+  <p style="margin:10px 0 0"><a href="./?mission&amp;v=1.17">返回试玩</a> · <a href="../docs/character-modeling.md">建模规格</a></p>
 </div>
 <script type="module">
 import * as THREE from "three";
@@ -92,7 +100,7 @@ for(const low of [false,true]) {
   cast.forEach(([role,variant],i)=>{
     const group=new THREE.Group();
     scene.add(group);
-    const person=riverWorker(group,surface,role,role==="resident" && variant%2===0,variant,low);
+    const person=riverWorker(group,surface,role,role==="resident" && variant%2===0,variant,low,true);
     const x=(i-(cast.length-1)/2)*spacing, z=low ? 1.6 : 0;
     group.position.set(x,0,z);
     if(person.poseFeet) person.stand(()=>0,0,0,0,0);
@@ -106,9 +114,17 @@ renderer.domElement.addEventListener("dblclick",()=>{});
 const views={
   full:{pos:[.6,2.4,12.6],target:[.6,.62,.4]},
   hands:{pos:[-2.45,1.02,.62],target:[-2.68,.96,0]},
-  faces:{pos:[-2.62,1.56,1.05],target:[-2.85,1.48,0]},
 };
+const portrait=document.getElementById("portrait");
 function setView(name) {
+  if(name==="faces") {
+    const {person}=people[Number(portrait.value)];
+    const head=person.head.getWorldPosition(new THREE.Vector3());
+    controls.target.copy(head);
+    camera.position.copy(head).add(new THREE.Vector3(.097,.037,.93));
+    controls.update();
+    return;
+  }
   if(name==="hands") {
     // Frame the player's left hand from the outside front, where the palm and thumb read.
     const hand=people[0].person.limbs.hands[0].group, at=new THREE.Vector3();
@@ -127,6 +143,7 @@ function setView(name) {
   controls.update();
 }
 setView("full");
+portrait.addEventListener("change",()=>setView("faces"));
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 
 const toggles={};
@@ -137,6 +154,7 @@ for(const id of ["walk","carry","spin"]) {
 }
 const grip=document.getElementById("grip"), gripValue=document.getElementById("gripValue");
 const phaseInput=document.getElementById("phase");
+const eyelids=document.getElementById("eyelids"), speech=document.getElementById("speech");
 let manualGrip=true;
 grip.addEventListener("input",()=>{manualGrip=true;});
 
@@ -156,6 +174,8 @@ function frame() {
   else phase=Number(phaseInput.value);
   for(const {person} of people) {
     person.walkBody(phase,toggles.walk,toggles.carry,dt);
+    person.face?.blink?.(Number(eyelids.value));
+    person.face?.articulate?.(Number(speech.value));
     if(person.straps) person.straps.visible=toggles.carry;
     person.limbs.legs.forEach((leg,i)=>{ if(!leg.upper) leg.rotation.x=toggles.walk ? Math.sin(phase+i*Math.PI)*.49 : 0; });
     if(manualGrip && !toggles.carry) for(const hand of person.limbs.hands??[]) hand.setGrip(Number(grip.value));

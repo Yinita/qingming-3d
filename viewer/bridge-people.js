@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { detailedBox } from "./bridge-look.js";
 import { legRig } from "./bridge-gait.js";
 import { buildHand } from "./bridge-hands.js";
+import { buildAnatomicalHead } from "./bridge-head.js";
 
 function piece(parent, shape, material, x, y, z) {
   const mesh = new THREE.Mesh(shape, material);
@@ -574,7 +575,7 @@ function projectedFaceDepth(skull,x,y) {
   return depth;
 }
 
-export function riverWorker(parent, surface, role, residentHat=false, variant=0,lowDetail=false) {
+export function riverWorker(parent, surface, role, residentHat=false, variant=0,lowDetail=false,animatedFace=role!=="resident") {
   const profile=role==="resident" ? residentProfiles[variant] : null;
   const shoulders=profile?.shoulders??1;
   const garmentWaist=profile?.waist??1;
@@ -638,8 +639,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const robeSegments=lowDetail ? garmentSections : 64;
   piece(figure,robeClothGeometry(robe.slice(2),robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
   piece(figure,fabric(robe.slice(0,3),.70,.012,robeSegments,0,robeVolume),binding,0,0,0).name="Bound robe hem";
-  piece(figure,fabric([[.084,1.327],[.077,1.356],[.067,1.389],[.068,1.421],
-    [.085,1.447],[.087,1.462]],.86,.006,garmentSections,0,()=>1),skin,0,0,0).name="Tapered neck";
+  if(lowDetail) {
+    piece(figure,fabric([[.084,1.327],[.077,1.356],[.067,1.389],[.068,1.421],
+      [.085,1.447],[.087,1.462]],.86,.006,garmentSections,0,()=>1),skin,0,0,0).name="Tapered neck";
+  }
   const sashBottom=profile?.sash??.948;
   const sash=profile?.beard ? binding : hem;
   const sashHeight=profile?.beard ? .077 : .053;
@@ -692,183 +695,191 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const leadHead=role==="merchant" ? [.91,.89,.92] : role==="helper" ? [.79,.91,.89] : [.81,.89,.84];
   head.scale.set(...(profile?.head??leadHead));
   figure.add(head);
-  const skullRadius=.149, nose=profile?.nose??(role==="merchant" ? 1.18 : role==="helper" ? .93 : 1);
-  const cheekbone=profile?.cheek??(role==="merchant" ? .81 : 1);
-  const chin=profile?.chin??1;
-  const eyeOpening=(profile?.eyes??(role==="merchant" ? .76 : 1))*.0132;
-  const jawWidth=y=>{
-    const lower=THREE.MathUtils.smoothstep(-y,.035,.137);
-    const temple=THREE.MathUtils.smoothstep(y,.061,.133);
-    return 1-lower*(profile?.jaw??.34)-temple*(profile?.beard ? .075 : .027);
-  };
-  const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : role==="resident" ? 56 : 64,
-    lowDetail ? 13 : role==="resident" ? 40 : 48);
-  const position = skull.attributes.position;
-  const faceColours=[];
-  for (let i = 0; i < position.count; i++) {
-    const x=position.getX(i), y=position.getY(i), z=position.getZ(i);
-    const front=THREE.MathUtils.smoothstep(-z,.019,.101);
-    const cheek=Math.exp(-((Math.abs(x)-.081)**2/.0017+(y+.031)**2/.0011));
-    const socket=Math.exp(-((Math.abs(x)-.053)**2/.00037+(y-.017)**2/.00026));
-    const nostril=Math.exp(-((Math.abs(x)-.017)**2/.00010+(y+.042)**2/.00010));
-    const texture=.014*Math.sin(x*119+y*176)*Math.sin(y*162-z*133);
-    const flush=.058*front*(profile?.beard ? .44 : 1)*Math.exp(-((Math.abs(x)-.070)**2/.0008+(y+.021)**2/.00061));
-    const templeCreases=(profile?.beard || role==="merchant") ?
-      .08*Math.sin(289*y+33*x)*Math.exp(-((Math.abs(x)-.091)**2/.00045+(y-.004)**2/.00035)) : 0;
-    const chinLight=.035*Math.exp(-(x*x/.0022+(y+.102)**2/.00043));
-    const underlip=.072*Math.exp(-(x*x/.0015+(y+.078)**2/.00013));
-    const temples=THREE.MathUtils.smoothstep(Math.abs(x),.078,.143);
-    const throat=Math.exp(-((y+.141)**2/.00055))*front;
-    position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose,cheekbone,chin));
-    const stubble=(profile?.beard || role==="merchant") ?
-      .095*THREE.MathUtils.smoothstep(-y,.060,.126)*front : 0;
-    const cheekLight=.042*Math.exp(-((Math.abs(x)-.072)**2/.00058+(y+.013)**2/.00039));
-    const laughLine=Math.exp(-((Math.abs(x)-.039+.51*(y+.057))**2/.000048+(y+.056)**2/.00055));
-    const faceVolume=front*(chinLight+cheekLight-underlip-templeCreases-(profile?.beard ? .13 : .065)*laughLine);
-    faceColours.push(1+faceVolume-front*(.17*socket+.25*nostril)+flush+texture-stubble-.10*throat-.055*temples,
-      .97+faceVolume-front*(.23*socket+.16*cheek+.31*nostril)+texture-stubble-.12*throat-.069*temples,
-      .93+faceVolume-front*(.22*socket+.16*cheek+.31*nostril)-flush*.18+texture-stubble*.5-.13*throat-.081*temples);
-  }
-  skull.setAttribute("color",new THREE.Float32BufferAttribute(faceColours,3));
-  skull.computeVertexNormals();
-  piece(head, skull, facePaint, 0, 0, 0).name="Sculpted face";
-  function feature(x,y,clearance) {
-    const fy=y/1.105, fx=x/jawWidth(fy);
-    const z=-Math.sqrt(Math.max(0,skullRadius**2-fx**2-fy**2));
-    const analytic=faceDepth(Math.abs(fx),fy,z,nose,cheekbone,chin);
-    const projected=lowDetail ? projectedFaceDepth(skull,x,y) : analytic;
-    const surface=Number.isFinite(projected) ? projected : analytic;
-    return new THREE.Vector3(x,y,surface-clearance);
-  }
-  function faceLine(points,mat,radius,segments) {
-    const path=new THREE.CatmullRomCurve3(points.map(point=>feature(...point)));
-    return piece(head,new THREE.TubeGeometry(path,lowDetail ? 5 : segments,radius,lowDetail ? 3 : 5,false),mat,0,0,0);
-  }
-  function faceStroke(points,pigment,width,opacity) {
-    const path=new THREE.CatmullRomCurve3(points.map(([x,y])=>new THREE.Vector3(x,y,0)));
-    const position=[],color=[],uv=[],indices=[];
-    const divisions=lowDetail ? 7 : 24;
-    for(let i=0;i<=divisions;i++) {
-      const t=i/divisions;
-      const {x,y}=path.getPoint(t);
-      const fade=Math.sin(Math.PI*t)**.6;
-      for(let row=0;row<3;row++) {
-        const dy=(row-1)*width*(.16+.84*fade);
-        position.push(...feature(x,y+dy,.0011).toArray());
-        color.push(pigment.r,pigment.g,pigment.b,row===1 ? opacity*(.13+.87*fade) : 0);
-        uv.push(t,row*.5);
+  const face=!lowDetail ? buildAnatomicalHead(head,profile ? "resident"+variant : role,skin.color,{
+    static:!animatedFace,beard:profile?.beard,
+    hair:profile?.hair??(role==="merchant" ? 0x544838 : 0x3e342b),
+    headcloth:role==="helper" || (profile?.wrap && !residentHat) ? 0x73745d :
+      profile && variant===2 && !residentHat ? 0x545761 : undefined,
+  }) : null;
+  if(!face) {
+    const skullRadius=.149, nose=profile?.nose??(role==="merchant" ? 1.18 : role==="helper" ? .93 : 1);
+    const cheekbone=profile?.cheek??(role==="merchant" ? .81 : 1);
+    const chin=profile?.chin??1;
+    const eyeOpening=(profile?.eyes??(role==="merchant" ? .76 : 1))*.0132;
+    const jawWidth=y=>{
+      const lower=THREE.MathUtils.smoothstep(-y,.035,.137);
+      const temple=THREE.MathUtils.smoothstep(y,.061,.133);
+      return 1-lower*(profile?.jaw??.34)-temple*(profile?.beard ? .075 : .027);
+    };
+    const skull=new THREE.SphereGeometry(skullRadius,lowDetail ? 18 : role==="resident" ? 56 : 64,
+      lowDetail ? 13 : role==="resident" ? 40 : 48);
+    const position = skull.attributes.position;
+    const faceColours=[];
+    for (let i = 0; i < position.count; i++) {
+      const x=position.getX(i), y=position.getY(i), z=position.getZ(i);
+      const front=THREE.MathUtils.smoothstep(-z,.019,.101);
+      const cheek=Math.exp(-((Math.abs(x)-.081)**2/.0017+(y+.031)**2/.0011));
+      const socket=Math.exp(-((Math.abs(x)-.053)**2/.00037+(y-.017)**2/.00026));
+      const nostril=Math.exp(-((Math.abs(x)-.017)**2/.00010+(y+.042)**2/.00010));
+      const texture=.014*Math.sin(x*119+y*176)*Math.sin(y*162-z*133);
+      const flush=.058*front*(profile?.beard ? .44 : 1)*Math.exp(-((Math.abs(x)-.070)**2/.0008+(y+.021)**2/.00061));
+      const templeCreases=(profile?.beard || role==="merchant") ?
+        .08*Math.sin(289*y+33*x)*Math.exp(-((Math.abs(x)-.091)**2/.00045+(y-.004)**2/.00035)) : 0;
+      const chinLight=.035*Math.exp(-(x*x/.0022+(y+.102)**2/.00043));
+      const underlip=.072*Math.exp(-(x*x/.0015+(y+.078)**2/.00013));
+      const temples=THREE.MathUtils.smoothstep(Math.abs(x),.078,.143);
+      const throat=Math.exp(-((y+.141)**2/.00055))*front;
+      position.setXYZ(i,x*jawWidth(y),y*1.105,faceDepth(Math.abs(x),y,z,nose,cheekbone,chin));
+      const stubble=(profile?.beard || role==="merchant") ?
+        .095*THREE.MathUtils.smoothstep(-y,.060,.126)*front : 0;
+      const cheekLight=.042*Math.exp(-((Math.abs(x)-.072)**2/.00058+(y+.013)**2/.00039));
+      const laughLine=Math.exp(-((Math.abs(x)-.039+.51*(y+.057))**2/.000048+(y+.056)**2/.00055));
+      const faceVolume=front*(chinLight+cheekLight-underlip-templeCreases-(profile?.beard ? .13 : .065)*laughLine);
+      faceColours.push(1+faceVolume-front*(.17*socket+.25*nostril)+flush+texture-stubble-.10*throat-.055*temples,
+        .97+faceVolume-front*(.23*socket+.16*cheek+.31*nostril)+texture-stubble-.12*throat-.069*temples,
+        .93+faceVolume-front*(.22*socket+.16*cheek+.31*nostril)-flush*.18+texture-stubble*.5-.13*throat-.081*temples);
+    }
+    skull.setAttribute("color",new THREE.Float32BufferAttribute(faceColours,3));
+    skull.computeVertexNormals();
+    piece(head, skull, facePaint, 0, 0, 0).name="Sculpted face";
+    function feature(x,y,clearance) {
+      const fy=y/1.105, fx=x/jawWidth(fy);
+      const z=-Math.sqrt(Math.max(0,skullRadius**2-fx**2-fy**2));
+      const analytic=faceDepth(Math.abs(fx),fy,z,nose,cheekbone,chin);
+      const projected=lowDetail ? projectedFaceDepth(skull,x,y) : analytic;
+      const surface=Number.isFinite(projected) ? projected : analytic;
+      return new THREE.Vector3(x,y,surface-clearance);
+    }
+    function faceLine(points,mat,radius,segments) {
+      const path=new THREE.CatmullRomCurve3(points.map(point=>feature(...point)));
+      return piece(head,new THREE.TubeGeometry(path,lowDetail ? 5 : segments,radius,lowDetail ? 3 : 5,false),mat,0,0,0);
+    }
+    function faceStroke(points,pigment,width,opacity) {
+      const path=new THREE.CatmullRomCurve3(points.map(([x,y])=>new THREE.Vector3(x,y,0)));
+      const position=[],color=[],uv=[],indices=[];
+      const divisions=lowDetail ? 7 : 24;
+      for(let i=0;i<=divisions;i++) {
+        const t=i/divisions;
+        const {x,y}=path.getPoint(t);
+        const fade=Math.sin(Math.PI*t)**.6;
+        for(let row=0;row<3;row++) {
+          const dy=(row-1)*width*(.16+.84*fade);
+          position.push(...feature(x,y+dy,.0011).toArray());
+          color.push(pigment.r,pigment.g,pigment.b,row===1 ? opacity*(.13+.87*fade) : 0);
+          uv.push(t,row*.5);
+        }
+        if(i) for(let row=0;row<2;row++) {
+          const a=(i-1)*3+row;
+          indices.push(a,a+1,a+3,a+3,a+1,a+4);
+        }
       }
-      if(i) for(let row=0;row<2;row++) {
-        const a=(i-1)*3+row;
-        indices.push(a,a+1,a+3,a+3,a+1,a+4);
+      const geometry=new THREE.BufferGeometry();
+      geometry.setIndex(indices);
+      geometry.setAttribute("position",new THREE.Float32BufferAttribute(position,3));
+      geometry.setAttribute("color",new THREE.Float32BufferAttribute(color,4));
+      geometry.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+      geometry.computeVertexNormals();
+      const stroke=piece(head,geometry,strokeMaterial,0,0,0);
+      stroke.castShadow=false;
+    }
+    const cap = new THREE.SphereGeometry(skullRadius,lowDetail ? 16 : 56,lowDetail ? 9 : 24,0,Math.PI*2,0,Math.PI*.62);
+    const hairVertices=cap.attributes.position;
+    const hairTones=[];
+    const hairPart=profile?.hairPart??.09;
+    for(let i=0;i<hairVertices.count;i++) {
+      const x=hairVertices.getX(i),y=hairVertices.getY(i),z=hairVertices.getZ(i);
+      const az=Math.atan2(x,z), cos=Math.cos(az), sin=Math.sin(az);
+      const front=THREE.MathUtils.smoothstep(-cos,.25,.96);
+      const back=THREE.MathUtils.smoothstep(cos,.05,.92);
+      const temple=Math.exp(-((Math.abs(sin)-.93)**2/.015))*THREE.MathUtils.smoothstep(-cos,.05,.39);
+      const edge=.57+.15*back-.212*front+.042*temple+.034*cos*Math.sin(az+hairPart*7)
+        +.015*front*Math.sin(az*5+hairPart*12)
+        -(profile?.wrap && !residentHat ? .064*(1-back) : 0);
+      const length=Math.acos(clamp(y/skullRadius,-1,1))/(Math.PI*.62);
+      const angle=length*edge*Math.PI;
+      const growth=THREE.MathUtils.smoothstep(length,0,.52);
+      const strands=Math.sin(az*31+Math.sin(az*3+hairPart*8)-length*(7+4*sin));
+      const radius=skullRadius+.005+.0027*growth*(1+.85*strands);
+      const sx=radius*Math.sin(angle)*sin, sy=radius*Math.cos(angle), sz=radius*Math.sin(angle)*cos;
+      hairVertices.setXYZ(i,sx*jawWidth(sy),sy*1.105,faceDepth(Math.abs(sx),sy,sz,nose,cheekbone,chin));
+      const sweep=Math.sin(az*12-length*5+1.4*Math.sin(az*2+hairPart*12));
+      const tone=.99+.087*strands*growth+.18*sweep*growth;
+      hairTones.push(tone,tone*.97,tone*.91);
+    }
+    cap.setAttribute("color",new THREE.Float32BufferAttribute(hairTones,3));
+    cap.computeVertexNormals();
+    const hairPigment=profile ? plain(profile.hair,.87) : brow;
+    const hairSurface=hairPigment.clone();
+    hairSurface.vertexColors=true;
+    piece(head,cap,hairSurface,0,0,0).name="Sculpted hairline and strands";
+    const headwear=role==="helper" || (profile && !residentHat && (profile.wrap || variant===2));
+    if(headwear) {
+      const palette=role==="helper" ? 0x767258 : variant===2 ? 0x434952 : 0x818a78;
+      foldedHeadwrap(head,surface("indigo-linen",palette,.62,.95),garmentSections,role==="helper" ? 3 : variant);
+    } else {
+      const shape=new THREE.SphereGeometry(.045,lowDetail ? 10 : 20,lowDetail ? 7 : 13);
+      const p=shape.attributes.position;
+      for(let i=0;i<p.count;i++) {
+        const a=Math.atan2(p.getX(i),p.getZ(i));
+        const curl=1+.07*Math.cos(a*9+p.getY(i)*92);
+        p.setX(i,p.getX(i)*curl);
+        p.setZ(i,p.getZ(i)*curl);
       }
+      shape.computeVertexNormals();
+      const bun=piece(head,shape,hairPigment,.016*variant-.018,profile?.bun??.166,variant===2 ? .09 : .059);
+      bun.scale.set(variant===2 ? .79 : 1.06,variant===2 ? 1.05 : .80,.96);
+      bun.rotation.z=hairPart;
     }
-    const geometry=new THREE.BufferGeometry();
-    geometry.setIndex(indices);
-    geometry.setAttribute("position",new THREE.Float32BufferAttribute(position,3));
-    geometry.setAttribute("color",new THREE.Float32BufferAttribute(color,4));
-    geometry.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
-    geometry.computeVertexNormals();
-    const stroke=piece(head,geometry,strokeMaterial,0,0,0);
-    stroke.castShadow=false;
-  }
-  const cap = new THREE.SphereGeometry(skullRadius,lowDetail ? 16 : 56,lowDetail ? 9 : 24,0,Math.PI*2,0,Math.PI*.62);
-  const hairVertices=cap.attributes.position;
-  const hairTones=[];
-  const hairPart=profile?.hairPart??.09;
-  for(let i=0;i<hairVertices.count;i++) {
-    const x=hairVertices.getX(i),y=hairVertices.getY(i),z=hairVertices.getZ(i);
-    const az=Math.atan2(x,z), cos=Math.cos(az), sin=Math.sin(az);
-    const front=THREE.MathUtils.smoothstep(-cos,.25,.96);
-    const back=THREE.MathUtils.smoothstep(cos,.05,.92);
-    const temple=Math.exp(-((Math.abs(sin)-.93)**2/.015))*THREE.MathUtils.smoothstep(-cos,.05,.39);
-    const edge=.57+.15*back-.212*front+.042*temple+.034*cos*Math.sin(az+hairPart*7)
-      +.015*front*Math.sin(az*5+hairPart*12)
-      -(profile?.wrap && !residentHat ? .064*(1-back) : 0);
-    const length=Math.acos(clamp(y/skullRadius,-1,1))/(Math.PI*.62);
-    const angle=length*edge*Math.PI;
-    const growth=THREE.MathUtils.smoothstep(length,0,.52);
-    const strands=Math.sin(az*31+Math.sin(az*3+hairPart*8)-length*(7+4*sin));
-    const radius=skullRadius+.005+.0027*growth*(1+.85*strands);
-    const sx=radius*Math.sin(angle)*sin, sy=radius*Math.cos(angle), sz=radius*Math.sin(angle)*cos;
-    hairVertices.setXYZ(i,sx*jawWidth(sy),sy*1.105,faceDepth(Math.abs(sx),sy,sz,nose,cheekbone,chin));
-    const sweep=Math.sin(az*12-length*5+1.4*Math.sin(az*2+hairPart*12));
-    const tone=.99+.087*strands*growth+.18*sweep*growth;
-    hairTones.push(tone,tone*.97,tone*.91);
-  }
-  cap.setAttribute("color",new THREE.Float32BufferAttribute(hairTones,3));
-  cap.computeVertexNormals();
-  const hairPigment=profile ? plain(profile.hair,.87) : brow;
-  const hairSurface=hairPigment.clone();
-  hairSurface.vertexColors=true;
-  piece(head,cap,hairSurface,0,0,0).name="Sculpted hairline and strands";
-  const headwear=role==="helper" || (profile && !residentHat && (profile.wrap || variant===2));
-  if(headwear) {
-    const palette=role==="helper" ? 0x767258 : variant===2 ? 0x434952 : 0x818a78;
-    foldedHeadwrap(head,surface("indigo-linen",palette,.62,.95),garmentSections,role==="helper" ? 3 : variant);
-  } else {
-    const shape=new THREE.SphereGeometry(.045,lowDetail ? 10 : 20,lowDetail ? 7 : 13);
-    const p=shape.attributes.position;
-    for(let i=0;i<p.count;i++) {
-      const a=Math.atan2(p.getX(i),p.getZ(i));
-      const curl=1+.07*Math.cos(a*9+p.getY(i)*92);
-      p.setX(i,p.getX(i)*curl);
-      p.setZ(i,p.getZ(i)*curl);
+    for (const side of [-1, 1]) {
+      const ear=piece(head,sculptedEar(side,lowDetail),facePaint,side*.132,-.016,-.003);
+      ear.rotation.y=side*-.48;
+      const slant=profile?.beard ? -.004 : variant===2 ? .005 : .002;
+      piece(head,sculptedEye(feature,side,eyeOpening,slant,side*(profile?.hairPart??.09)*.012,lowDetail),
+        eyeSurface,0,0,0).name="Sculpted eyelid opening and iris";
+      const upper=eyeOpening*.57;
+      faceLine([[side*.0325,.011-slant*.5,.0010],[side*.044,.011+upper*.92,.0029],
+        [side*.057,.011+upper*.96,.0032],[side*.0735,.011+slant*.5,.0010]],lidTint,.00135,16);
+      if(!lowDetail) {
+        const lower=eyeOpening*.43;
+        faceLine([[side*.0325,.011-slant*.5,.0009],[side*.045,.011-lower*.88,.0025],
+          [side*.059,.011-lower*.90,.0024],[side*.0735,.011+slant*.5,.0009]],skin,.00126,16);
+      }
+      const lift=(profile?.beard ? -.004 : profile?.wrap ? .003 : 0)+side*.0017;
+      const crest=profile?.wrap ? .042 : profile?.beard ? .037 : .040;
+      faceStroke([[side*.029,.032+lift],[side*.044,crest+lift],
+        [side*.060,crest+.0008+lift],[side*.080,.034+lift]],hairPigment.color,profile?.beard ? .0062 : .0047,.90);
     }
-    shape.computeVertexNormals();
-    const bun=piece(head,shape,hairPigment,.016*variant-.018,profile?.bun??.166,variant===2 ? .09 : .059);
-    bun.scale.set(variant===2 ? .79 : 1.06,variant===2 ? 1.05 : .80,.96);
-    bun.rotation.z=hairPart;
-  }
-  for (const side of [-1, 1]) {
-    const ear=piece(head,sculptedEar(side,lowDetail),facePaint,side*.132,-.016,-.003);
-    ear.rotation.y=side*-.48;
-    const slant=profile?.beard ? -.004 : variant===2 ? .005 : .002;
-    piece(head,sculptedEye(feature,side,eyeOpening,slant,side*(profile?.hairPart??.09)*.012,lowDetail),
-      eyeSurface,0,0,0).name="Sculpted eyelid opening and iris";
-    const upper=eyeOpening*.57;
-    faceLine([[side*.0325,.011-slant*.5,.0010],[side*.044,.011+upper*.92,.0029],
-      [side*.057,.011+upper*.96,.0032],[side*.0735,.011+slant*.5,.0010]],lidTint,.00135,16);
-    if(!lowDetail) {
-      const lower=eyeOpening*.43;
-      faceLine([[side*.0325,.011-slant*.5,.0009],[side*.045,.011-lower*.88,.0025],
-        [side*.059,.011-lower*.90,.0024],[side*.0735,.011+slant*.5,.0009]],skin,.00126,16);
-    }
-    const lift=(profile?.beard ? -.004 : profile?.wrap ? .003 : 0)+side*.0017;
-    const crest=profile?.wrap ? .042 : profile?.beard ? .037 : .040;
-    faceStroke([[side*.029,.032+lift],[side*.044,crest+lift],
-      [side*.060,crest+.0008+lift],[side*.080,.034+lift]],hairPigment.color,profile?.beard ? .0062 : .0047,.90);
-  }
-  const mouthWidth=profile ? [.032,.026,.023,.030][variant] : .028;
-  const mouthCorner=-.065+(profile?.smile??.002);
-  const lowerLip=new THREE.Color(profile?.beard ? 0x946b59 : 0xa87362);
-  faceStroke([[-mouthWidth,mouthCorner],[-mouthWidth*.39,-.067],[0,-.070],
-    [mouthWidth*.39,-.067],[mouthWidth,mouthCorner-.002]],lowerLip,.0072,.62);
-  faceStroke([[-mouthWidth,mouthCorner],[-mouthWidth*.43,-.064],[0,-.066],
-    [mouthWidth*.39,-.064],[mouthWidth,mouthCorner-.002]],lips.color,.0031,.90);
-  if(role==="merchant" || profile?.beard) {
-    const beardTint=profile ? hairPigment : lips;
-    const beardMat=beardTint.clone();
-    beardMat.vertexColors=true;
-    const profileShape=profile?.beard ?
-      [[0,-.205],[.013,-.187],[.029,-.154],[.044,-.116],[.050,-.099],[.023,-.081],[0,-.079]] :
-      [[0,-.163],[.027,-.153],[.041,-.132],[.051,-.103],[.044,-.091],[.024,-.084],[0,-.080]];
-    const beardShape=fabric(profileShape,.51,0,lowDetail ? 12 : 32,0,
-      (az,y)=>1+.13*Math.sin(az*7-y*10)+.09*Math.sin(az*13+y*21));
-    const pixels=beardShape.attributes.position,tones=[];
-    for(let i=0;i<pixels.count;i++) {
-      const x=pixels.getX(i), y=pixels.getY(i), z=pixels.getZ(i);
-      const phase=Math.atan2(x,z*2)*17-y*38;
-      const silver=.28*Math.pow(Math.max(0,Math.cos(phase)),3);
-      const shade=.72+.23*Math.sin(phase*.61)+silver+.19*clamp((-y-.08)*9,0,1);
-      tones.push(shade,shade*.98,shade*.97);
-    }
-    beardShape.setAttribute("color",new THREE.Float32BufferAttribute(tones,3));
-    const beard=piece(head,beardShape,beardMat,0,0,-.091);
-    beard.rotation.x=-.14;
-    for(const side of [-1,1]) {
-      faceLine([[side*.004,-.051,.005],[side*.017,-.052,.006],
-        [side*.033,-.058,.005],[side*.043,-.065,.002]],beardTint,.0043,12);
+    const mouthWidth=profile ? [.032,.026,.023,.030][variant] : .028;
+    const mouthCorner=-.065+(profile?.smile??.002);
+    const lowerLip=new THREE.Color(profile?.beard ? 0x946b59 : 0xa87362);
+    faceStroke([[-mouthWidth,mouthCorner],[-mouthWidth*.39,-.067],[0,-.070],
+      [mouthWidth*.39,-.067],[mouthWidth,mouthCorner-.002]],lowerLip,.0072,.62);
+    faceStroke([[-mouthWidth,mouthCorner],[-mouthWidth*.43,-.064],[0,-.066],
+      [mouthWidth*.39,-.064],[mouthWidth,mouthCorner-.002]],lips.color,.0031,.90);
+    if(role==="merchant" || profile?.beard) {
+      const beardTint=profile ? hairPigment : lips;
+      const beardMat=beardTint.clone();
+      beardMat.vertexColors=true;
+      const profileShape=profile?.beard ?
+        [[0,-.205],[.013,-.187],[.029,-.154],[.044,-.116],[.050,-.099],[.023,-.081],[0,-.079]] :
+        [[0,-.163],[.027,-.153],[.041,-.132],[.051,-.103],[.044,-.091],[.024,-.084],[0,-.080]];
+      const beardShape=fabric(profileShape,.51,0,lowDetail ? 12 : 32,0,
+        (az,y)=>1+.13*Math.sin(az*7-y*10)+.09*Math.sin(az*13+y*21));
+      const pixels=beardShape.attributes.position,tones=[];
+      for(let i=0;i<pixels.count;i++) {
+        const x=pixels.getX(i), y=pixels.getY(i), z=pixels.getZ(i);
+        const phase=Math.atan2(x,z*2)*17-y*38;
+        const silver=.28*Math.pow(Math.max(0,Math.cos(phase)),3);
+        const shade=.72+.23*Math.sin(phase*.61)+silver+.19*clamp((-y-.08)*9,0,1);
+        tones.push(shade,shade*.98,shade*.97);
+      }
+      beardShape.setAttribute("color",new THREE.Float32BufferAttribute(tones,3));
+      const beard=piece(head,beardShape,beardMat,0,0,-.091);
+      beard.rotation.x=-.14;
+      for(const side of [-1,1]) {
+        faceLine([[side*.004,-.051,.005],[side*.017,-.052,.006],
+          [side*.033,-.058,.005],[side*.043,-.065,.002]],beardTint,.0043,12);
+      }
     }
   }
   if (role==="merchant" || residentHat) {
@@ -1111,7 +1122,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
     for(const hand of limbs.hands) hand.setGrip(.08+.12*effort+.74*carryWeight);
   }
-  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,poseFeet,stand,walkBody,moisture:moisture.value};
+  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,poseFeet,stand,walkBody,face,moisture:moisture.value};
 }
 
 export function counterCeramics(stall) {

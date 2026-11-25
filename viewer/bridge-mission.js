@@ -969,6 +969,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     merchant.limbs.arms[1].rotation.x = .64 * greeting + .26*reach;
     merchant.reachWithRightHand(tea.grip(teaGrip), reach);
     helper.head.rotation.y = state.phase === "waiting" ? .16 * Math.sin(elapsed * .91) : 0;
+    for(const [i,person] of [playerBody,helper,merchant].entries()) {
+      const blink=(elapsed+i*.87)%4.07;
+      person.face?.blink(Math.max(0,1-Math.abs(blink-.15)/.11));
+    }
+    helper.face?.lookEyes(.35*Math.sin(elapsed*.67),0,dt);
+    merchant.face?.lookEyes(.17,-.92*reach,dt);
     positionCrate();
     if(view==="mission") syncActors();
     if (walking) ui();

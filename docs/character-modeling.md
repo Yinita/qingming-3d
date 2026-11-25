@@ -4,6 +4,12 @@
 
 **目标是让一名角色在 2 米内近看时，从正面、侧面和背面都能认出身份，动作和手部不出戏，同时让远景居民可以成批合并绘制。** 风格向清院本人物靠拢：衣着轮廓清楚、色块平和、线条感来自衣缘和绑带，不追求写实皮肤。
 
+## v1.17 近景头像
+
+近景头部以 MakeHuman 的 CC0 基础网格和选定形变数据为底，裁出头颈后重新配色、调整各角色轮廓，并加上眼球、眼睑、唇缝和可动下颌。公开试玩保留原来的衣装、任务和关节手。街上居民按画面中的大小切换近景头部和远景低模。人物检视台可以逐个选择角色，手动调整眨眼和开口。
+
+[固定版本的网格来源](https://github.com/makehumancommunity/makehuman/blob/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/3dobjs/base.obj) · [MakeHuman 资产许可](https://static.makehumancommunity.org/about/license.html) · [生成脚本](../tools/build_character_heads.py)
+
 ## 现状（D2）
 
 | 部位 | 实现 | 已知问题 |
