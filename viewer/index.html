@@ -267,7 +267,7 @@
   <div class="loading-status"><span class="loading-metrics"></span><span class="loading-elapsed"></span></div>
   <button type="button" hidden>重试加载素材</button>
 </aside>
-<script type="module" src="./scene-loading.js"></script>
+<script type="module" src="./scene-loading.js?v=130"></script>
 <div id="hud">
   <h1>入卷 · 清院本清明上河图（一段）</h1>
   <div class="row">
@@ -299,7 +299,7 @@ import { createStreetScene } from "./bridge-street.js";
 import { createStreetTerrain } from "./bridge-street-ground.js";
 import { createEarthMaterial } from "./bridge-earth.js";
 import { createSurfaceLibrary, setSurfaceTextureLoader } from "./bridge-look.js";
-import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js";
+import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js?v=130";
 import { sweepHorizontal } from "./bridge-collision.js";
 
 const params = new URLSearchParams(location.search);

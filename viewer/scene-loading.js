@@ -101,7 +101,10 @@ async function download(task) {
   waitForBytes();
   try {
     const response=await fetch(task.url,{signal:network.signal});
-    if(!response.ok) throw Error("HTTP "+response.status);
+    if(!response.ok) {
+      await response.body?.cancel().catch(()=>{});
+      throw Object.assign(new Error("HTTP "+response.status),{status:response.status});
+    }
     const declared=Number(response.headers.get("content-length"));
     if(task.expected===null && declared>0 && !response.headers.get("content-encoding")) task.expected=declared;
     const chunks=[];
@@ -126,6 +129,21 @@ async function download(task) {
   }
 }
 
+async function downloadWithRetry(task) {
+  for(let attempt=0;;attempt++) {
+    task.loaded=0;
+    try {
+      return await download(task);
+    } catch(error) {
+      const temporary=error instanceof TypeError || error.name==="AbortError" ||
+        error.status===408 || error.status===429 || error.status>=500;
+      if(failed || !temporary || attempt>=2) throw error;
+      const delay=450*2**attempt+Math.random()*220;
+      await new Promise(resolve=>setTimeout(resolve,delay));
+    }
+  }
+}
+
 function pump() {
   if(failed) return;
   while(inFlight<concurrency) {
@@ -134,7 +152,7 @@ function pump() {
     if(next<0) break;
     const [task]=queue.splice(next,1);
     inFlight++;
-    download(task).then(task.use).then(task.resolve,error=>{
+    downloadWithRetry(task).then(task.use).then(task.resolve,error=>{
       task.failed=true;
       task.reject(error);
     }).finally(()=>{
