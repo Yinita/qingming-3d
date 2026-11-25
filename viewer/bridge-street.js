@@ -52,11 +52,16 @@ function characterParts(surface,hatted,variant,slope,yaw,distantMaterial=null) {
   const grips=[[.18,.34],[.37,.23],[.53,.18],[.24,.47]][variant];
   worker.limbs.hands.forEach((hand,i)=>hand.setGrip(grips[i]));
   worker.figure.updateMatrixWorld(true);
+  const headMeshes=new Set();
+  if(!distantMaterial && slope===0) worker.head.traverse(node=>{if(node.isMesh) headMeshes.add(node);});
+  const headPivot=worker.head.getWorldPosition(new THREE.Vector3());
+  const headParts=new Map();
   const parts=new Map(), point=new THREE.Vector3(),combined=[];
   worker.figure.traverse(node=>{
     if(!node.isMesh || node.parent===worker.straps) return;
     const material=node.material;
-    if(!parts.has(material)) parts.set(material,[]);
+    const bucket=headMeshes.has(node) ? headParts : parts;
+    if(!bucket.has(material)) bucket.set(material,[]);
     const geometry=node.geometry.clone();
     if(node.isSkinnedMesh) {
       const positions=geometry.attributes.position;
@@ -89,7 +94,7 @@ function characterParts(surface,hatted,variant,slope,yaw,distantMaterial=null) {
       geometry.setAttribute("color",new THREE.BufferAttribute(colors,3));
       geometry.setAttribute("residentDye",new THREE.BufferAttribute(dye,1));
       combined.push(geometry);
-    } else parts.get(material).push(geometry);
+    } else bucket.get(material).push(geometry);
     node.geometry.dispose();
   });
   if(distantMaterial) {
@@ -98,8 +103,10 @@ function characterParts(surface,hatted,variant,slope,yaw,distantMaterial=null) {
     return {parts:[{material:distantMaterial,geometry,colored:true}],feet};
   }
   const result=[];
-  for(const [material,geometries] of parts) {
-    result.push({material,geometry:mergeGeometries(geometries),colored:material.userData.streetCloth===true});
+  for(const [material,geometries] of [...parts,...headParts]) {
+    result.push({material,geometry:mergeGeometries(geometries),
+      colored:material.userData.streetCloth===true,
+      pivot:headParts.get(material)===geometries ? headPivot : null});
     geometries.forEach(g=>g.dispose());
   }
   return {parts:result,feet};
@@ -154,6 +161,10 @@ class ResidentDetail extends THREE.LOD {
 function residents(root,entries,surface,floor) {
   const pose=new THREE.Object3D();
   const chunks=new Map(), templates=new Map();
+  const headRotation=new THREE.Matrix4(), headAngles=new THREE.Euler(0,0,0,"YXZ");
+  const anchorOffset=new THREE.Vector3();
+  const nearby=new Set(), changedHeads=new Set();
+  const onStreet=entries.filter(o=>!o.bridge);
   const distantMaterial=distantResidentMaterial();
   for(const o of entries) {
     const template=o.bridge ? [o.hatted,o.variant,o.slope*o.width/o.scale,o.yaw] : [o.hatted,o.variant,0,0];
@@ -168,21 +179,37 @@ function residents(root,entries,surface,floor) {
   const update=new Set();
   function batchResidents(parts,people,name) {
     const group=new THREE.Group();
-    for(const {material,geometry,colored} of parts) {
+    for(const {material,geometry,colored,pivot} of parts) {
       const mesh=new THREE.InstancedMesh(geometry,material,people.length);
       mesh.name=name;
       mesh.castShadow=true;
       mesh.receiveShadow=true;
+      if(pivot) mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       people.forEach((o,i)=>{
-        const place=()=>{
+        const writeMatrix=()=>{
           pose.position.set(o.x,o.y,o.z);
           pose.rotation.y=o.yaw;
           pose.scale.set(o.hidden ? 0 : o.width,o.hidden ? 0 : o.scale,o.hidden ? 0 : o.width);
           pose.updateMatrix();
+          if(pivot && !o.bridge && (o.look || o.nod)) {
+            headRotation.makeRotationFromEuler(headAngles.set(o.nod,o.look,0));
+            anchorOffset.copy(pivot).applyMatrix4(headRotation).negate().add(pivot);
+            headRotation.setPosition(anchorOffset);
+            pose.matrix.multiply(headRotation);
+          }
           mesh.setMatrixAt(i,pose.matrix);
+        };
+        const place=()=>{
+          writeMatrix();
           update.add(mesh);
         };
         o.instances.push(place);
+        if(pivot && !o.bridge) {
+          (o.headInstances??=[]).push(()=>{
+            writeMatrix();
+            changedHeads.add(mesh);
+          });
+        }
         place();
         if(colored) mesh.setColorAt(i,new THREE.Color(o.robe));
       });
@@ -255,6 +282,7 @@ function residents(root,entries,surface,floor) {
     for(const mesh of update) {
       mesh.instanceMatrix.needsUpdate=true;
       mesh.computeBoundingSphere();
+      if(mesh.instanceMatrix.usage===THREE.DynamicDrawUsage) mesh.boundingSphere.radius+=.18;
     }
     update.clear();
     if(movedShadows) {
@@ -264,7 +292,33 @@ function residents(root,entries,surface,floor) {
     }
   }
   sync();
-  return sync;
+  function updateHeads(dt,seconds,observer) {
+    if(!observer) return;
+    for(const o of onStreet) {
+      if(!o.headInstances || o.hidden) continue;
+      const dx=observer.x-o.x, dz=observer.z-o.z;
+      const range=Math.hypot(dx,dz);
+      if(range>6.2 && !nearby.has(o)) continue;
+      const bearing=Math.atan2(-dx,-dz)-o.yaw;
+      const angle=Math.atan2(Math.sin(bearing),Math.cos(bearing));
+      const interest=(1-THREE.MathUtils.smoothstep(range,2.8,6.2))*
+        (1-THREE.MathUtils.smoothstep(Math.abs(angle),1.02,1.92));
+      const idle=range<6.2 ? .046*Math.sin(seconds*.97+o.x*.85+o.z*.59) : 0;
+      const target=THREE.MathUtils.clamp(angle,-.41,.41)*interest+idle;
+      o.look=THREE.MathUtils.damp(o.look??0,target,4.3,dt);
+      o.nod=THREE.MathUtils.damp(o.nod??0,.052*interest+idle*.63,3.8,dt);
+      if(range<6.2 || Math.abs(o.look)+Math.abs(o.nod)>.001) nearby.add(o);
+      else {
+        o.look=0;
+        o.nod=0;
+        nearby.delete(o);
+      }
+      for(const move of o.headInstances) move();
+    }
+    for(const mesh of changedHeads) mesh.instanceMatrix.needsUpdate=true;
+    changedHeads.clear();
+  }
+  return {sync,updateHeads};
 }
 
 function placeResidents(entries,collisions,anchor,origin,streetHeight) {
@@ -605,7 +659,7 @@ export function createStreetScene(scene,objects,anchor) {
   const housing=buildStreetHouses(root,collisions,surface,objects);
   const livestock=buildLivestock(root,collisions,objects,anchor,origin,streetHeight);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
-  const syncResidents=residents(root,placed,surface,(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)));
+  const {sync:syncResidents,updateHeads}=residents(root,placed,surface,(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)));
   function registerHouse(object) {
     const house=collisions.meshBox("existing house",object);
     for(const p of placed) {
@@ -617,7 +671,7 @@ export function createStreetScene(scene,objects,anchor) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,livestock,housing,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,livestock,housing,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
     trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};
 }

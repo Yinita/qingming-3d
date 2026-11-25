@@ -10,7 +10,7 @@
 
 ## 桥畔茶铺试玩
 
-在查看器的「桥畔茶铺任务」卡片点「去送茶」，也可以[直接进入 v1.13 试玩](https://yinita.github.io/qingming-3d/viewer/?mission&v=1.13)。打开[任务重置页](https://yinita.github.io/qingming-3d/viewer/?mission&restart&v=1.13)可确认从桥头重新开始。
+在查看器的「桥畔茶铺任务」卡片点「进入送茶任务」，也可以[直接进入 v1.21 试玩](https://yinita.github.io/qingming-3d/viewer/?mission&v=1.21)。打开[任务重置页](https://yinita.github.io/qingming-3d/viewer/?mission&restart&v=1.21)可确认从桥头重新开始。
 
 - 点「开始送茶」后，画面上方显示「任务已开始」。直接取箱或委托伙计也可以开始。目标标牌显示方向和距离。
 - 开场卡有「重置进度」。试玩时点右上角「重置任务」或按 `Shift+R`。确认后回到桥头，茶箱归位，铜钱恢复为六文，开场卡显示「任务已重置」。漫游和画卷也可以重置。

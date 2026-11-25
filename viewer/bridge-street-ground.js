@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { buildStreetworks,pavedAprons,streetworksRelief } from "./bridge-streetworks.js";
 import { canalDepth, waterHeight } from "./bridge-canal-bed.js";
 
 // Shallow stonework set into the dirt at the market and bridge approaches.
@@ -49,7 +50,7 @@ export function streetSurfaceHeight(x,z) {
     const ditch=Math.abs(across-drainSide(Math.sign(across)||1,along));
     height-=.034*(1-smoothstep(ditch,.065,.28))*(1-smoothstep(Math.abs(along),7.1,8.8));
   }
-  return height;
+  return height+streetworksRelief(x,z);
 }
 
 export function createStreetTerrain(width,depth) {
@@ -63,8 +64,9 @@ export function createStreetTerrain(width,depth) {
     }
     return axis;
   }
-  const xs=coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38]]);
-  const zs=coordinates(-depth,0,[[-49,-32],[-32,-14],[-14,-11]]);
+  const apronRanges=pavedAprons.map(({x,w})=>[x-w*.5-.5,x+w*.5+.5]);
+  const xs=coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges]);
+  const zs=coordinates(-depth,0,[[-50,-14],[-14,-11]]);
   const position=[],uv=[],index=[];
   for(const z of zs) for(const x of xs) {
     position.push(x,-(z+depth/2),streetSurfaceHeight(x,z));
@@ -385,7 +387,8 @@ export function buildStreetGround(root,origin,surface) {
   }
   for(const lane of lanes) root.add(...paving(lane,origin,stone,addSurface));
   root.add(roadsideGrass(origin));
-  return (x,z)=>{
+  const streetworks=buildStreetworks(root,surface,streetSurfaceHeight,addSurface);
+  const height=(x,z)=>{
     let y=streetSurfaceHeight(x,z);
     const candidates=cells.get(Math.floor(x)+":"+Math.floor(z));
     if(candidates) for(const t of candidates) {
@@ -396,4 +399,6 @@ export function buildStreetGround(root,origin,surface) {
     }
     return y;
   };
+  height.frontages=streetworks;
+  return height;
 }

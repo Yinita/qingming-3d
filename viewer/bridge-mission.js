@@ -324,8 +324,6 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <div id="missionIntroRoute"><span>1　桥头取箱</span><span aria-hidden="true">→</span><span>2　过桥交货</span></div>
     <div class="entry-actions">
       <button id="missionBegin" type="button">开始送茶</button>
-      <button id="missionIntroReset" type="button" aria-haspopup="dialog"
-        aria-controls="missionRestartDialog">重置任务</button>
       <button id="missionIntroExit" type="button">返回画卷</button>
     </div>`;
   document.body.appendChild(intro);
@@ -335,8 +333,6 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const introTitle=intro.querySelector("#missionIntroTitle");
   const introDetail=intro.querySelector("#missionIntroDetail");
   const begin=intro.querySelector("#missionBegin");
-  const introReset=intro.querySelector("#missionIntroReset");
-  introReset.onclick=()=>requestRestart(introReset);
   const notice=document.createElement("div");
   notice.id="missionNotice";
   notice.setAttribute("role","status");
@@ -441,12 +437,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const beaconInset=mesh(new THREE.OctahedronGeometry(.145),new THREE.MeshBasicMaterial({color:0xba6337}),beacon,0,0,0);
   beaconInset.scale.y=1.43;
   beacon.visible=false;
+  const startPillar=mesh(new THREE.CylinderGeometry(.019,.027,1,8),
+    new THREE.MeshBasicMaterial({color:0xffcd72,transparent:true,opacity:.78,depthWrite:false}),
+    root,0,0,0);
+  startPillar.name="Tea delivery start pillar";
+  startPillar.visible=false;
+  startPillar.castShadow=startPillar.receiveShadow=false;
   const markerPoint=new THREE.Vector3(), projectedMarker=new THREE.Vector3();
   let markerText="";
   function markObjective() {
     const phase=state.phase;
     groundMarker.visible=view==="mission" && phase!=="delivered" && !restartDialog.open;
     beacon.visible=groundMarker.visible;
+    const pending=phase==="waiting" && !state.started;
+    startPillar.visible=beacon.visible && pending;
     waypoint.hidden=!groundMarker.visible;
     if(waypoint.hidden) return;
     const at=phase==="waiting" ? state.crate : counter;
@@ -456,7 +460,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     markerGold.material.color.setHex(state.started ? 0xefd99a : 0xffc863);
     const hover=y+(phase==="waiting" ? 1.06 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
-    const pending=!state.started && phase==="waiting";
+    if(startPillar.visible) {
+      const bottom=y+.26, top=hover-.23;
+      startPillar.position.set(x,(bottom+top)*.5,z);
+      startPillar.scale.y=top-bottom;
+    }
     beacon.rotation.y=elapsed*.92;
     beacon.scale.setScalar(pending ? 1.39 : 1);
     waypoint.dataset.start=String(pending);
@@ -720,7 +728,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const briefing=hasRestarted && kind==="new" ? "reset" : kind;
     if(briefing!==introduced) {
       const [status,title,detail,action]={
-        new:["任务待开始","桥畔茶铺 · 送茶任务","到桥头的金色标记处取箱。过桥后，把茶叶交给对岸柜台的掌柜。","开始送茶"],
+        new:["新任务","桥畔茶铺 · 送茶任务","到桥头的金色标记处取箱，再把茶叶送到对岸柜台。","开始送茶"],
         reset:["任务待开始","任务已重置","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
         resume:["已有进度","继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
         finished:["任务完成","茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
@@ -736,9 +744,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
-    // The briefing already has a reset button. Restore the toolbar when play begins.
-    tools.hidden=labels.hidden || !intro.hidden;
-    journalButton.disabled=awaitingStart();
+    tools.hidden=labels.hidden;
+    journalButton.hidden=awaitingStart();
   }
 
   function livestockVisitor() {
@@ -894,7 +901,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(!active) journal.toggle(state,false);
     document.body.classList.toggle("mission-open", active);
     groundMarker.visible = mode === "mission" && state.phase !== "delivered";
-    beacon.visible=false;
+    beacon.visible=startPillar.visible=false;
     if (active) {
       positionCrate();
       ui();
@@ -906,7 +913,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if (!root.visible) return;
     if(restartDialog.open) {
       waypoint.hidden=introShade.hidden=intro.hidden=true;
-      beacon.visible=false;
+      beacon.visible=startPillar.visible=false;
       return;
     }
 
@@ -1096,13 +1103,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function toggleScroll() { setMode(view === "missionScroll" ? "mission" : "missionScroll"); }
   function beginMission(){
     if(state.phase==="delivered") {
-      requestRestart(begin);
+      requestRestart(restartButton);
       return;
     }
     clearInput();
     startMission();
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
     ui();
+    markObjective();
     canvas.focus({preventScroll:true});
   }
   begin.onclick=beginMission;
@@ -1128,7 +1136,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     clearInput();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
     introShade.hidden=intro.hidden=waypoint.hidden=true;
-    groundMarker.visible=beacon.visible=false;
+    groundMarker.visible=beacon.visible=startPillar.visible=false;
     restartDialog.showModal();
   }
   const restartButton=tools.querySelector("#missionRestart");
@@ -1168,7 +1176,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
     if (e.code === "KeyR" && e.shiftKey) {
       e.preventDefault();
-      requestRestart(intro.hidden ? restartButton : introReset);
+      requestRestart(restartButton);
       return;
     }
     if(awaitingStart()) return;

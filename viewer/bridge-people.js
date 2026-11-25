@@ -298,11 +298,26 @@ function bootLast(geometry,side,sole) {
   return geometry;
 }
 
-function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail) {
+const trouserCuts=[1.07,1.16,.88,.99];
+
+function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,cut=1) {
   const hip=new THREE.Vector3(side*legRig.separation,legRig.hip,0);
   const kneeY=-legRig.upper;
-  const geometry=fabric([[.076,kneeY-.179],[.077,kneeY-.091],[.071,kneeY-.038],[.073,kneeY],
-    [.077,kneeY+.043],[.083,-.23],[.088,-.126],[.089,.032]],.93,0,40);
+  const sections=lowDetail ? 14 : 40;
+  const geometry=fabric([
+    [.076,kneeY-.179],[.076,kneeY-.132],[.074,kneeY-.091],[.071,kneeY-.049],
+    [.073,kneeY],[.079,kneeY+.046],[.080*cut,-.23],[.089*cut,-.15],
+    [.089*cut,-.072],[.087*cut,.032],
+  ],.93,0,sections,0,(theta,y)=>{
+    const below=THREE.MathUtils.smoothstep(y,kneeY-.175,kneeY-.060);
+    const tension=Math.exp(-(((y-kneeY-.008)/.085)**2));
+    const pleat=theta*4+(y-kneeY)*14+.5*side;
+    const crease=theta*2+(y-kneeY)*77+.8*side;
+    const front=Math.max(0,-Math.cos(theta));
+    const line=Math.max(0,Math.sin(theta*2+y*6))**8;
+    return 1+below*(.055*Math.cos(pleat)+.044*line+
+      tension*(.044*front*Math.sin(crease)-.038*Math.max(0,Math.cos(crease))**6));
+  });
   const vertices=geometry.attributes.position;
   const indices=new Uint16Array(vertices.count*4), weights=new Float32Array(vertices.count*4);
   for(let i=0;i<vertices.count;i++) {
@@ -314,6 +329,7 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   geometry.setAttribute("skinIndex",new THREE.BufferAttribute(indices,4));
   geometry.setAttribute("skinWeight",new THREE.BufferAttribute(weights,4));
   const pants=new THREE.SkinnedMesh(geometry,trousers);
+  pants.name="Shaped, articulated trousers";
   pants.position.copy(hip);
   pants.castShadow=pants.receiveShadow=true;
   pants.frustumCulled=false;
@@ -326,8 +342,8 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   upper.add(calf);
   pants.bind(new THREE.Skeleton([upper,calf]));
   const wrap=[[.057,-.325],[.061,-.294],[.066,-.25],[.071,-.214],[.076,-.179]];
-  piece(calf,fabric(wrap,.93,0,40,kneeY),dyed,0,0,0).name="Linen boot wrap";
-  for (const y of [-.284,-.251,-.218,-.192]) {
+  piece(calf,fabric(wrap,.93,0,sections,kneeY),dyed,0,0,0).name="Linen boot wrap";
+  for (const y of lowDetail ? [] : [-.284,-.251,-.218,-.192]) {
     const course=Array.from({length:32},(_,i)=>{
       const theta=i*Math.PI/16;
       const height=y+.005*Math.sin(theta+.4);
@@ -366,6 +382,16 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
     }
     const piping=new THREE.CatmullRomCurve3(points);
     piece(ankle,new THREE.TubeGeometry(piping,24,.0019,5,false),binding,0,0,0);
+    const vamp=[];
+    for(let i=0;i<=12;i++) {
+      const t=i/12, x=THREE.MathUtils.lerp(-.86,.86,t);
+      const z=-.37-.15*Math.sin(Math.PI*t);
+      const y=Math.sqrt(Math.max(0,1-x*x-z*z));
+      const point=new THREE.Vector3(x,y,z).multiplyScalar(1.023);
+      vamp.push(bootPoint(point,side,false).multiply(shoe.scale).add(shoe.position));
+    }
+    piece(ankle,new THREE.TubeGeometry(new THREE.CatmullRomCurve3(vamp),16,.00165,5,false),
+      binding,0,0,0).name="Stitched shoe vamp";
   }
   return { upper,calf,ankle,footprint,hip };
 }
@@ -445,7 +471,7 @@ const residentProfiles=[
   {skin:0xc1a084,hair:0x615a50,head:[.72,.99,.90],jaw:.30,nose:1.31,shoulders:.86,armWidth:.95,sleeve:1.06,
     bun:.151,beard:true,cheek:.65,chin:1.32,coat:0x93957f,binding:0x62513d,cord:0xad8b63,hem:-.161,skirt:.94,waist:.96,cuff:.12,eyes:.69,smile:-.003,sash:1.00,hairPart:-.19,trousers:0x817965},
   {skin:0xd2ad90,hair:0x362c28,head:[.78,.87,.83],jaw:.40,nose:.77,shoulders:.86,armWidth:.82,sleeve:.96,
-    bun:.151,cheek:.87,chin:.63,hem:-.055,skirt:.96,waist:.86,cuff:-.12,binding:0x4b6870,cord:0xaeb5a3,eyes:1.03,smile:.007,sash:1.033,hairPart:.23,trousers:0x74838c},
+    bun:.151,cheek:.87,chin:.63,hem:-.227,skirt:.96,waist:.86,cuff:-.12,binding:0x4b6870,cord:0xaeb5a3,eyes:1.03,smile:.007,sash:1.033,hairPart:.23,trousers:0x74838c},
   {skin:0xa87f62,hair:0x3d3228,head:[.85,.90,.91],jaw:.15,nose:.96,shoulders:1.09,armWidth:.88,sleeve:.88,
     bun:.145,wrap:true,cheek:1.32,chin:.96,coat:0x947e63,hem:.185,skirt:.84,waist:1.02,cuff:-.16,binding:0xa7906d,cord:0xc0ab89,eyes:.88,smile:-.001,sash:.911,hairPart:-.03,trousers:0xab9878},
 ];
@@ -706,6 +732,26 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     dyed,.028,detail,.016);
   if(role==="player" || role==="helper" || (role==="resident" && variant===2)) {
     wrapSkirt(figure,robe,bodyLinen,binding,.685+hemOffset,sashBottom,lowDetail);
+  }
+  if(profile && detail) {
+    const backSeams=[
+      [[-.84,1.213],[-.44,1.195],[0,1.187],[.44,1.195],[.84,1.213]],
+      [[.04,1.322],[.009,1.246],[-.013,1.143],[.005,1.044]],
+      [[-.73,1.262],[-.43,1.224],[-.24,1.178],[.0,1.151],[.39,1.163],[.71,1.21]],
+      [[-.83,1.215],[-.43,1.183],[.06,1.16],[.47,1.173],[.82,1.207]],
+    ];
+    const offset=coatLinen ? .041 : .012;
+    robeSeam(figure,robe,backSeams[variant],binding,profile.wrap ? .020 : .013,true,offset);
+  }
+  if(profile && variant===0) {
+    const towel=surface("indigo-linen",0xbaa988,.40,.91);
+    // Both ends hang from the same shoulder over the front and back of the robe.
+    const fall=[[.89,.996],[.87,1.071],[.92,1.166],[1.11,1.240],[1.51,1.281],
+      [1.95,1.276],[2.20,1.224],[2.31,1.153],[2.35,1.074]];
+    robeSeam(figure,robe,fall,towel,.116,detail,.027);
+    if(detail) {
+      robeSeam(figure,robe,fall.map(([theta,y])=>[theta+.083,y-.016]),binding,.009,true,.030);
+    }
   }
   const tailSide=profile?.beard ? 3.82 : 2.47;
   if(role!=="merchant") {
@@ -984,7 +1030,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const wrapTint=profile ? plain([0xaa997c,0x908679,0x797e75,0xc5ac86][variant],.95) : dyed;
   for (const side of [-1, 1]) {
     if (role==="player" || role==="helper" || role==="resident") {
-      articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail));
+      articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     } else {
       const leg = new THREE.Group();
       leg.position.set(side * .119, .68, 0);

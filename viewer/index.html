@@ -54,7 +54,7 @@
   #missionHud h1 { margin:3px 0 8px; font-size:26px; font-weight:600; letter-spacing:.1em; }
   .mission-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .mission-open #seal { display:none; }
-  #missionTools[hidden] { display:none; }
+  #missionTools[hidden], #missionJournal[hidden] { display:none; }
   #missionTools { position:fixed; z-index:8; top:22px; right:22px; display:flex; gap:6px; }
   #missionRestart { min-height:44px; white-space:nowrap;
     padding:9px 16px; color:#fff7e1; font-size:14px; font-weight:700; background:#733a2d;
@@ -81,7 +81,7 @@
   #missionIntro #missionBegin { min-width:126px; min-height:46px; font-size:16px;
     background:#f3d398; color:#54251f; border-color:#e9c38b; }
   #missionBegin:hover, #missionBegin:focus-visible { background:#ffe7b6; }
-  #missionIntroExit, #missionIntroReset { color:#fff3d9; background:#653528; border-color:#b98364; }
+  #missionIntroExit { color:#fff3d9; background:#653528; border-color:#b98364; }
   #missionIntro[hidden] { display:none; }
   #missionNotice:not(:empty) { position:fixed; z-index:7; top:22px; left:50%;
     transform:translateX(-50%); padding:10px 20px; pointer-events:none;
@@ -183,7 +183,7 @@
   "three/addons/": "./vendor/three/examples/jsm/",
   "./bridge-look.js": "./bridge-look.js?v=118",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=120",
+  "./bridge-mission.js": "./bridge-mission.js?v=121",
   "./bridge-livestock.js": "./bridge-livestock.js?v=119",
   "./bridge-houses.js": "./bridge-houses.js?v=120b",
   "./bridge-architecture.js": "./bridge-architecture.js?v=120",
@@ -191,11 +191,12 @@
   "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=119",
   "./bridge-quests.js": "./bridge-quests.js?v=113",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=119",
+  "./bridge-people.js": "./bridge-people.js?v=121",
   "./bridge-head.js": "./bridge-head.js?v=117",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
-  "./bridge-street.js": "./bridge-street.js?v=120",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=118"
+  "./bridge-street.js": "./bridge-street.js?v=121",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=121",
+  "./bridge-streetworks.js": "./bridge-streetworks.js?v=121"
 } }
 </script>
 </head>
@@ -232,7 +233,7 @@
 <nav id="questEntry" aria-label="桥畔茶铺任务">
   <strong>桥畔茶铺任务</strong>
   <div class="entry-actions">
-    <button id="bMission" type="button">前往送茶任务</button>
+    <button id="bMission" type="button">进入送茶任务</button>
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
@@ -250,13 +251,18 @@ import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFra
 import { sweepHorizontal } from "./bridge-collision.js";
 
 const params = new URLSearchParams(location.search);
+const startInMission=params.has("mission");
+if(startInMission) {
+  document.getElementById("scene-loading-title").textContent="正在进入桥畔茶铺";
+  if(params.has("restart"))
+    document.querySelector("#scene-loading .loading-note").textContent="场景就绪后会打开重置确认。";
+}
 const base = (params.get("scene") || "../data/seg01/scene/").replace(/\/?$/, "/");
 await loadSceneSizes();
 const L = await sceneAsset(base+"layout.json","front",async blob=>JSON.parse(await blob.text())).catch(error=>{
   failScene("场景清单未能下载，请检查网络后重试。");
   throw error;
 });
-const startInMission=params.has("mission");
 const th = THREE.MathUtils.degToRad(L.camera.elev_deg);
 const s = L.camera.m_per_px, W = L.image.width, H = L.image.height;
 const GW = L.ground.width, GD = L.ground.depth;
@@ -533,6 +539,7 @@ function setMode(m) {
 
 // --- walk controls ---
 const walk = { yaw: 0, pitch: -0.05, pos: new THREE.Vector3(0, 1.6, 2) };
+const walkSupport=(x,z)=>Math.max(street.streetHeight(x,z),street.housing.workshop.support(x,z));
 const walkClear=(x,z,feet)=>!street.collisions.blocking(x,z,feet,.31,1.67);
 function clearWalkSpawn() {
   const {x,y,z}=walk.pos, feet=y-1.54;
@@ -643,9 +650,12 @@ renderer.setAnimationLoop(now => {
     const forward=Number(keys.has("w")||keys.has("arrowup"))-Number(keys.has("s")||keys.has("arrowdown"));
     const lateral=Number(keys.has("d")||keys.has("arrowright"))-Number(keys.has("a")||keys.has("arrowleft"));
     const pace=v/(Math.hypot(forward,lateral)||1);
-    const feet=walk.pos.y-1.54;
-    sweepHorizontal(walk.pos,(fwd.x*forward+right.x*lateral)*pace,(fwd.z*forward+right.z*lateral)*pace,
-      (x,z)=>walkClear(x,z,feet));
+    if(forward || lateral) {
+      const heightOffset=walk.pos.y-1.54-walkSupport(walk.pos.x,walk.pos.z);
+      sweepHorizontal(walk.pos,(fwd.x*forward+right.x*lateral)*pace,(fwd.z*forward+right.z*lateral)*pace,
+        (x,z)=>walkClear(x,z,walkSupport(x,z)+heightOffset));
+      walk.pos.y=1.54+walkSupport(walk.pos.x,walk.pos.z)+heightOffset;
+    }
     const shift=v*(Number(keys.has("e"))-Number(keys.has("q")));
     const pieces=Math.max(1,Math.ceil(Math.abs(shift)/.09));
     for(let i=0;i<pieces && shift;i++) {
@@ -661,6 +671,7 @@ renderer.setAnimationLoop(now => {
     const observer=mode==="walk" ? {x,y:y-1.54,z} : mission?.livestockVisitor();
     street.livestock.update(dt,now*.001,camPos,observer);
     street.housing.updateDetail(camPos);
+    street.updateHeads(dt,now*.001,observer);
   }
   if (mode === "walk" || mode === "fly") {
     const texel=34/sun.shadow.mapSize.x;
@@ -689,7 +700,7 @@ document.getElementById("status").textContent =
 window.__scene = { L, setMode, startFly, setModels,
   get models(){return [...models,...street.housing.models.values()];},
   renderer, scene, persp, orbit, walk, walkClear,
-  housing:street.housing.inspect,
+  housing:street.housing.inspect, frontages:street.streetHeight.frontages,
   livestock: street.livestock.inspect,
   mission: () => mission?.inspect(),
   waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect, streetHeight:street.streetHeight };
