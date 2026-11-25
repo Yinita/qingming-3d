@@ -148,7 +148,10 @@ function pump() {
   if(failed) return;
   while(inFlight<concurrency) {
     let next=queue.findIndex(task=>task.group===groups.front);
-    if(next<0 && entered && queue.length) next=0;
+    if(next<0 && entered && queue.length) {
+      next=queue.findIndex(task=>task.priority);
+      if(next<0) next=0;
+    }
     if(next<0) break;
     const [task]=queue.splice(next,1);
     inFlight++;
@@ -164,10 +167,10 @@ function pump() {
   }
 }
 
-export function sceneAsset(url,phase,use) {
+export function sceneAsset(url,phase,use,{priority=false}={}) {
   const absolute=new URL(url,location.href).href, group=groups[phase];
   return new Promise((resolve,reject)=>{
-    const task={url:absolute,group,use,resolve,reject,loaded:0,
+    const task={url:absolute,group,use,resolve,reject,loaded:0,priority,
       expected:sizes.get(absolute) ?? null,complete:false,failed:false};
     group.tasks.push(task);
     queue.push(task);
@@ -175,7 +178,7 @@ export function sceneAsset(url,phase,use) {
   });
 }
 
-export function sceneImage(url, phase) {
+export function sceneImage(url, phase, options) {
   return sceneAsset(url,phase,async blob=>{
     const src=URL.createObjectURL(blob);
     try {
@@ -186,7 +189,7 @@ export function sceneImage(url, phase) {
     } finally {
       URL.revokeObjectURL(src);
     }
-  });
+  },options);
 }
 
 export function prepareFirstFrame() {

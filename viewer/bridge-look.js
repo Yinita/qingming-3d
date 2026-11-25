@@ -26,7 +26,7 @@ const materialScale = {
 
 export function createSurfaceLibrary() {
   function load(id, file, srgb = false) {
-    return loadSurfaceTexture(materialRoot + id + "/" + file).then(map => {
+    return loadSurfaceTexture(materialRoot + id + "/" + file,{priority:id==="rough-linen"}).then(map => {
       if (srgb) map.colorSpace = THREE.SRGBColorSpace;
       map.wrapS = map.wrapT = THREE.RepeatWrapping;
       if (id === "rough-linen") map.repeat.setScalar(1 / materialScale[id]);
