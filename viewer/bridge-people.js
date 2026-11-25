@@ -516,6 +516,9 @@ const residentProfiles=[
 ];
 
 const marketProfiles={
+  carter:{headModel:"porter",head:[.90,.88,.86],
+    colors:[0x877054,0x6b6f62,0x4d483d,0xb69868],skin:0xa97b5b,shoulders:1.06,waist:1.10,hem:.084,skirt:.92,
+    coat:0x65736a,hair:0x3d332a,headcloth:0x6c7164},
   attendant:{head:[.81,.91,.86],headModel:"merchant",
     colors:[0xa8b2a1,0x646b61,0x574f40,0xd2bd9a],skin:0xb58c6c,shoulders:.86,waist:.92,hem:-.088,skirt:1.04,
     apron:0xe1c9a0,hair:0x40332b,headcloth:0x667166},

@@ -9,7 +9,7 @@ export const TEA_QUEST = {
   id: "tea-shop-opening",
   title: "桥畔茶铺",
   premise: "对岸茶铺今晚要开张，可新到的一箱茶叶还搁在桥头。掌柜等着它下锅。",
-  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1 },
+  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1, freightReward: 2 },
   stages: {
     waiting:   { title: "桥头取箱",   objective: "任务起点 · 取茶叶箱，再送到对岸茶铺。" },
     carrying:  { title: "送往茶铺",   objective: "已拿到茶叶。过桥，到茶铺柜台交货。" },
@@ -35,7 +35,7 @@ export const TEA_QUEST = {
   ],
   rules: [
     "货箱只有一只。两条路线交付的是同一只箱子，不会多出货物。",
-    "委托、交货和逛街消费都会计入账目。交货后可以在茶间花一文点茶。",
+    "委托、交货、运瓷器和逛街消费都会记入账目。",
     "撤销回到上一次拿取或委托之前；重置清空全部进度。",
   ],
 };
@@ -45,8 +45,8 @@ export function stageOf(phase) {
 }
 
 export function maxCoins() {
-  const { startCoins, deliveryReward } = TEA_QUEST.economy;
-  return startCoins + deliveryReward;
+  const { startCoins, deliveryReward, freightReward } = TEA_QUEST.economy;
+  return startCoins + deliveryReward + freightReward;
 }
 
 // Append one ledger line to the mission state. The state is what gets saved,
@@ -117,12 +117,17 @@ export function createQuestJournal() {
       ? state.log.map(({ text, delta }) =>
           `<li><span>${text}</span><span>${delta ? (delta > 0 ? "+" : "") + delta + " 文" : ""}</span></li>`).join("")
       : "<li><span>尚无记录</span></li>";
+    const freight={ready:"到蒸糕摊后街取瓷器，再从车尾装车。",
+      loaded:"瓷器已装车。到北巷卸货，交到收货台。",
+      delivered:"已在北巷交付，收到两文。"};
+    const sideQuest=state.phase==="delivered" ? `<h3>市集支线 · 瓷器货运</h3>
+      <p>${freight[state.freightStage]??freight.ready}</p>` : "";
     return `<button class="close" type="button" data-close>收起 J</button>
       <h2>任务簿 · ${TEA_QUEST.title}</h2>
       <p>${TEA_QUEST.premise}</p>
       <h3>当前</h3><p><strong>${stage.title}</strong> · ${stage.objective}</p>
       <h3>可选路线</h3>${routes}
-      <h3>账目 · 现有 ${state.coins} 文</h3><ul class="ledger">${log}</ul>
+      ${sideQuest}<h3>账目 · 现有 ${state.coins} 文</h3><ul class="ledger">${log}</ul>
       <h3>规则</h3><ul>${TEA_QUEST.rules.map(rule => `<li>${rule}</li>`).join("")}</ul>`;
   }
 

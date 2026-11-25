@@ -7,6 +7,7 @@ import { buildForeground, willowSites } from "./bridge-foreground.js";
 import { counterCeramics, riverWorker } from "./bridge-people.js";
 import { buildTea } from "./bridge-tea.js";
 import { buildTeaRoom } from "./bridge-tearoom.js";
+import { buildConsignment, parcelSize } from "./bridge-consignment.js";
 import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
@@ -23,6 +24,7 @@ const routeZ = center.z;
 const deliveryReach=2.35;
 const laneHalf=.63;
 const cargoWidth=.385, cargoDepth=.351, cargoHeight=.616;
+const mainCargoSize={halfX:cargoWidth,halfZ:cargoDepth,height:cargoHeight};
 const harnessBack=.596, harnessHeight=.79;
 const riverOrigin=canalOrigin(center);
 const trees=willowSites(center);
@@ -43,7 +45,7 @@ function depthAt(x,z) {
 }
 
 function walkable(x,z) {
-  if (x<-76 || x>-37 || z<routeZ-10.19 || z>routeZ+8.4) return false;
+  if (x<-76 || x>-37 || z<routeZ-10.19 || z>routeZ+10.08) return false;
   if (onBridge(x,z)) return Math.abs(z-routeZ)<=laneHalf;
   if (Math.abs(x-center.x)<10.62 && Math.abs(z-routeZ)<bridgeRailOffset+.21) return false;
   if(Number.isFinite(ferryDeckHeight(x,z))) return true;
@@ -67,7 +69,9 @@ function loadSave() {
         Number.isInteger(saved.coins) && saved.coins >= 0 && saved.coins <= maxCoins() &&
         ["waiting", "delivered"].includes(saved.phase) &&
         (saved.phase === "delivered" || walkable(crate.x, crate.z))) {
-      return {...saved,teaServed:saved.phase==="delivered" && saved.teaServed===true,started:saved.started===true || saved.phase==="delivered" || distance(crate,pickup)>=.04};
+      const freightStage=saved.phase==="delivered" && ["loaded","delivered"].includes(saved.freightStage)
+        ? saved.freightStage : "ready";
+      return {...saved,freightStage,teaServed:saved.phase==="delivered" && saved.teaServed===true,started:saved.started===true || saved.phase==="delivered" || distance(crate,pickup)>=.04};
     }
   } catch (err) {
     // The mission can run without storage.
@@ -82,7 +86,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   root.visible = false;
   scene.add(root);
   const city=street.collisions;
-  const {livestock,market}=street;
+  const {livestock,market,freight}=street;
   const workshop=street.housing.workshop;
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
@@ -191,6 +195,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const ferryLanding=buildFerryLanding(root,city,material);
   ferryLanding.show(false);
   const ferry=createFerry(ferryLanding,bridgeLook.ferry,floor);
+  const passengerCarrier=()=>ferry.active() ? ferry : freight.active() ? freight : null;
   const cargoAttitude=new THREE.Quaternion(),oarGrip=new THREE.Vector3();
   const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
   function floor(x,z) {
@@ -203,6 +208,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }
+  const consignment=buildConsignment(root,city,material,freight);
   function wadeDepth(x,z) {
     return onBridge(x,z) ? 0 : Math.max(0,waterHeight-floor(x,z));
   }
@@ -274,12 +280,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     </ol>
     <p id="missionObjective" aria-live="polite"></p>
     <p class="mission-metrics" id="missionEconomy"></p>
+    <p class="mission-metrics" id="missionFreightStatus" hidden></p>
     <div class="mission-actions">
       <button id="missionInteract">拿取</button>
       <button id="missionHire">委托伙计</button>
       <button id="missionAskCourier" type="button" hidden>问伙计</button>
       <button id="missionCamera">切换第一人称</button>
       <button id="missionFerryGuide" type="button" hidden aria-pressed="false">指路到渡口</button>
+      <button id="missionFreightGuide" type="button" hidden aria-pressed="false">瓷器货运</button>
+      <button id="missionConsignment" type="button" hidden aria-keyshortcuts="E"></button>
+      <button id="missionFreight" type="button" hidden aria-keyshortcuts="E X">从后踏板上车 E</button>
       <button id="missionFerry" type="button" hidden aria-keyshortcuts="E G">叫渡船 E</button>
       <button id="missionTea" hidden>看掌柜斟茶</button>
       <button id="missionRoomGuide" hidden type="button" aria-pressed="false">指路到茶间</button>
@@ -381,6 +391,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const hireButton = byId("missionHire");
   const talkButton=byId("missionAskCourier");
   const switchButton = byId("missionScroll");
+  const freightButton=byId("missionFreight"), freightGuideButton=byId("missionFreightGuide");
+  const consignmentButton=byId("missionConsignment"), freightStatus=byId("missionFreightStatus");
   const teaButton=byId("missionTea"), roomGuideButton=byId("missionRoomGuide");
   const doorButton=byId("missionDoor"), seatButton=byId("missionSeat"), roomTeaButton=byId("missionRoomTea");
   const pebbleButton = byId("missionPebble");
@@ -394,7 +406,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const continueButton=intro.querySelector("#missionContinue");
 
   let state = loadSave();
-  let guideMarket=false, guideFerry=false, guideRoom=false;
+  let guideMarket=false, guideFerry=false, guideRoom=false, guideFreight=false;
+  let freightHeld=null, freightTransfer=null, freightGuideStep=0;
+  const backstreetGuide=[
+    {x:-38.42,z:routeZ,label:"沿街向东 · 瓷器货栈"},
+    {x:-38.42,z:-33.83,label:"绕过摊位 · 东巷"},
+    {x:-44.90,z:-33.83,label:"沿后巷往西"},
+    {x:-44.90,z:-36.21,label:"瓷器货栈"},
+  ];
+  const freightTarget=new THREE.Vector3(), freightRotation=new THREE.Quaternion(), cargoUp=new THREE.Vector3(0,1,0);
+  const freightStage=()=>state.freightStage??"ready";
+  const hasCargo=()=>state.phase==="carrying" || Boolean(freightHeld);
   const hasParcel=()=>state.cakeBought===true && state.cakeClaimed===true && state.cakeGifted!==true;
   function restoreMarket(reset=false) {
     market.restore(state.cakeBought===true,state.cakeClaimed===true,reset,state.cakeGifted===true);
@@ -405,7 +427,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let courierLeg = 0;
   let elapsed = 0;
   teaRoom.restore(state.teaServed===true,elapsed);
-  let ferryViewPausedAt=null;
+  let ferryViewPausedAt=null, freightViewPausedAt=null;
   let deliveryTime = -10;
   let view = "outside";
   let showStart=true;
@@ -505,9 +527,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       guideMarket && state.cakeClaimed!==true && !market.atCounter(player);
     const shopper=view==="mission" && !showStart && !restartDialog.open && hasParcel() &&
       !market.sharing() && distance(player,market.shopperPosition)<9;
+    const toFreight=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
+      guideFreight && freightStage()!=="delivered";
     const atRoom=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
       guideRoom && !teaRoom.atDoor(player) && !teaRoom.contains(player.x,player.z);
-    if(ferry.active() || teaRoom.chairActive()) {
+    if(passengerCarrier() || teaRoom.chairActive()) {
       groundMarker.visible=beacon.visible=startPillar.visible=false;
       waypoint.hidden=true;
       return;
@@ -515,15 +539,18 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const toDock=phase==="carrying" && guideFerry;
     const stop=ferry.stands[0];
     const atDock=toDock && ferry.nearby(player)>=0;
-    groundMarker.visible=view==="mission" && !restartDialog.open && !atDock && (phase!=="delivered" || atMarket || atRoom);
+    groundMarker.visible=view==="mission" && !restartDialog.open && !atDock && (phase!=="delivered" || atMarket || atRoom || toFreight);
     beacon.visible=groundMarker.visible;
     const pending=phase==="waiting" && !state.started;
     startPillar.visible=beacon.visible && pending;
     waypoint.hidden=!groundMarker.visible && !shopper;
     if(waypoint.hidden) return;
-    const at=atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
-      phase==="waiting" ? state.crate : counter;
-    const x=at.x, z=at.z+(phase==="waiting" || atMarket || shopper || toDock ? 0 : .83);
+    if(toFreight && freightGuideStep<backstreetGuide.length &&
+        distance(player,backstreetGuide[freightGuideStep])<.74) freightGuideStep++;
+    const freightAim=toFreight ? freightGoal() : null;
+    const at=freightAim?.point??(atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
+      phase==="waiting" ? state.crate : counter);
+    const x=at.x, z=at.z+(phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
     markerGold.material.color.setHex(atMarket ? 0xcbd49b : state.started ? 0xefd99a : 0xffc863);
@@ -562,8 +589,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
-      phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处";
+    const target=freightAim?.label??(atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
+      phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处");
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
     if(text!==markerText) {markerText=text;waypoint.textContent=text;}
     waypoint.hidden=false;
@@ -614,6 +641,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function finish(method) {
     state.phase = "delivered";
+    consignment.visible(view==="mission");
     state.method = method;
     state.coins += TEA_QUEST.economy.deliveryReward;
     record(state,method==="self" ? "亲手交货，掌柜付货款" : "伙计交货，掌柜付货款",TEA_QUEST.economy.deliveryReward);
@@ -628,7 +656,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function useCargo() {
-    if (view !== "mission" || awaitingStart() || ferry.active()) return;
+    if (view !== "mission" || awaitingStart() || passengerCarrier()) return;
     if (state.phase === "waiting" && distance(player, state.crate) < 1.9) {
       if (cargoObstacle(player.x,player.z,bodyYaw,looseCargo)) {
         hint.textContent="这里太窄。挪开半步再背货箱。";
@@ -689,7 +717,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canAimStone() {
-    return view==="mission" && !teaRoom.contains(player.x,player.z) && !ferry.active() && state.phase!=="carrying" && !onBridge(player.x,player.z) &&
+    return view==="mission" && !teaRoom.contains(player.x,player.z) && !passengerCarrier() && state.phase!=="carrying" && !onBridge(player.x,player.z) &&
       Math.abs(player.z-routeZ)>1.52 && Math.abs(player.x-riverOrigin.x)<12.9;
   }
 
@@ -763,9 +791,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
-    guideMarket=guideFerry=guideRoom=false;
+    guideMarket=guideFerry=guideRoom=guideFreight=false;
+    freightHeld=freightTransfer=null;
+    freightGuideStep=0;
+    consignment.visible(false);
     ferry.reset();
-    ferryViewPausedAt=null;
+    freight.reset();
+    ferryViewPausedAt=freightViewPausedAt=null;
     restoreMarket(true);
     clearPlayerControl();
     journal.toggle(state,false);
@@ -793,8 +825,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function undo() {
-    if(!previous || market.sharing() || ferry.active()) return;
+    if(!previous || market.sharing() || passengerCarrier() || freightTransfer) return;
     state = previous;
+    freightHeld=freightTransfer=null;
+    consignment.visible(view==="mission" && state.phase==="delivered");
     restoreMarket();
     stopTeaShot();
     tea.reset();
@@ -834,7 +868,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
-    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !teaRoom.chairActive() && !Number.isFinite(teaShotStart));
+    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !freight.active() && !teaRoom.chairActive() && !Number.isFinite(teaShotStart));
     touchPad.rowing(ferry.active());
     dialogue.activate(view==="mission" && intro.hidden && !restartDialog.open);
     tools.hidden=labels.hidden;
@@ -846,7 +880,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canGreetAnimal() {
-    return view==="mission" && !awaitingStart() && !ferry.active() && !restartDialog.open && state.phase!=="carrying" &&
+    return view==="mission" && !awaitingStart() && !passengerCarrier() && !restartDialog.open && state.phase!=="carrying" &&
       !market.sharing() && !Number.isFinite(teaShotStart);
   }
 
@@ -870,7 +904,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canUseWorkshop() {
-    return view==="mission" && !showStart && !ferry.active() && !restartDialog.open && state.phase!=="carrying" &&
+    return view==="mission" && !showStart && !passengerCarrier() && !restartDialog.open && state.phase!=="carrying" &&
       !Number.isFinite(teaShotStart);
   }
 
@@ -891,7 +925,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function byCakeStall() {
-    return view==="mission" && !showStart && !ferry.active() && !restartDialog.open &&
+    return view==="mission" && !showStart && !passengerCarrier() && !restartDialog.open &&
       market.atCounter(player);
   }
 
@@ -948,7 +982,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const sharing=market.sharing();
     shareCakeButton.hidden=!sharing && !canShareCake();
     shareCakeButton.disabled=sharing;
-    byId("missionUndo").disabled=!previous || sharing || ferry.active();
+    byId("missionUndo").disabled=!previous || sharing || passengerCarrier() || freightTransfer;
     const label=sharing ? "正在递蒸糕" : "分给采买客 H";
     if(shareCakeButton.textContent!==label) shareCakeButton.textContent=label;
   }
@@ -992,7 +1026,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canUseRoom() {
-    return view==="mission" && !showStart && !restartDialog.open && !ferry.active() &&
+    return view==="mission" && !showStart && !restartDialog.open && !passengerCarrier() &&
       !Number.isFinite(teaShotStart) && !market.sharing();
   }
   function canOrderTea() {
@@ -1049,9 +1083,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function contextAction() {
     if(view!=="mission" || awaitingStart() || restartDialog.open) return null;
     if(Number.isFinite(teaShotStart)) return teaButton;
+    if(freightTransfer) return null;
+    if(freight.active()) return !freightButton.hidden ? freightButton : null;
     if(teaRoom.chairActive()) return !roomTeaButton.hidden ? roomTeaButton : !seatButton.hidden ? seatButton : null;
     const crate=state.phase==="waiting" || distance(player,counter)<deliveryReach ? interactButton : null;
-    return [ferryButton,crate,seatButton,roomTeaButton,doorButton,workshopButton,cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton]
+    return [consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,workshopButton,cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
   }
 
@@ -1061,8 +1097,166 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
 
+  function freightGoal() {
+    if(guideFreight && !freightHeld && freightStage()!=="delivered" && freightGuideStep<backstreetGuide.length) {
+      if(!(freightStage()==="loaded" && freightGuideStep>=2)) {
+        const next=backstreetGuide[freightGuideStep];
+        return {point:next,label:next.label};
+      }
+    }
+    if(freightHeld==="unloaded") return {point:consignment.destination.approach,label:"北巷收货台"};
+    if(freightHeld==="picked") return {point:freight.depot()===0 ? freight.latchPoint(freightTarget) :
+      freight.stopPoint(0,freightTarget),label:"车尾 · 装瓷器"};
+    if(freightStage()==="loaded") return {point:freight.depot()===1 ? freight.latchPoint(freightTarget) :
+      freight.stopPoint(1,freightTarget),label:"北巷 · 卸瓷器"};
+    return {point:consignment.origin.approach,label:"瓷器货栈"};
+  }
+
+  function canUseConsignment() {
+    return view==="mission" && !showStart && !restartDialog.open && state.phase==="delivered" &&
+      !passengerCarrier() && !teaRoom.chairActive() && !freightTransfer && !market.sharing();
+  }
+
+  function consignmentAction() {
+    if(!canUseConsignment()) return null;
+    if(freightHeld==="unloaded") return distance(player,consignment.destination.foot)<.85 ? "handIn" : null;
+    if(freightHeld==="picked") return freight.depot()===0 &&
+      distance(player,freight.latchPoint(freightTarget))<.79 ? "load" : null;
+    if(freightStage()==="loaded") return freight.depot()===1 &&
+      distance(player,freight.latchPoint(freightTarget))<.79 ? "unload" : null;
+    return freightStage()==="ready" && distance(player,consignment.origin.foot)<.86 ? "pick" : null;
+  }
+
+  const consignmentLabels={pick:"取瓷器箱 E",load:"把瓷器装上车 E",unload:"卸下瓷器箱 E",handIn:"交付瓷器 E"};
+  function showConsignmentAction() {
+    const action=consignmentAction();
+    consignmentButton.hidden=!action;
+    if(action && consignmentButton.textContent!==consignmentLabels[action]) consignmentButton.textContent=consignmentLabels[action];
+  }
+
+  function toggleFreightGuide() {
+    guideFreight=!guideFreight;
+    if(guideFreight) {
+      guideRoom=guideMarket=false;
+      if(freightStage()==="ready" && distance(player,consignment.origin.foot)<2.5) freightGuideStep=4;
+      else if(player.z>-34.2) freightGuideStep=2;
+      else freightGuideStep=player.x>-39 ? 1 : 0;
+      hint.textContent=freightStage()==="loaded" ? "到北巷卸瓷器，运到旁边的收货台。" :
+        "到蒸糕摊后街取瓷器。装车后可以随车去北巷。";
+    }
+    ui();
+    markObjective();
+    canvas.focus({preventScroll:true});
+  }
+
+  function useConsignment() {
+    const action=consignmentAction();
+    if(!action) return;
+    if((action==="pick" || action==="unload") &&
+      cargoObstacle(player.x,player.z,bodyYaw,null,.135,null,parcelSize)) {
+      hint.textContent="身后太窄。挪开半步再背箱。";
+      return;
+    }
+    const {parcel}=consignment;
+    freightTransfer={start:elapsed,from:parcel.position.clone(),attitude:parcel.quaternion.clone()};
+    if(action==="pick") {
+      freightHeld="picked";
+      hint.textContent="把瓷器送到车尾，按 E 装车。";
+    } else if(action==="load") {
+      remember();
+      freightHeld=null;
+      state.freightStage="loaded";
+      record(state,"将瓷器箱装上北巷货车");
+      dialogue.speak("freightDriver");
+      hint.textContent="瓷器已装好。从后踏板上车，或步行去北巷收货。";
+      store();
+    } else if(action==="unload") {
+      freightHeld="unloaded";
+      hint.textContent="把瓷器交到北巷收货台。";
+    } else {
+      remember();
+      freightHeld=null;
+      state.freightStage="delivered";
+      state.coins+=TEA_QUEST.economy.freightReward;
+      record(state,"在北巷交付瓷器",TEA_QUEST.economy.freightReward);
+      hint.textContent="北巷收下了瓷器。工钱两文。";
+      store();
+    }
+    clearPlayerControl();
+    guideRoom=guideMarket=false;
+    guideFreight=action!=="handIn";
+    freightGuideStep=4;
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+
+  function positionConsignment() {
+    if(state.phase!=="delivered") return;
+    const {parcel,origin,destination}=consignment;
+    const target=freightTarget;
+    if(freightHeld) {
+      const carried=cargoPose(player.x,player.z,gait.rootHeight(player.x,player.z)+harnessHeight,bodyYaw,parcelSize);
+      target.set(carried.x,carried.y,carried.z);
+      freightRotation.setFromAxisAngle(cargoUp,bodyYaw);
+    } else if(freightStage()==="loaded") {
+      freight.loadingPoint(target);
+      freight.cargoAttitude(freightRotation);
+    } else {
+      const at=freightStage()==="delivered" ? destination.foot : origin.foot;
+      target.set(at.x,at.y,at.z);
+      freightRotation.identity();
+    }
+    const progress=freightTransfer ? THREE.MathUtils.smoothstep(elapsed-freightTransfer.start,0,.58) : 1;
+    if(progress<1) {
+      parcel.position.copy(freightTransfer.from).lerp(target,progress);
+      parcel.position.y+=.26*Math.sin(Math.PI*progress);
+      parcel.quaternion.copy(freightTransfer.attitude).slerp(freightRotation,progress);
+    } else {
+      const finished=Boolean(freightTransfer);
+      freightTransfer=null;
+      parcel.position.copy(target);
+      parcel.quaternion.copy(freightRotation);
+      if(finished) ui();
+    }
+  }
+
+  function inspectConsignment() {
+    return {stage:freightStage(),held:freightHeld,transfer:Boolean(freightTransfer),goal:freightGoal(),
+      origin:consignment.origin.foot,destination:consignment.destination.foot,
+      position:consignment.parcel.position.toArray()};
+  }
+
+  function showFreightAction() {
+    const label=view==="mission" && !awaitingStart() && !showStart && !ferry.active() &&
+      !teaRoom.chairActive() && !freightTransfer && !restartDialog.open ? freight.action(player,walkable,hasCargo()) : null;
+    freightButton.hidden=!label;
+    freightButton.disabled=hasCargo();
+    freightStatus.hidden=view!=="mission" || !freight.active();
+    if(!freightStatus.hidden) {
+      const status=freight.status();
+      if(freightStatus.textContent!==status) freightStatus.textContent=status;
+    }
+    if(label) {
+      const text=label.replace(/ X$/," E");
+      if(freightButton.textContent!==text) freightButton.textContent=text;
+    }
+  }
+
+  function useFreight() {
+    if(view!=="mission" || showStart || restartDialog.open || ferry.active() || freightTransfer || teaRoom.chairActive()) return;
+    const wasAboard=freight.active();
+    const message=freight.use(player,walkable,hasCargo(),elapsed);
+    if(!message) return;
+    cancelShare();
+    stopTeaShot();
+    if(!wasAboard) clearPlayerControl();
+    hint.textContent=message.replace("按 X","按 E");
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+
   function showFerryAction() {
-    const label=view==="mission" && !showStart && !restartDialog.open ? ferry.action(player) : null;
+    const label=view==="mission" && !showStart && !restartDialog.open && !freight.active() && !freightHeld ? ferry.action(player) : null;
     ferryButton.hidden=!label;
     if(label) {
       const withKey=label.replace(/ G$/," E");
@@ -1074,7 +1268,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function useFerry() {
-    if(view!=="mission" || showStart || restartDialog.open || market.sharing()) return;
+    if(view!=="mission" || showStart || restartDialog.open || freight.active() || freightHeld || market.sharing()) return;
     const message=ferry.use(player,elapsed);
     if(!message) return;
     clearPlayerControl();
@@ -1096,7 +1290,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function toggleRoomGuide() {
     guideRoom=!guideRoom;
     if(guideRoom) {
-      guideMarket=false;
+      guideMarket=guideFreight=false;
       hint.textContent="茶间在柜台旁。走到「茶間」木牌下，按 E 推门。";
     }
     ui();
@@ -1106,7 +1300,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function toggleMarketGuide() {
     guideMarket=!guideMarket;
-    if(guideMarket) guideRoom=false;
+    if(guideMarket) guideRoom=guideFreight=false;
     if(guideMarket) hint.textContent="沿茶铺前的街道往对侧走，跟着「蒸糕摊」标记。";
     ui();
     markObjective();
@@ -1145,6 +1339,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     roomGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" ||
       teaRoom.contains(player.x,player.z);
     roomGuideButton.setAttribute("aria-pressed",String(guideRoom));
+    freightGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" ||
+      freightStage()==="delivered" || indoors;
+    freightGuideButton.setAttribute("aria-pressed",String(guideFreight));
     showRoomActions();
     byId("missionReplay").hidden = state.phase !== "delivered";
     teaButton.disabled = view !== "mission" || (!teaShot && distance(player, counter) >= 2.75);
@@ -1157,6 +1354,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     mooringButton.hidden=!byMooring();
     showAnimalAction();
     showFerryAction();
+    showFreightAction();
+    showConsignmentAction();
     showWorkshopAction();
     talkButton.hidden=view!=="mission" || showStart || ferry.active() || state.phase!=="waiting" ||
       distance(player,helper.figure.position)>2.45;
@@ -1176,8 +1375,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     person.walkBody(phase,walking,carrying,dt,shift);
   }
 
-  function cargoPose(x,z,y,yaw) {
-    return {x:x+Math.sin(yaw)*harnessBack,y,z:z+Math.cos(yaw)*harnessBack,yaw};
+  function cargoPose(x,z,y,yaw,size=mainCargoSize) {
+    const behind=harnessBack-cargoDepth+size.halfZ;
+    return {x:x+Math.sin(yaw)*behind,y,z:z+Math.cos(yaw)*behind,yaw};
   }
 
   function courierBoxHitsPlayer(p) {
@@ -1186,13 +1386,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       circleTouchesBox(player.x,player.z,workerRadius,p.x,p.z,cargoWidth,cargoDepth,p.yaw);
   }
 
-  function cargoObstacle(x,z,yaw,ignored=null,footroom=.135,ignoredCargo=null) {
-    const p=cargoPose(x,z,floor(x,z)+harnessHeight,yaw);
-    return city.boxBlocking(p.x,p.z,p.y-footroom,cargoWidth,cargoDepth,cargoHeight+footroom+.014,p.yaw,ignored,ignoredCargo);
+  function cargoObstacle(x,z,yaw,ignored=null,footroom=.135,ignoredCargo=null,size=null) {
+    const p=cargoPose(x,z,floor(x,z)+harnessHeight,yaw,size??mainCargoSize);
+    return city.boxBlocking(p.x,p.z,p.y-footroom,size?.halfX??cargoWidth,size?.halfZ??cargoDepth,
+      (size?.height??cargoHeight)+footroom+.014,p.yaw,ignored,ignoredCargo);
   }
 
   function cargoCollision(x,z,yaw){
-    return state.phase==="carrying" && !ferry.active() ? cargoObstacle(x,z,yaw) : null;
+    return hasCargo() && !passengerCarrier() ? cargoObstacle(x,z,yaw,null,.135,null,freightHeld ? parcelSize : null) : null;
   }
 
   function positionCrate() {
@@ -1213,7 +1414,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       crateMesh.position.set(state.crate.x, state.phase === "delivered" ? .89 : floor(state.crate.x, state.crate.z), state.crate.z);
       crateMesh.rotation.set(0,state.crate.yaw,0);
     }
-    cargoShadow.visible = state.phase === "waiting";
+    positionConsignment();
+    cargoShadow.visible=state.phase==="waiting";
     cargoShadow.position.set(crateMesh.position.x, floor(crateMesh.position.x, crateMesh.position.z) + .012, crateMesh.position.z);
   }
 
@@ -1247,12 +1449,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     root.visible = active;
     ferryLanding.show(mode==="mission");
     teaRoom.show(mode==="mission");
+    consignment.visible(mode==="mission" && state.phase==="delivered");
     foreground.setVisible(mode === "mission");
     bridgeLook.setVisible(mode==="mission",mode==="missionScroll" && ferry.active());
     if(view==="mission" && ferryViewPausedAt!==null) {
       ferry.deferTransfer(elapsed-ferryViewPausedAt);
       ferryViewPausedAt=null;
     } else if(view==="missionScroll" && ferry.active()) ferryViewPausedAt=elapsed;
+    if(view==="mission" && freightViewPausedAt!==null) {
+      freight.deferTransfer(elapsed-freightViewPausedAt);
+      freightViewPausedAt=null;
+    } else if(view!=="mission" && freight.active() && freightViewPausedAt===null) freightViewPausedAt=elapsed;
     counterFill.visible = mode === "mission";
     light(mode === "mission");
     labels.hidden = tools.hidden = !active;
@@ -1327,9 +1534,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
       side.set(-fwd.z, 0, fwd.x);
-      const beforeDepth=ferry.active() ? 0 : wadeDepth(player.x,player.z);
+      const beforeDepth=passengerCarrier() ? 0 : wadeDepth(player.x,player.z);
       const drag=1-.69*THREE.MathUtils.smoothstep(beforeDepth,.025,.51);
-      const carrying=state.phase==="carrying";
+      const carrying=hasCargo();
       const backpedaling=dz<0;
       const pace=backpedaling ? (carrying ? 1.03 : 1.21) :
         input.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
@@ -1341,14 +1548,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       Object.assign(workshopVisitor,{x:player.x,z:player.z,bottom:feet,top:feet+workerHeight});
       boardCargo.enabled=carrying;
       if(carrying) {
-        const pose=cargoPose(player.x,player.z,feet+harnessHeight,bodyYaw);
-        Object.assign(boardCargo,pose,{bottom:pose.y,top:pose.y+cargoHeight});
+        const size=freightHeld ? parcelSize : mainCargoSize;
+        const pose=cargoPose(player.x,player.z,feet+harnessHeight,bodyYaw,size);
+        Object.assign(boardCargo,pose,size,{bottom:pose.y,top:pose.y+size.height});
       }
       workshop.update(dt,elapsed,gateObstacles);
       const driftScale=1/(Math.hypot(dx,dz)||1);
-      market.frame(dt,{x:player.x,y:feet,z:player.z,radius:workerRadius,
+      const visitor={x:player.x,y:feet,z:player.z,radius:workerRadius,
         moveX:(fwd.x*dz+side.x*dx)*driftScale,moveZ:(fwd.z*dz+side.z*dx)*driftScale,
-        cargo:carrying ? boardCargo : null});
+        cargo:carrying ? boardCargo : null};
+      market.frame(dt,visitor);
       const chairBefore=teaRoom.chairActive(), sitting=teaRoom.chair.phase==="sitting";
       if(teaRoom.seated() && (dx || dz)) teaRoom.standUp();
       const transferred=teaRoom.seatFrame(dt,player);
@@ -1368,21 +1577,28 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(served && hint.textContent==="已付一文。茶博士正提壶斟茶。") {
         hint.textContent="茶已经斟在桌上的青瓷碗里。";
       }
-      const landed=ferry.update(dt,elapsed,player,dz)==="landed";
-      const aboard=ferry.active();
+      const ferryLanded=ferry.update(dt,elapsed,player,dz)==="landed";
+      const reserve=freightTransfer ? freight.depot() :
+        freightHeld==="picked" || (guideFreight && freightStage()==="ready") ? 0 :
+        !freightHeld && freightStage()==="loaded" ? 1 : null;
+      const cartLanded=freight.update(dt,elapsed,player,visitor,reserve)==="landed";
+      const landed=ferryLanded || cartLanded;
+      const carrier=passengerCarrier();
+      const aboard=Boolean(carrier);
       if(landed) {
         gait.reset();
-        if(state.phase==="carrying" && player.x>center.x && ferry.arrivedAcross()) {
+        if(ferryLanded && state.phase==="carrying" && player.x>center.x && ferry.arrivedAcross()) {
           if(!state.ferryCrossing) record(state,"从南侧渡口运茶过河");
           state.ferryCrossing=true;
         }
         guideFerry=false;
-        hint.textContent="已上岸。沿石板路可回到街上。";
+        if(cartLanded) heading=bodyYaw=player.yaw;
+        hint.textContent=cartLanded ? "已下货车。" : "已上岸。沿石板路可回到街上。";
         ui();
       }
       const oldX=player.x, oldZ=player.z;
       const previousVX=streetVelocity.x, previousVZ=streetVelocity.y;
-      if(aboard || landed || chairBefore || awaitingStart()) clearStreetMotion();
+      if(aboard || landed || freightTransfer || chairBefore || awaitingStart()) clearStreetMotion();
       else {
         advanceStreetVelocity(streetVelocity,targetX,targetZ,dt,carrying);
         sweepHorizontal(player,streetVelocity.x*dt,streetVelocity.y*dt,
@@ -1413,13 +1629,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(shareYaw!==null) heading=shareYaw;
       const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
       const nextYaw=bodyYaw+turn*(1-Math.exp(-(walking ? 17 : 6)*dt));
-      if(aboard) bodyYaw=ferry.rider.facing;
+      if(aboard) bodyYaw=carrier.rider.facing;
       else if(chairBefore) bodyYaw=teaRoom.chair.yaw;
       else {
         if(!cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
         gait.update(dt,elapsed,player.x,player.z,bodyYaw,vx,vz,depth);
       }
-      const y=aboard ? ferry.rider.y : chairBefore ? teaRoom.chair.y : floor(player.x,player.z);
+      const y=aboard ? carrier.rider.y : chairBefore ? teaRoom.chair.y : floor(player.x,player.z);
       const indoors=teaRoom.contains(player.x,player.z);
       cameraObstacle=null;
       cameraClose=false;
@@ -1432,11 +1648,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         camera.updateProjectionMatrix();
       }
       if (firstPerson) {
-        const seat=aboard ? ferry.rider.seated : 0;
-        const yaw=aboard ? ferry.viewYaw(player.yaw) : player.yaw;
+        const seat=carrier===ferry ? ferry.rider.seated : carrier===freight ? freight.rider.seat : 0;
+        const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : player.yaw;
         const pitch=player.pitch-.048*seat;
         const eyeOffset=.083*seat+(chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
-        camera.position.set(player.x+eyeOffset*Math.sin(yaw),y+1.57,player.z+eyeOffset*Math.cos(yaw));
+        const lateral=carrier===freight ? .28*seat : 0;
+        camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),y+1.57,
+          player.z+eyeOffset*Math.cos(yaw)-lateral*Math.sin(yaw));
         camera.quaternion.setFromEuler(new THREE.Euler(pitch,yaw,0,"YXZ"));
       } else {
         const boom=indoors ? 1.26 : 3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44);
@@ -1474,25 +1692,28 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view==="mission") {
       showAnimalAction();
       showFerryAction();
+    showFreightAction();
+    showConsignmentAction();
       showWorkshopAction();
       showRoomActions();
       showCakeAction();
       showShareAction();
     }
     const animalGesture=livestock.gesture(livestockVisitor());
-    const riding=ferry.active() && (view==="mission" || view==="missionScroll");
+    const carrier=view==="mission" ? passengerCarrier() : view==="missionScroll" && ferry.active() ? ferry : null;
+    const riding=Boolean(carrier);
     showGreetingArms(view==="mission" && firstPerson && (!!animalGesture || market.sharing() || riding));
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
       handsOnly || (view==="missionScroll" && (riding || state.phase==="carrying"));
     const seated=view==="mission" && teaRoom.chairActive();
-    const bodyY=riding ? ferry.rider.y : seated ? teaRoom.chair.y :
+    const bodyY=riding ? carrier.rider.y : seated ? teaRoom.chair.y :
       view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z);
     playerBody.figure.position.set(player.x,bodyY,player.z);
     playerBody.figure.rotation.y=bodyYaw;
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
     footShadow.visible = playerBody.figure.visible && !wading && !riding;
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
-    animate(playerBody,gait.phase()-Math.PI*.5,walking,state.phase==="carrying" && !riding,dt,weightShift);
+    animate(playerBody,gait.phase()-Math.PI*.5,walking,hasCargo() && !riding && !freightTransfer,dt,weightShift);
     if(view==="mission" && !riding) {
       playerBody.poseFeet(seated ? teaRoom.chairFeet : gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
       if(seated) {
@@ -1504,7 +1725,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         }
       }
     }
-    if(view==="missionScroll" && riding) poseFerryRider();
+    if(view==="missionScroll" && carrier===ferry) poseFerryRider();
+    if(view==="mission" && carrier===freight) {
+      playerBody.poseFeet(freight.feet(),freight.grounding,player.x,bodyY,player.z,bodyYaw);
+      for(let hand=0;hand<2;hand++) playerBody.reachHand(hand,freight.grip(hand),.86*freight.rider.seat);
+    }
     const throwAge=stones.age();
     playerBody.limbs.arms[0].rotation.z=0;
     const pullAge=elapsed-pullTime;
@@ -1592,6 +1817,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     merchant.face.speak(merchantSpeaking ? speech.shape : null,dt);
     helper.face.speak(speech.id==="courier" ? speech.shape : null,dt);
     market.speech(speech,dt);
+    freight.speech(speech.id==="freightDriver" ? speech.shape : null,dt);
     teaRoom.speech(speech.id==="roomTea" ? speech.shape : null,dt);
     positionCrate();
     if(view==="mission") syncActors();
@@ -1649,6 +1875,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   };
   marketGuideButton.onclick=toggleMarketGuide;
   ferryButton.onclick=useFerry;
+  freightButton.onclick=useFreight;
+  freightGuideButton.onclick=toggleFreightGuide;
+  consignmentButton.onclick=useConsignment;
   ferryGuideButton.onclick=toggleFerryGuide;
   cakeButton.onclick=buyOrClaimCake;
   steamerButton.onclick=showSteamer;
@@ -1740,6 +1969,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if (e.code === "KeyJ") journal.toggle(state);
     if (e.code === "KeyF") tossStone();
     if (e.code === "KeyR") pullMooring();
+    if (e.code === "KeyX") useFreight();
     if (e.code === "Tab" && document.activeElement === canvas) {
       e.preventDefault();
       toggleScroll();
@@ -1782,8 +2012,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
-        bodyOverlap:ferry.active() || teaRoom.chairActive() ? null : city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
-      teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
+        bodyOverlap:passengerCarrier() || teaRoom.chairActive() ? null : city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
+      freight:freight.inspect(player,walkable),consignment:inspectConsignment(),teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }

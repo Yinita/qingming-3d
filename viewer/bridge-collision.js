@@ -75,7 +75,8 @@ export function createStreetCollision() {
   function boxBlocking(x,z,bottom,halfX,halfZ,height,yaw,ignored=null,ignoredCargo=null) {
     const cos=Math.cos(yaw), sin=Math.sin(yaw);
     for(const s of solids) {
-      if(!s.enabled || s===ignored || s===ignoredCargo || bottom>=s.top || bottom+height<=s.bottom) continue;
+      if(!s.enabled || s===ignored || s===ignoredCargo ||
+        (s.assembly!==undefined && s.assembly===ignored?.assembly) || bottom>=s.top || bottom+height<=s.bottom) continue;
       if(s.radius) {
         const side=Math.max(Math.abs((s.x-x)*cos-(s.z-z)*sin)-halfX,0);
         const forward=Math.max(Math.abs((s.x-x)*sin+(s.z-z)*cos)-halfZ,0);
