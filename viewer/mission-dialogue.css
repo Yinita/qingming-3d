@@ -13,9 +13,9 @@
   transform: translateX(-50%);
   display: grid;
   justify-items: center;
-  gap: 10px;
-  width: min(760px, calc(100% - 32px));
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  gap: 12px;
+  width: min(960px, calc(100% - 32px));
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   pointer-events: none;
   isolation: isolate;
 }
@@ -23,20 +23,21 @@
   content: "";
   position: absolute;
   z-index: -1;
-  inset: -40px auto 0;
+  inset: -30px auto 0;
   left: 50%;
   width: 100vw;
   transform: translateX(-50%);
-  background: linear-gradient(to top, #100d0bea, #100d0bbf 45%, transparent);
+  background: linear-gradient(to top, #100d0bed, #100d0bd4 32%, #100d0b85 64%, transparent);
 }
 #missionDialogue[hidden], #missionDialogue [hidden] { display: none; }
 body.scene-loading #missionDialogue { visibility: hidden; }
 #missionContext {
   min-height: 44px;
-  padding: 6px 14px;
-  background: #3c2d23ef;
-  border: 1px solid #dec49b;
-  color: #fff1d3;
+  padding: 7px 14px;
+  background: #261b14f2;
+  border: 1px solid #e4c394;
+  color: #fff5df;
+  box-shadow: 0 2px 9px #1f160f5e;
   pointer-events: auto;
   font: 600 14px/1.25 system-ui, sans-serif;
 }
@@ -44,8 +45,8 @@ body.scene-loading #missionDialogue { visibility: hidden; }
   display: inline-grid;
   vertical-align: middle;
   place-items: center;
-  width: 23px;
-  height: 23px;
+  width: 25px;
+  height: 25px;
   margin-right: 8px;
   color: #47261b;
   background: #f9e7c2;
@@ -57,20 +58,22 @@ body.scene-loading #missionDialogue { visibility: hidden; }
 #missionContext:focus-visible { outline: 2px solid #ffe0a2; outline-offset: 3px; }
 #missionCaption {
   box-sizing: border-box;
-  max-width: 100%;
+  width: 100%;
   margin: 0;
-  padding: 0 10px;
+  padding: 0 4px;
   color: #fff7e7;
-  font: 400 clamp(19px, 2vw, 27px)/1.45 "Qingming Caption Serif", "Songti SC", "SimSun", "Noto Serif CJK SC", "Noto Serif SC", serif;
+  font: 400 clamp(19px, 2.1vw, 28px)/1.42 "Qingming Caption Serif", "Songti SC", "SimSun", "Noto Serif CJK SC", "Noto Serif SC", serif;
   text-align: center;
-  text-wrap: balance;
-  text-shadow: 0 1px 2px #131008, 0 2px 8px #131008;
+  line-break: strict;
+  text-shadow: 0 1px 2px #131008, 0 2px 6px #131008;
 }
-#missionCaption b { margin-right: .75em; color: #f1d29c; font-size: .75em; font-weight: 400; white-space: nowrap; }
+#missionCaption b { margin-right: .65em; color: #ffdb9f; font-size: .78em; font-weight: 400; white-space: nowrap; }
 @media (min-width:761px) and (min-height:526px) {
   .mission-open #scene-background { margin-bottom: var(--mission-dialogue-height, 0px); }
 }
 @media (max-width:760px), (max-height:525px) {
+  #missionDialogue { gap: 8px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  #missionCaption { text-wrap: balance; }
   #missionHud { margin-bottom: var(--mission-dialogue-height, 0px); }
   #missionTouchPad:not([hidden]) { margin-bottom: var(--mission-dialogue-height, 0px); }
 }

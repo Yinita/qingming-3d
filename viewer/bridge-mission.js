@@ -320,7 +320,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionSeat" hidden type="button" aria-keyshortcuts="E">坐下 E</button>
       <button id="missionRoomTea" hidden type="button" aria-keyshortcuts="E">点一盏茶 · 一文 E</button>
       <button id="missionMarketGuide" type="button" hidden aria-pressed="false">指路到蒸糕摊</button>
-      <button id="missionSteamer" type="button" hidden aria-keyshortcuts="I">看竹笼 I</button>
+      <button id="missionSteamer" type="button" hidden aria-keyshortcuts="E I">看竹笼 I</button>
       <button id="missionCake" type="button" hidden aria-keyshortcuts="B">买蒸糕 B</button>
       <button id="missionShareCake" type="button" hidden aria-keyshortcuts="H">分给采买客 H</button>
       <button id="missionReplay" type="button" hidden aria-haspopup="dialog"
@@ -1216,7 +1216,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const workshopPriority=workshopButton.textContent.includes("油灯") ? distance(player,workshop.lampAt)<.63 : true;
     return [consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,yardButton,
       workshopPriority ? workshopButton : null,joinerButton,workshopButton,
-      cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton,mooringButton,pebbleButton]
+      cakeButton,shareCakeButton,teaButton,talkButton,animalButton,steamerButton,interactButton,mooringButton,pebbleButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
   }
 
@@ -2174,7 +2174,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       requestRestart(restartButton);
       return;
     }
-    if(view==="mission" && e.code==="KeyE" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if(view==="mission" && e.code==="KeyE" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey &&
+      !e.target.closest?.("input, textarea, select, [contenteditable]")) {
       e.preventDefault();
       if(!intro.hidden) (continueButton.hidden ? begin : continueButton).click();
       else if(dialogue.dispatch()) canvas.focus({preventScroll:true});
