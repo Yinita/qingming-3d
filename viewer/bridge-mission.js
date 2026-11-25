@@ -259,9 +259,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     </div>
     <p id="missionSpeech" aria-live="polite"></p>
     <p class="mission-controls">WASD 移动 · 拖动转向 · E 拿取 / 放下 · V 视角 · J 任务簿 · Tab 画卷</p>
-    <dialog id="missionRestartDialog" aria-labelledby="missionRestartTitle">
+    <dialog id="missionRestartDialog" aria-labelledby="missionRestartTitle" aria-describedby="missionRestartDetail">
       <h2 id="missionRestartTitle">重置桥畔茶铺任务？</h2>
-      <p>回到桥头，茶叶箱归位，铜钱恢复为六文。当前进度将被清除。</p>
+      <p id="missionRestartDetail"></p>
       <div class="mission-actions">
         <button id="missionRestartCancel" type="button" autofocus>取消</button>
         <button id="missionRestartConfirm" type="button">确认重开</button>
@@ -282,6 +282,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const restartDialog=byId("missionRestartDialog");
   const restartCancel=byId("missionRestartCancel");
   const restartConfirm=byId("missionRestartConfirm");
+  const restartDetail=byId("missionRestartDetail");
   const progress=byId("missionProgress");
   const tools=byId("missionTools");
   const journalButton=tools.querySelector("#missionJournal");
@@ -397,11 +398,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
   let boomLength=3.2, cameraObstacle=null, cameraClose=false;
   const peekTarget=new THREE.Vector2();
-  const groundMarker=mesh(new THREE.RingGeometry(.49,.60,48),new THREE.MeshBasicMaterial({
-    color:0xf8bf66,side:THREE.DoubleSide,transparent:true,opacity:.84,depthWrite:false,
-  }),root,pickup.x,.028,pickup.z);
+  const groundMarker=new THREE.Group();
   groundMarker.name="Mission objective ground marker";
-  groundMarker.rotation.x=-Math.PI/2;
+  root.add(groundMarker);
+  const markerBorder=mesh(new THREE.RingGeometry(.50,.66,48),new THREE.MeshBasicMaterial({
+    color:0x61402a,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1,
+  }),groundMarker,0,0,0);
+  const markerGold=mesh(new THREE.RingGeometry(.53,.63,48),new THREE.MeshBasicMaterial({
+    color:0xffd47b,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,
+  }),groundMarker,0,.002,0);
+  markerBorder.rotation.x=markerGold.rotation.x=-Math.PI/2;
   const beacon=new THREE.Group();
   beacon.name="Mission objective beacon";
   root.add(beacon);
@@ -422,7 +428,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const x=at.x, z=at.z+(phase==="waiting" ? 0 : .83);
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
-    groundMarker.material.opacity=.85+.13*Math.sin(elapsed*3.6);
+    markerGold.material.color.setHex(state.started ? 0xefd99a : 0xffc863);
     const hover=y+(phase==="waiting" ? 1.06 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
     const pending=!state.started && phase==="waiting";
@@ -687,13 +693,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const briefing=hasRestarted && kind==="new" ? "reset" : kind;
     if(briefing!==introduced) {
       const [status,title,detail,action]={
-        new:["任务待开始","桥畔茶铺 · 送茶任务","跟随金色标记，把一箱茶送给对岸的掌柜。","开始送茶"],
+        new:["任务待开始","桥畔茶铺 · 送茶任务","到桥头的金色标记处取箱。过桥后，把茶叶交给对岸柜台的掌柜。","开始送茶"],
         reset:["任务待开始","任务已重置","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
         resume:["已有进度","继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
         finished:["任务完成","茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
       }[briefing];
       introStatus.textContent=status;
       introRoute.hidden=briefing==="finished";
+      intro.dataset.state=briefing;
       introTitle.textContent=title;
       introDetail.textContent=detail;
       begin.textContent=action;
@@ -1001,6 +1008,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function requestRestart(trigger) {
     if(restartDialog.open) return;
     restartTrigger=trigger;
+    restartDetail.textContent=state.phase==="delivered" ?
+      "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
+      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。";
     clearNotice();
     clearInput();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
@@ -1011,6 +1021,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const restartButton=tools.querySelector("#missionRestart");
   restartButton.onclick=event=>requestRestart(event.currentTarget);
   restartDialog.addEventListener("close",()=>{
+    const url=new URL(location.href);
+    if(url.searchParams.has("restart")) {
+      url.searchParams.delete("restart");
+      history.replaceState(history.state,"",url);
+    }
     clearInput();
     ui();
     const target=restartTrigger?.getClientRects().length ? restartTrigger : view==="mission" && !intro.hidden ? begin : canvas;
@@ -1021,7 +1036,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   restartConfirm.onclick=()=>{
     restartTrigger=null;
     restartDialog.close();
-    hint.textContent="已回到桥头。先取标记处的茶叶箱。";
+    hint.textContent="已回到桥头。点击「开始送茶」重新开始。";
     restart();
   };
   byId("missionExit").onclick = () => setMode("paint");

@@ -197,8 +197,15 @@ export function createSurfaceLibrary() {
         soil*=mix(vec3(1.),vec3(.79,.81,.80),wheelScrape*.53);
         soil=mix(soil,soil*vec3(.84,.89,.93)+stoneDust*.052,shoulderChips*.52);
         soil*=mix(vec3(1.),vec3(1.10,1.09,1.04),looseDust);
+        vec2 marketLocal=mat2(.9982,.05996,-.05996,.9982)*(soilPoint-vec2(25.18,-25.65));
+        float gutterLine=2.78+.11*sin(marketLocal.y*.82)+.14*cos(marketLocal.y*.37);
+        float gutter=(1.-smoothstep(.074,.25,abs(abs(marketLocal.x)-gutterLine)))
+          *(1.-smoothstep(7.1,8.8,abs(marketLocal.y)));
+        soil*=mix(vec3(1.),vec3(.62,.70,.71),gutter);
+        vec3 unloadedEarth=diffuseColor.rgb*mix(vec3(.34,.26,.18),vec3(.68,.56,.42),districts*.67+mottling*.33);
+        unloadedEarth*=mix(1.,.71,max(compressed,gutter*.86));
         ` : ""}
-        diffuseColor.rgb=mix(diffuseColor.rgb*dust,soil,finishReady);
+        diffuseColor.rgb=mix(${street ? "unloadedEarth" : "diffuseColor.rgb*dust"},soil,finishReady);
         ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>

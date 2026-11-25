@@ -17,6 +17,8 @@ const streets=[
   {x:-43.1,z:-41.42,length:7.1,width:5.1,axis:"x",angle:-.09},
 ];
 const {smoothstep}=THREE.MathUtils;
+const marketStreet=lanes.find(lane=>lane.market);
+const drainSide=(side,along)=>side*(2.78+.11*Math.sin(along*.82)+.14*Math.cos(along*.37));
 
 export function streetSurfaceHeight(x,z) {
   let height=0;
@@ -39,6 +41,13 @@ export function streetSurfaceHeight(x,z) {
       .006*Math.sin(z*2.3-x*2.1);
     const roadBed=(.022+.012*wheelWear+grit)*smoothstep(rut,.055,.31);
     height+=fade*(crown+shoulder+rutBank+wash+roadBed);
+  }
+  // Two shallow stone gutters follow the sides of the market's crowned tread.
+  const dx=x-marketStreet.x,dz=z-marketStreet.z,c=Math.cos(marketStreet.angle),s=Math.sin(marketStreet.angle);
+  const across=dx*c-dz*s,along=dx*s+dz*c;
+  if(Math.abs(along)<8.8) {
+    const ditch=Math.abs(across-drainSide(Math.sign(across)||1,along));
+    height-=.034*(1-smoothstep(ditch,.065,.28))*(1-smoothstep(Math.abs(along),7.1,8.8));
   }
   return height;
 }
@@ -83,13 +92,14 @@ function paving(lane,origin,material,addSurface) {
   const position=[],uv=[],color=[],indices=[];
   const joints=[],jointColor=[],jointIndices=[];
   const pigment=new THREE.Color();
-  const palette=[0xabb0a2,0x969a88,0xb6b9aa,0xbcac90,0x929c97,0xa6a795,0xb6a185];
+  const palette=[0xa2a795,0x778983,0xadb4a5,0xbead8b,0x89949b,0x9c9e89,0xbaab98];
+  const gutterPalette=[0x777c70,0x80918a,0x90978b,0x646f68];
   const sediment=new THREE.Color(0xaa9575);
   const seam=new THREE.Color(0x78694e);
   const c=Math.cos(lane.angle),s=Math.sin(lane.angle);
   const point=(u,v)=>[lane.x+c*u+s*v,lane.z-s*u+c*v];
 
-  function stone(u,v,width,length,height,gravel=false) {
+  function stone(u,v,width,length,height,gravel=false,gutter=false) {
     const [x,z]=point(u,v);
     if(canalDepth(origin,x,z)>waterHeight+.015) return;
     const cuts=Array.from({length:4},()=>.045+random()*.22);
@@ -102,13 +112,16 @@ function paving(lane,origin,material,addSurface) {
         const du=(a+(random()-.5)*.083)*width,dv=(b+(random()-.5)*.14)*length;
         return [du*ca+dv*sa,-du*sa+dv*ca,random()];
       });
-    pigment.setHex(palette[Math.floor(random()*palette.length)]);
+    const colors=gutter ? gutterPalette : palette;
+    pigment.setHex(colors[Math.floor(random()*colors.length)]);
     const tiltU=(random()-.5)*.061,tiltV=(random()-.5)*.059;
     const offset=position.length/3;
     const mapU=random(),mapV=random();
     const grainAngle=random()*Math.PI;
     const grainX=Math.cos(grainAngle)/.89,grainY=Math.sin(grainAngle)/.89;
-    const wear=THREE.MathUtils.lerp(.22,.57,Math.abs(Math.sin(x*.83+z*.57)));
+    const wear=THREE.MathUtils.lerp(.16,.49,Math.abs(Math.sin(x*.83+z*.57)));
+    // A tight lane of cleaner polished centers leaves dust in sheltered corners.
+    const traffic=lane.market ? 1-smoothstep(Math.abs(u),.41,1.91) : .30;
     const lip=gravel ? .72 : .96;
     function vertex(du,dv,y,shade,dust=0) {
       const [px,pz]=point(u+du,v+dv);
@@ -128,13 +141,33 @@ function paving(lane,origin,material,addSurface) {
     }
     for(const [du,dv,chip] of rim) {
       const inset=lip-chip*.09;
-      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.012*chip,.86+.19*chip,wear+.10*chip);
+      vertex(du*inset,dv*inset,height+du*tiltU+dv*tiltV-.012*chip,.87+.19*chip,wear+.14*chip);
     }
-    vertex(width*(random()-.5)*.37,length*(random()-.5)*.38,height+.002,.94+.16*random(),wear*.32);
+    const centreU=width*(random()-.5)*.37, centreV=length*(random()-.5)*.38;
+    const centreShade=.97+.14*random(), crown=height+.004;
+    const bevel=offset+24, inside=offset+32;
+    if(!gravel) for(const [du,dv,chip] of rim) {
+      const pu=du*.52+centreU*.48,pv=dv*.52+centreV*.48;
+      const fracture=.006*Math.sin(pu*19+pv*17+x*.21);
+      vertex(pu,pv,crown+pu*tiltU+pv*tiltV+fracture,
+        .93+.17*chip+.06*traffic,wear*(.6-.36*traffic));
+    }
+    const centre=position.length/3;
+    vertex(centreU,centreV,crown,centreShade+.08*traffic,wear*(.42-.24*traffic));
     for(let i=0;i<8;i++) {
-      const a=offset+i,b=offset+(i+1)%8;
-      indices.push(a,a+8,b,b,a+8,b+8,a+8,a+16,b+8,b+8,a+16,b+16,offset+32,b+24,a+24);
-      if(!gravel) addSurface(position,(offset+32)*3,(b+24)*3,(a+24)*3);
+      const j=(i+1)%8, a=offset+i,b=offset+j;
+      indices.push(a,a+8,b,b,a+8,b+8,a+8,a+16,b+8,b+8,a+16,b+16);
+      if(gravel) {
+        indices.push(centre,bevel+j,bevel+i);
+        continue;
+      }
+      for(const [start,middle,end] of [[a,a+8,b],[b,a+8,b+8],[a+8,a+16,b+8],[b+8,a+16,b+16]]) {
+        addSurface(position,start*3,middle*3,end*3);
+      }
+      for(const [start,middle,end] of [[bevel+i,inside+i,bevel+j],[bevel+j,inside+i,inside+j],[centre,inside+j,inside+i]]) {
+        indices.push(start,middle,end);
+        addSurface(position,start*3,middle*3,end*3);
+      }
     }
     if(gravel) return;
     const start=joints.length/3;
@@ -162,7 +195,12 @@ function paving(lane,origin,material,addSurface) {
       const fadingEnd=Math.abs(v)>.39*lane.length;
       const chance=exposedEdge && fadingEnd ? .38 : exposedEdge || fadingEnd ? .76 : .97;
       if((!lane.market || Math.abs(u)<edge) && random()<chance) {
-        stone(u,v,width-.022,length-.020,lane.market ? .009+random()**1.6*.035 : .007+random()**1.7*.027);
+        const rise=lane.market ? .013+random()**1.6*.045 : .008+random()**1.7*.030;
+        if(length>.55 && random()<.25) {
+          const split=.36+random()*.21;
+          stone(u-.019,v-length*(1-split)*.5,width-.044,length*split-.018,rise);
+          stone(u+.023,v+length*split*.5,width-.051,length*(1-split)-.020,rise*.85);
+        } else stone(u,v,width-.022,length-.020,rise);
       }
       else if(random()<.72) {
         stone(u-width*.13,v-length*.14,width*.44,length*.41,.016,true);
@@ -195,14 +233,15 @@ function paving(lane,origin,material,addSurface) {
         v+=length;
       }
     }
-    // Broken lines of larger edge stones hold the road beside the clay shoulder.
-    for(let v=-lane.length*.40;v<lane.length*.40;) {
-      const length=.24+random()*.34;
-      const edge=side*(lane.width*.53+.16*Math.sin(v*.84)+.21*Math.cos(v*.39));
-      if(Math.sin(v*1.71+side)+random()*.8>-.38) {
-        stone(edge+Math.sin(v*.48)*.29,v,.13+random()*.17,length,.027+random()*.02);
+    // Flat gutter stones sit between the paving and an intermittent raised outer edge.
+    for(let v=-lane.length*.43;v<lane.length*.43;) {
+      const length=.27+random()*.31;
+      const edge=drainSide(side,v+length*.5);
+      stone(edge,v+length*.5,.28+random()*.06,length-.013,.015+random()*.013,false,true);
+      if(random()>.11) {
+        stone(edge+side*(.25+random()*.054),v+length*.48,.17+random()*.07,length-.028,.045+random()*.030);
       }
-      v+=length+.06+random()*.17;
+      v+=length;
     }
   }
   // Hooves and wheels scatter small fragments just inside each shoulder.

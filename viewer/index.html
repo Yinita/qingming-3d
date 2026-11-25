@@ -43,8 +43,8 @@
   .mission-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .mission-open #seal { display:none; }
   #missionTools[hidden] { display:none; }
-  #missionTools { position:fixed; z-index:6; top:22px; right:22px; display:flex; gap:6px; }
-  #missionRestart { min-height:44px;
+  #missionTools { position:fixed; z-index:8; top:22px; right:22px; display:flex; gap:6px; }
+  #missionRestart { min-height:44px; white-space:nowrap;
     padding:9px 16px; color:#fff7e1; font-size:14px; font-weight:700; background:#733a2d;
     border:1px solid #e3bd82; box-shadow:0 3px 15px #38271c66; }
   #missionRestart:hover, #missionRestart:focus-visible { background:#9a4635; }
@@ -66,11 +66,12 @@
   #missionIntroRoute span:not([aria-hidden]) { padding:4px 8px; border:1px solid #bb8e63; border-radius:3px; }
   #missionIntro .entry-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
   #missionIntro button { min-height:44px; padding:8px 17px; font-weight:700; }
-  #missionBegin { background:#f3d398; color:#54251f; border-color:#e9c38b; }
+  #missionIntro #missionBegin { min-width:126px; min-height:46px; font-size:16px;
+    background:#f3d398; color:#54251f; border-color:#e9c38b; }
   #missionBegin:hover, #missionBegin:focus-visible { background:#ffe7b6; }
   #missionIntroExit, #missionIntroReset { color:#fff3d9; background:#653528; border-color:#b98364; }
   #missionIntro[hidden] { display:none; }
-  #missionNotice:not(:empty) { position:fixed; z-index:5; top:22px; left:50%;
+  #missionNotice:not(:empty) { position:fixed; z-index:6; top:22px; left:50%;
     transform:translateX(-50%); padding:10px 20px; pointer-events:none;
     background:#502821; color:#fff2d8; border:1px solid #e5bd82; border-radius:4px;
     box-shadow:0 5px 20px #28171055; font-size:16px; font-weight:700; }
@@ -120,7 +121,9 @@
   }
   #missionRestartDialog { max-width:min(320px,calc(100vw - 52px)); background:#faf1de; color:#3a2d25;
     border:1px solid #b39b76; border-top:3px solid #843b30; padding:18px 21px; }
-  #missionRestartDialog::backdrop { background:#2c25226c; }
+  #missionRestartDialog::backdrop { background:#2c25229e; }
+  #missionRestartDialog .mission-actions { justify-content:flex-end; gap:10px; }
+  #missionRestartDialog button { min-height:44px; min-width:84px; font-size:14px; }
   #missionRestartDialog h2 { font-size:20px; margin:0 0 8px; }
   #missionRestartConfirm { background:#843b30; color:#fff5df; border-color:#843b30; }
   #missionHud .mission-controls { color:#635745; font-size:11px; }
@@ -135,7 +138,7 @@
   .loading-status { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px 10px;
     font:12px/1.5 system-ui,sans-serif; font-variant-numeric:tabular-nums; color:#625849; }
   .loading-metrics { overflow-wrap:anywhere; }
-  #scene-background { position:fixed; right:12px; bottom:12px; z-index:8; box-sizing:border-box;
+  #scene-background { position:fixed; right:12px; bottom:12px; z-index:5; box-sizing:border-box;
     width:min(265px,calc(100vw - 24px)); padding:10px 12px; background:var(--panel); border:1px solid #cbbfa6; }
   #scene-background p { margin:0 0 7px; font-size:12px; }
   #scene-background progress { height:5px; margin-bottom:5px; }
@@ -154,6 +157,9 @@
     body.mission-open #scene-background p { margin-bottom:4px; }
     body.mission-open #scene-background progress { margin:0; }
     body.mission-open #scene-background .loading-status { display:none; }
+    body.mission-open:has(#missionIntro:not([hidden])) #scene-background:not(:has(button:not([hidden]))) {
+      visibility:hidden;
+    }
   }
   @media (min-width:511px) and (max-height:459px) {
     body.mission-open #scene-background { top:59px; left:auto; right:10px; width:105px; }
@@ -163,14 +169,14 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=115",
+  "./bridge-look.js": "./bridge-look.js?v=116",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=115",
+  "./bridge-mission.js": "./bridge-mission.js?v=116",
   "./bridge-quests.js": "./bridge-quests.js?v=113",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=115",
-  "./bridge-street.js": "./bridge-street.js?v=115",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=115"
+  "./bridge-people.js": "./bridge-people.js?v=116",
+  "./bridge-street.js": "./bridge-street.js?v=116",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=116"
 } }
 </script>
 </head>
@@ -211,7 +217,7 @@
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
-<div id="seal">入卷 v1.12</div>
+<div id="seal">入卷 v1.16</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -646,9 +652,6 @@ renderer.setAnimationLoop(now => {
     showFirstFrame();
     if(startInMission && !params.has("restart")) mission.openBriefing();
     if(startInMission && params.has("restart")) {
-      const url=new URL(location.href);
-      url.searchParams.delete("restart");
-      history.replaceState(history.state,"",url);
       mission.requestRestart(document.getElementById("missionRestart"));
     }
   }
