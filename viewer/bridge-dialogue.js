@@ -19,6 +19,14 @@ const lines={
     "kan hao le / shun zhe mu wen zou bao , hui shou shi ba bao zi ti qi lai"],
   joinerDone:["木匠","这一面刨好了。顺着纹路摸过去，手上就不挂刺了。",
     "zhe yi mian bao hao le / shun zhe wen lu mo guo qu , shou shang jiu bu gua ci le"],
+  timberShort:["搬料伙计","我走横闸那条道，把木料送到桥头。",
+    "wo zou heng zha na tiao dao , ba mu liao song dao qiao tou"],
+  timberBridge:["搬料伙计","我把木料送到桥头，先从小桥过去。",
+    "wo ba mu liao song dao qiao tou , xian cong xiao qiao guo qu"],
+  timberArrived:["搬料伙计","木料放好了，我回院里。",
+    "mu liao fang hao le , wo hui yuan li"],
+  timberFinished:["搬料伙计","木料就在桥头的桌上。",
+    "mu liao jiu zai qiao tou de zhuo shang"],
 };
 
 const stop=[0,0,0];

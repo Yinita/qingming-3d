@@ -723,6 +723,9 @@ const marketProfiles={
   porter:{head:[.93,.94,.87],
     colors:[0x758176,0x746a53,0x4f4639,0xab9776],skin:0xa97f61,shoulders:1.12,waist:1.10,hem:.119,skirt:1.02,
     coat:0x8c7559,headcloth:0x666b5f,hair:0x44352a},
+  timberPorter:{headModel:"porter",head:[.88,.96,.83],
+    colors:[0x89948e,0x615f51,0x5a5947,0xbea37b],skin:0xb58b68,shoulders:1.07,waist:1.05,hem:.079,skirt:.95,
+    coat:0xa07b54,headcloth:0x454c4b,hair:0x463b30},
   joiner:{headModel:"porter",head:[.89,.91,.84],
     colors:[0x8b9071,0x6b7569,0x504c39,0xb9a07c],skin:0xb08363,shoulders:1.04,waist:1.03,hem:.091,skirt:.94,
     apron:0xb09773,hair:0x55443c,headcloth:0x6c5950},
@@ -1270,7 +1273,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     shoulderSatchel(figure,robe,satchel,binding,lowDetail);
   }
   // The courier and player use their gait and the posed thighs to move the robe.
-  const clothPanels=["player","helper","porter","shopper","carter"].includes(role)
+  const clothPanels=["player","helper","porter","timberPorter","shopper","carter"].includes(role)
     ? figure.children.filter(part=>["Split robe panels","Folded robe edges","Fitted robe binding","Overlapping skirt panel"].includes(part.name))
         .map(({geometry})=>({geometry,rest:geometry.attributes.position.array.slice()}))
     : [];
@@ -1342,12 +1345,13 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
   let graspProp;
-  if(role==="player" || role==="joiner") {
+  if(role==="player" || role==="joiner" || role==="timberPorter") {
     const contacts=limbs.arms.map((arm,i)=>{
       const hand=limbs.hands[i],side=i===0 ? -1 : 1;
       const palm=new THREE.Vector3(-side*.014,-.058,0);
       const marker=new THREE.Object3D();
-      marker.name=role==="player" ? "Workyard palm contact" : "Joiner's palm contact";
+      marker.name=role==="player" ? "Workyard palm contact" :
+        role==="joiner" ? "Joiner's palm contact" : "Timber porter's palm contact";
       marker.position.copy(palm);
       hand.group.add(marker);
       return handContact(arm,limbs.elbows[i],hand,palm,new THREE.Vector3(side*.42,-.91,.19));

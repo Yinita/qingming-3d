@@ -46,7 +46,7 @@ export function cutDrainApron(material) {
   return active=>{cut.value=Number(active);};
 }
 
-export function createBacklane(parent,city,surface,joinery,sound,registerPavedSurface) {
+export function createBacklane(parent,city,surface,joinery,sound,registerPavedSurface,crossingOccupied) {
   const root=new THREE.Group();
   root.name="West bank timber court";
   parent.add(root);
@@ -320,7 +320,7 @@ export function createBacklane(parent,city,surface,joinery,sound,registerPavedSu
   box(horse,darkWood,.590,.123,.322,.450,.752,0,.014);
   box(horse,wood,1.18,.095,.078,0,.425,0,.014);
   const saw=createCourtSaw(root,horse,{wood,darkWood,fresh,iron,endGrain},sound);
-  const timberGate=createTimberGate(root,fixed,city,surface,saw,sound);
+  const timberGate=createTimberGate(root,fixed,city,surface,saw,sound,crossingOccupied);
   solids.push(city.orientedBox("Timber court sawbench",.76,.37,.86));
   Object.assign(solids.at(-1),{x:horse.position.x,z:horse.position.z,yaw:horse.rotation.y});
   for(const x of [-82.38,-81.57])
@@ -519,6 +519,7 @@ export function createBacklane(parent,city,surface,joinery,sound,registerPavedSu
     contains,support,action,use,update,pose,
     offer() { if(stage==="bench") offered=true; },
     open:()=>stage==="open",
+    shortcutOpen:timberGate.passable,
     carrying:()=>stage==="carried",
     loaded:()=>stage==="carried" || timberGate.carrying(),
     playerClearance:radius=>timberGate.carrying() ? .506 : radius,

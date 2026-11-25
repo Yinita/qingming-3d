@@ -13,6 +13,7 @@ import { buildConsignment, parcelSize } from "./bridge-consignment.js";
 import { createWorkyard, workyardEntry } from "./bridge-workyard.js";
 import { createJoinery } from "./bridge-joinery.js";
 import { createBacklane, drainBridgeApproach } from "./bridge-backlane.js";
+import { createTimberPorter } from "./bridge-timber-porter.js";
 import { canalDepth, canalHalfLength, canalOrigin, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
@@ -211,7 +212,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const cargoAttitude=new THREE.Quaternion(),oarGrip=new THREE.Vector3();
   const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
   const onStall=(x,z)=>x>=stallFloor.min.x && x<=stallFloor.max.x && z>=stallFloor.min.z && z<=stallFloor.max.z;
-  let backlane;
+  let backlane, timberPorter;
   function floor(x,z) {
     if (onBridge(x,z)) return deck(x);
     if(onStall(x,z)) return stallFloor.max.y;
@@ -226,7 +227,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const consignment=buildConsignment(root,city,material,freight);
   const yard=createWorkyard(root,city,material,floor,(x,z)=>walkable(x,z) && depthAt(x,z)===0);
   const joinery=createJoinery(root,city,material,floor,workshop.worktop,yard.timberReady,audio.scrape);
-  backlane=createBacklane(root,city,material,joinery,audio.scrape,street.streetHeight.registerPavedSurface);
+  backlane=createBacklane(root,city,material,joinery,audio.scrape,street.streetHeight.registerPavedSurface,
+    ()=>timberPorter?.crossing()??false);
   const yardGrip=new THREE.Vector3(),yardFrame=new THREE.Quaternion();
   const standByYard=(x,z,solid)=>canStep(x,z,workerRadius,solid);
   function wadeDepth(x,z) {
@@ -335,6 +337,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionWorkshop" hidden type="button" aria-keyshortcuts="E">拉开木格门 E</button>
       <button id="missionJoiner" hidden type="button" aria-keyshortcuts="E">问木匠 E</button>
       <button id="missionRepair" hidden type="button" aria-keyshortcuts="E"></button>
+      <button id="missionTimberPorter" hidden type="button" aria-keyshortcuts="E"></button>
     </div>
     <div class="mission-actions">
       <button id="missionScroll">查看任务画卷</button>
@@ -432,6 +435,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const animalButton=byId("missionAnimal");
   const workshopButton=byId("missionWorkshop");
   const repairButton=byId("missionRepair");
+  const timberPorterButton=byId("missionTimberPorter");
   const joinerButton=byId("missionJoiner"),joinerStatus=byId("missionJoinerStatus");
   const yardButton=byId("missionYardAction"),yardGuideButton=byId("missionYardGuide"),yardStatus=byId("missionYardStatus");
   const marketGuideButton=byId("missionMarketGuide");
@@ -522,15 +526,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(roomHeight>=y-.009) return roomHeight>.12 ? "wood" : "stone";
     return backlane.materialAt(x,y,z)??ferryLandingMaterial(x,z,y)??workshop.materialAt(x,z,y)??street.streetHeight.materialAt(x,z);
   }
-  function footfall(x,y,z,vx,vz,emitter,wet=false) {
+  function footfall(x,y,z,vx,vz,emitter,wet=false,loaded) {
     const speed=Math.hypot(vx,vz);
     if(speed<.20) return;
     const family=wet ? "water" : footSurface(x,y,z);
-    const laden=emitter==="player" ? hasCargo() : emitter==="courier" || emitter==="porter";
+    const laden=loaded??(emitter==="player" ? hasCargo() : emitter==="courier" || emitter==="porter");
     const force=THREE.MathUtils.smoothstep(speed,.2,3.1);
     const volume=(emitter==="player" ? .22+.17*force : .20+.12*force)*(laden ? 1.18 : 1);
     audio.play(family,x,z,volume,emitter,speed,laden);
   }
+  timberPorter=createTimberPorter(root,city,material,floor,canStep,backlane.shortcutOpen,
+    (x,y,z,vx,vz,laden)=>footfall(x,y,z,vx,vz,"timberPorter",false,laden));
   const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
     const depth=bridgeLook.field.height(x,z,time)-y;
     const wet=!onBridge(x,z) && depth>=.032 && depthAt(x,z)>=.024 && Math.hypot(vx,vz)>=.22;
@@ -858,6 +864,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     livestock.cancel();
     workshop.reset();
     yard.reset();
+    timberPorter.reset();
     backlane.reset();
     joinery.reset();
     Object.assign(player,spawn);
@@ -1033,6 +1040,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const repair=canRepair ? backlane.action(player) : null;
     repairButton.hidden=!repair;
     if(repair && repairButton.textContent!==repair) repairButton.textContent=repair;
+    const porter=canRepair && backlane.open() && !backlane.busy() ? timberPorter.action(player) : null;
+    timberPorterButton.hidden=!porter;
+    if(porter && timberPorterButton.textContent!==porter) timberPorterButton.textContent=porter;
     const nearby=canUseWorkshop() && !yard.active() && !backlane.busy() && joinery.near(player);
     const action=nearby ? joinery.action() : null, status=nearby ? joinery.status() : null;
     joinerButton.hidden=!action;
@@ -1073,6 +1083,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(!message) return;
     clearPlayerControl();
     hint.textContent=message;
+    canvas.focus({preventScroll:true});
+    ui();
+  }
+
+  function talkToTimberPorter() {
+    if(timberPorterButton.hidden || !canUseWorkshop() || backlane.busy()) return;
+    const line=timberPorter.talk(player);
+    if(!line) return;
+    dialogue.speak(line);
+    if(line!=="timberFinished") hint.textContent="伙计会搬料去桥头。窄道里遇到人，他会先让开。";
+    clearPlayerControl();
     canvas.focus({preventScroll:true});
     ui();
   }
@@ -1249,7 +1270,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(courierFacing>.78 && courierFacing>facing(state.crate)+.12) crate=talkButton;
     }
     const workshopPriority=workshopButton.textContent.includes("油灯") ? distance(player,workshop.lampAt)<.63 : true;
-    return [repairButton,consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,yardButton,
+    return [repairButton,timberPorterButton,consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,yardButton,
       workshopPriority ? workshopButton : null,joinerButton,workshopButton,
       cakeButton,shareCakeButton,teaButton,talkButton,animalButton,steamerButton,interactButton,mooringButton,pebbleButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
@@ -1624,6 +1645,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     yard.show(mode==="mission");
     joinery.show(mode==="mission");
     backlane.show(mode==="mission");
+    timberPorter.show(mode==="mission");
     foreground.setVisible(mode === "mission");
     bridgeLook.setVisible(mode==="mission",mode==="missionScroll" && ferry.active());
     if(view==="mission" && ferryViewPausedAt!==null) {
@@ -1774,6 +1796,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         moveX:(fwd.x*dz+side.x*dx)*driftScale,moveZ:(fwd.z*dz+side.z*dx)*driftScale,
         cargo:carrying ? boardCargo : null};
       market.frame(dt,visitor);
+      const porterLine=timberPorter.frame(dt,{...visitor,radius:backlane.playerClearance(workerRadius)},attend);
+      if(porterLine) dialogue.speak(porterLine);
       const chairBefore=teaRoom.chairActive(), sitting=teaRoom.chair.phase==="sitting";
       if(teaRoom.seated() && (dx || dz)) teaRoom.standUp();
       const transferred=teaRoom.seatFrame(dt,player);
@@ -2072,6 +2096,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     merchant.face.speak(merchantSpeaking ? speech.shape : null,dt);
     helper.face.speak(speech.id==="courier" ? speech.shape : null,dt);
     market.speech(speech,dt);
+    timberPorter.speech(speech,dt);
     freight.speech(speech.id==="freightDriver" ? speech.shape : null,dt);
     teaRoom.speech(speech.id==="roomTea" ? speech.shape : null,dt);
     positionCrate();
@@ -2156,6 +2181,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   workshopButton.onclick=useWorkshop;
   joinerButton.onclick=speakToJoiner;
   repairButton.onclick=repairDrain;
+  timberPorterButton.onclick=talkToTimberPorter;
   yardButton.onclick=useYard;
   yardGuideButton.onclick=()=>{
     guideYard=!guideYard;
@@ -2176,7 +2202,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restartTrigger=trigger;
     restartDetail.textContent=(state.phase==="delivered" ?
       "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
-      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场、作坊、排水沟小桥、锯台和横闸也会恢复初始状态。";
+      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场、作坊、排水沟小桥、锯台、横闸和搬料也会恢复初始状态。";
     clearNotice();
     clearPlayerControl();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
@@ -2310,7 +2336,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
         bodyOverlap:passengerCarrier() || teaRoom.chairActive() ? null : city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
-      freight:freight.inspect(player,walkable),consignment:inspectConsignment(),teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),yard:yard.inspect(),joinery:joinery.inspect(),backlane:backlane.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
+      freight:freight.inspect(player,walkable),consignment:inspectConsignment(),teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),yard:yard.inspect(),joinery:joinery.inspect(),backlane:backlane.inspect(),timberPorter:timberPorter.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }

@@ -13,7 +13,7 @@ const facingAngle=(from,to)=>Math.atan2(from.x-to.x,from.z-to.z);
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 export const timberGateZ=tz;
 
-export function createTimberGate(parent,fixed,city,surface,saw,sound) {
+export function createTimberGate(parent,fixed,city,surface,saw,sound,crossingOccupied) {
   const root=new THREE.Group();
   root.name="West timber service gate";
   parent.add(root);
@@ -167,7 +167,7 @@ export function createTimberGate(parent,fixed,city,surface,saw,sound) {
     if(stage==="bench" && saw.finished() && saw.near(p)) return "拿起短木料 E";
     if(stage==="carried" && nearRepair(p)) return "装上横闸配重 E";
     if(stage==="carried" && saw.near(p)) return "把短木料放回锯台 E";
-    if(stage==="open" && nearLever(p)) return "放下横闸 E";
+    if(stage==="open" && nearLever(p)) return crossingOccupied() ? "等伙计过闸 E" : "放下横闸 E";
     if(stage==="closed" && nearLever(p)) return "拉起横闸 E";
     return null;
   }
@@ -184,6 +184,7 @@ export function createTimberGate(parent,fixed,city,surface,saw,sound) {
       save(stage);
       return "短木料放回锯台了。";
     }
+    if(stage==="open" && crossingOccupied()) return "伙计正在过闸。等他走过去再放下横闸。";
     const position=stage==="carried" ? repairStand : null;
     const aim=position ? facingAngle(position,socketPoint) : player.yaw;
     motion={startYaw:player.yaw,turn:angleDelta(player.yaw,aim),
@@ -283,6 +284,7 @@ export function createTimberGate(parent,fixed,city,surface,saw,sound) {
       return lerp(deckY,.018,smoothstep(reach,.615,1.034));
     },
     carrying:()=>stage==="carried" && !motion,
+    passable:()=>stage==="open" && !motion,
     locked:()=>Boolean(motion),
     facing:()=>motion.startYaw+motion.turn*smoothstep(motion.age,0,settleTime),
     station:()=>motion?.placingAt===Infinity ? motion.position : null,
