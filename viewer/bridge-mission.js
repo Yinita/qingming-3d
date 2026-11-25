@@ -969,6 +969,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
   function showYardActions() {
     const available=canUseYard(), near=available && yard.near(player);
+    document.body.classList.toggle("yard-hauling",available && yard.active());
     const label=available ? yard.action(player) : null;
     yardButton.hidden=!label;
     if(label && yardButton.textContent!==label) yardButton.textContent=label;
@@ -1526,6 +1527,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     light.storm(mode==="mission" ? weather.intensity : 0);
     if(mode!=="mission") {
       yard.release();
+      document.body.classList.remove("yard-hauling");
       if(teaRoom.leaveChair(player)) gait.reset();
       document.body.classList.remove("tea-room-open","tea-seated");
       dialogue.activate(false);
@@ -1782,7 +1784,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       cameraObstacle=null;
       cameraClose=false;
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
-      const lens=firstPerson && aboard ? 70 : firstPerson && chairBefore ?
+      const lens=firstPerson && yard.active() ? THREE.MathUtils.clamp(seatFov,70,96) :
+        firstPerson && aboard ? 70 : firstPerson && chairBefore ?
         THREE.MathUtils.clamp(seatFov,58,100) : 58;
       if(activeLens!==lens) {
         activeLens=lens;
@@ -1792,8 +1795,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if (firstPerson) {
         const seat=carrier===ferry ? ferry.rider.seated : carrier===freight ? freight.rider.seat : 0;
         const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : player.yaw;
-        const pitch=player.pitch-.048*seat;
-        const eyeOffset=.083*seat+(chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
+        const haul=yard.gripWeight();
+        const pitch=player.pitch-.048*seat-.60*haul;
+        const eyeOffset=.083*seat+.082*haul+(chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
         const lateral=carrier===freight ? .28*seat : 0;
         camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),y+1.57,
           player.z+eyeOffset*Math.cos(yaw)-lateral*Math.sin(yaw));
@@ -2066,6 +2070,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function requestRestart(trigger) {
     if(restartDialog.open) return;
     yard.release();
+    document.body.classList.remove("yard-hauling");
     restartTrigger=trigger;
     restartDetail.textContent=(state.phase==="delivered" ?
       "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
