@@ -1217,16 +1217,17 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       limbs.hands[i].setGrip(.17+.56*weight);
     };
   }
-  function walkBody(phase,walking,carrying,dt) {
+  function walkBody(phase,walking,carrying,dt,shift) {
     effort=THREE.MathUtils.damp(effort,Number(walking),10,dt);
     carryWeight=THREE.MathUtils.damp(carryWeight,Number(carrying),15,dt);
     const balance=effort*(1-.65*carryWeight);
     if(torso!==figure) {
-      torsoPivot.position.x=.014*balance*Math.sin(phase);
-      torsoPivot.rotation.set(-effort*(.033+.032*carryWeight),.064*balance*Math.sin(phase+.32),
-        .043*balance*Math.sin(phase-.21),"YXZ");
-      head.rotation.z=-.029*balance*Math.sin(phase-.21);
-      head.rotation.x=.013*effort*Math.sin(phase*2+.45);
+      const roll=shift?.side??0,pitch=shift?.forward??0;
+      torsoPivot.position.x=.014*balance*Math.sin(phase)+.065*roll;
+      torsoPivot.rotation.set(-effort*(.033+.032*carryWeight)-pitch,.064*balance*Math.sin(phase+.32),
+        .043*balance*Math.sin(phase-.21)-roll,"YXZ");
+      head.rotation.z=-.029*balance*Math.sin(phase-.21)+.54*roll;
+      head.rotation.x=.013*effort*Math.sin(phase*2+.45)+.55*pitch;
     }
     if(clothPanels.length && (balance>.002 || clothMotion>.002)) {
       const lead=Math.sin(phase-.44)*balance;

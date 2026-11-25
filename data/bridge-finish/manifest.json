@@ -52,5 +52,33 @@
     "albedo_size": 2048,
     "surface_map_size": 1024,
     "provenance": "authored procedural"
+  },
+  "earth/path": {
+    "metres": 3.0,
+    "albedo_size": 1536,
+    "surface_map_size": 768,
+    "provenance": "Park Dirt by Christopher Melani",
+    "source": "https://polyhaven.com/a/park_dirt",
+    "license": "CC0-1.0",
+    "source_resolution": 4096,
+    "surface_channels": [
+      "normal X",
+      "normal Y",
+      "roughness"
+    ]
+  },
+  "earth/verge": {
+    "metres": 2.17,
+    "albedo_size": 1536,
+    "surface_map_size": 768,
+    "provenance": "Stony Dirt Path by eye-candy.xyz",
+    "source": "https://polyhaven.com/a/stony_dirt_path",
+    "license": "CC0-1.0",
+    "source_resolution": 4096,
+    "surface_channels": [
+      "normal X",
+      "normal Y",
+      "roughness"
+    ]
   }
 }

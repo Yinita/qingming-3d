@@ -205,9 +205,11 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=124",
+  "./bridge-look.js": "./bridge-look.js?v=125",
+  "./bridge-earth.js": "./bridge-earth.js?v=125",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=124",
+  "./bridge-mission.js": "./bridge-mission.js?v=125",
+  "./bridge-gait.js": "./bridge-gait.js?v=125",
   "./bridge-livestock.js": "./bridge-livestock.js?v=119",
   "./bridge-houses.js": "./bridge-houses.js?v=120b",
   "./bridge-architecture.js": "./bridge-architecture.js?v=120",
@@ -215,7 +217,7 @@
   "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=119",
   "./bridge-quests.js": "./bridge-quests.js?v=124",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=122",
+  "./bridge-people.js": "./bridge-people.js?v=125",
   "./bridge-head.js": "./bridge-head.js?v=117",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
   "./bridge-street.js": "./bridge-street.js?v=123",
@@ -280,6 +282,7 @@ import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
 import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetScene } from "./bridge-street.js";
 import { createStreetTerrain } from "./bridge-street-ground.js";
+import { createEarthMaterial } from "./bridge-earth.js";
 import { createSurfaceLibrary, setSurfaceTextureLoader } from "./bridge-look.js";
 import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js";
 import { sweepHorizontal } from "./bridge-collision.js";
@@ -339,7 +342,8 @@ ground.receiveShadow=true;
 ground.userData.archiveMaterial=ground.material;
 ground.userData.archiveGeometry=ground.geometry;
 const streetTerrain=createStreetTerrain(GW,GD);
-const walkingGround=surfaces.project("packed-earth",{color:0xc4b5a1,roughness:.94},"street");
+const riverOrigin=canalOrigin(bridgeAnchor);
+const walkingGround=createEarthMaterial(riverOrigin,url=>sceneImage(url,"background").then(textureFromImage));
 ground.userData.perspectiveMaterial=walkingGround;
 
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
@@ -351,7 +355,6 @@ apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.ad
 const sprites = [], swapCards = [], models = [], offPainting = [], trailCards = [];
 const SHADOWED = new Set(["person", "horse", "donkey", "ox", "cart", "sedan chair", "tree", "umbrella"]);
 const shadowSpots = [];
-const riverOrigin=canalOrigin(bridgeAnchor);
 const street=createStreetScene(scene,L.objects,bridgeAnchor);
 const sourceReplacements=[];
 for (const o of L.objects) {

@@ -10,11 +10,11 @@
 
 ## 桥畔茶铺试玩
 
-在查看器的「桥畔茶铺任务」卡片点「进入送茶任务」，也可以[直接进入 v1.24 试玩](https://yinita.github.io/qingming-3d/viewer/?mission&v=1.24)。打开[任务重置页](https://yinita.github.io/qingming-3d/viewer/?mission&restart&v=1.24)可确认从桥头重新开始。
+在查看器的「桥畔茶铺任务」卡片点「进入送茶任务」，也可以[直接进入 v1.25 试玩](https://yinita.github.io/qingming-3d/viewer/?mission&v=1.25)。打开[任务重置页](https://yinita.github.io/qingming-3d/viewer/?mission&restart&v=1.25)可确认从桥头重新开始。
 
 - 点「开始送茶」后，画面上方显示「任务已开始」。直接取箱或委托伙计也可以开始。目标标牌显示方向和距离。
 - 开场卡有「重置进度」。试玩时点右上角「重置任务」或按 `Shift+R`。确认后回到桥头，茶箱归位，铜钱恢复为六文，开场卡显示「任务已重置」。漫游和画卷也可以重置。
-- 用 WASD 移动，E 拿放货箱，V 切换第一或第三人称。可以亲自过桥交货，也可以委托伙计。
+- 用 WASD 移动，Shift 加速，E 交互，V 切换第一或第三人称。可以亲自过桥交货，也可以委托伙计。
 - 拿起茶箱后可选择「指路到渡口」。靠近渡口按 E 叫船、登船或下船，船上用 W 和 S 划行。角色对白以宋体风格显示在屏幕底部。
 - 交货后点「指路到蒸糕摊」。走近后可查看竹蒸笼，花一文买糕，再送给采买客。手机上可按屏幕方向键移动。
 - 按 J 或点「任务簿」查看当前目标、可选路线和铜钱账目。任务数据在 `viewer/bridge-quests.js`，规则见[任务设计](docs/quest-design.md)。
@@ -29,3 +29,5 @@
 - 房屋 3D 模型（`data/seg01/scene/meshes/*.glb`）由 [Hunyuan3D-2](https://github.com/Tencent/Hunyuan3D-2) 生成，受 Tencent Hunyuan Non-Commercial License 约束：仅限非商业使用，且该许可不适用于欧盟、英国和韩国境内。
 - 地面补全用 [LaMa](https://github.com/advimman/lama)（Apache-2.0），纸片放大用 [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)（BSD-3-Clause）。
 - 查看器代码基于 [three.js](https://threejs.org/)（MIT 许可）。查看器随仓库提供对应版本。
+
+街道地面使用 [Park Dirt](https://polyhaven.com/a/park_dirt) 和 [Stony Dirt Path](https://polyhaven.com/a/stony_dirt_path) 的 CC0 实拍材质。网页使用压缩贴图，[材质清单](data/bridge-finish/manifest.json) 记录了尺寸与来源，[转换脚本](tools/build_earth_textures.py) 可用 4K 源文件重新生成。

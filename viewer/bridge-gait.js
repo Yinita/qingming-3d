@@ -4,6 +4,32 @@ export const legRig={separation:.109, hip:.717, upper:.351, lower:.326, ankle:.0
 const {separation,hip,upper,lower,ankle:ankleHeight}=legRig;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
 
+// Advance ground velocity in metres per second. The collision sweep reports
+// actual movement back to the caller, so braking never stores force at a wall.
+export function advanceStreetVelocity(velocity,targetX,targetZ,dt,laden) {
+  const targetSpeed=Math.hypot(targetX,targetZ);
+  const speed=velocity.length();
+  if(targetSpeed && speed) {
+    const along=(velocity.x*targetX+velocity.y*targetZ)/targetSpeed;
+    // On a sharp input change, plant before pushing in the new direction.
+    // Sideways momentum would otherwise drift into adjacent doors and rails.
+    if(along<speed*.60) {
+      const remaining=Math.max(0,along)/targetSpeed;
+      velocity.set(targetX*remaining,targetZ*remaining);
+    }
+  }
+  const dx=targetX-velocity.x, dz=targetZ-velocity.y;
+  const delta=Math.hypot(dx,dz);
+  const accelerating=targetSpeed>velocity.length();
+  const rate=accelerating ? (laden ? 7.1 : 9.4) : (laden ? 28 : 33);
+  if(delta<=rate*dt) velocity.set(targetX,targetZ);
+  else {
+    const step=rate*dt/delta;
+    velocity.x+=dx*step;
+    velocity.y+=dz*step;
+  }
+}
+
 export function createGroundedGait(floor,stepAllowed,touchdown) {
   const feet=[-1,1].map(side=>({
     side,x:0,y:0,z:0,yaw:0,pitch:0,plantAge:0,

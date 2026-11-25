@@ -8,7 +8,7 @@ import { counterCeramics, riverWorker } from "./bridge-people.js";
 import { buildTea } from "./bridge-tea.js";
 import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
-import { createGroundedGait } from "./bridge-gait.js";
+import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
 import { circleTouchesBox, sweepHorizontal, workerHeight, workerRadius } from "./bridge-collision.js";
 import { tileRoof } from "./bridge-architecture.js";
 import { TEA_QUEST, createQuestJournal, maxCoins, record, stageOf } from "./bridge-quests.js";
@@ -457,6 +457,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),()=>false);
   const fwd = new THREE.Vector3();
   const side = new THREE.Vector3();
+  const streetVelocity=new THREE.Vector2();
+  const weightShift={side:0,forward:0};
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
   let boomLength=3.2, cameraObstacle=null, cameraClose=false;
   const peekTarget=new THREE.Vector2();
@@ -747,7 +749,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     ferry.reset();
     ferryViewPausedAt=null;
     restoreMarket(true);
-    clearInput();
+    clearPlayerControl();
     journal.toggle(state,false);
     previous=null;
     firstPerson=false;
@@ -841,7 +843,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(!canGreetAnimal()) return;
     const animal=livestock.greet(livestockVisitor());
     if(!animal) return;
-    clearInput();
+    clearPlayerControl();
     hint.textContent=`${animal}低下头来闻你的手。`;
     animalButton.hidden=true;
     canvas.focus({preventScroll:true});
@@ -934,7 +936,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function shareCake() {
     if(!canShareCake() || market.sharing()) return;
     if(market.beginShare(player)) {
-      clearInput();
+      clearPlayerControl();
       stopTeaShot();
       hint.textContent="采买客正走过来接糕。移动可取消递送。";
     } else {
@@ -998,7 +1000,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view!=="mission" || showStart || restartDialog.open || market.sharing()) return;
     const message=ferry.use(player,elapsed);
     if(!message) return;
-    clearInput();
+    clearPlayerControl();
     livestock.cancel();
     stopTeaShot();
     hint.textContent=message;
@@ -1072,10 +1074,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   }
 
-  function animate(person, phase, walking, carrying, dt) {
+  function animate(person, phase, walking, carrying, dt, shift) {
     person.straps.visible = carrying;
     person.limbs.legs.forEach((leg, i) => { leg.rotation.x = walking ? Math.sin(phase + i * Math.PI) * .49 : 0; });
-    person.walkBody(phase,walking,carrying,dt);
+    person.walkBody(phase,walking,carrying,dt,shift);
   }
 
   function cargoPose(x,z,y,yaw) {
@@ -1124,6 +1126,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(mode!=="mission") {
       dialogue.activate(false);
       rowingLens=false;
+      clearStreetMotion();
     }
     if(mode!=="mission") {
       touchPad.visible(false);
@@ -1160,10 +1163,21 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
   }
 
+  function clearStreetMotion() {
+    streetVelocity.set(0,0);
+    weightShift.side=weightShift.forward=0;
+  }
+
+  function clearPlayerControl() {
+    clearInput();
+    clearStreetMotion();
+  }
+
   const noInput=new Set();
   function frame(dt, keys) {
-    if (!root.visible) return;
+    if (!root.visible || dt<=0) return;
     if(restartDialog.open) {
+      clearStreetMotion();
       waypoint.hidden=introShade.hidden=intro.hidden=true;
       beacon.visible=startPillar.visible=false;
       return;
@@ -1197,7 +1211,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const backpedaling=dz<0;
       const pace=backpedaling ? (carrying ? 1.03 : 1.21) :
         input.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
-      const v = pace * dt * drag / (Math.hypot(dx, dz) || 1);
+      const movementScale=pace*drag/(Math.hypot(dx,dz)||1);
+      const targetX=(fwd.x*dz+side.x*dx)*movementScale;
+      const targetZ=(fwd.z*dz+side.z*dx)*movementScale;
       syncActors();
       const feet=floor(player.x,player.z);
       Object.assign(workshopVisitor,{x:player.x,z:player.z,bottom:feet,top:feet+workerHeight});
@@ -1223,22 +1239,35 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         hint.textContent="已上岸。沿石板路可回到街上。";
         ui();
       }
-      const oldX = player.x;
-      const oldZ = player.z;
-      if(!aboard && !landed) sweepHorizontal(player,(fwd.x*dz+side.x*dx)*v,(fwd.z*dz+side.z*dx)*v,
-        (x,z)=>canStep(x,z) && !cargoCollision(x,z,bodyYaw));
-      const moved=Math.hypot(player.x-oldX,player.z-oldZ);
-      walking=moved>.0001;
+      const oldX=player.x, oldZ=player.z;
+      const previousVX=streetVelocity.x, previousVZ=streetVelocity.y;
+      if(aboard || landed || awaitingStart()) clearStreetMotion();
+      else {
+        advanceStreetVelocity(streetVelocity,targetX,targetZ,dt,carrying);
+        sweepHorizontal(player,streetVelocity.x*dt,streetVelocity.y*dt,
+          (x,z)=>canStep(x,z) && !cargoCollision(x,z,bodyYaw));
+        streetVelocity.set((player.x-oldX)/dt,(player.z-oldZ)/dt);
+      }
+      const vx=streetVelocity.x,vz=streetVelocity.y;
+      walking=Math.hypot(vx,vz)>.085;
       const depth=aboard ? 0 : wadeDepth(player.x,player.z);
       wading=depth>.036;
       wetLine=Math.max(depth,wetLine-dt*.013);
       dampness=wading ? Math.min(1,dampness+dt*3.0) : Math.max(0,dampness-dt*.041);
-      const vx=(player.x-oldX)/dt, vz=(player.z-oldZ)/dt;
-      // Keep looking forward when backing away, and keep the last heading on release.
-      if (walking) heading=backpedaling ? player.yaw : Math.atan2(-vx,-vz);
-      else {
+      // In a brake the body holds its heading while the feet finish the step.
+      if(walking && (dx || dz)) {
+        if(backpedaling) heading=player.yaw;
+        else if(vx*targetX+vz*targetZ>0) heading=Math.atan2(-vx,-vz);
+      } else if(!walking) {
         const greeting=livestock.gesture(livestockVisitor());
         if(greeting) heading=greeting.yaw;
+      }
+      if(!aboard && !landed) {
+        const ax=(vx-previousVX)/dt, az=(vz-previousVZ)/dt;
+        const sin=Math.sin(bodyYaw),cos=Math.cos(bodyYaw);
+        const {clamp,damp}=THREE.MathUtils;
+        weightShift.side=damp(weightShift.side,clamp((ax*cos-az*sin)*.012,-.09,.09),12,dt);
+        weightShift.forward=damp(weightShift.forward,clamp((-ax*sin-az*cos)*.010,-.095,.095),12,dt);
       }
       if(shareYaw!==null) heading=shareYaw;
       const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
@@ -1308,7 +1337,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
     footShadow.visible = playerBody.figure.visible && !wading && !riding;
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
-    animate(playerBody,gait.phase()-Math.PI*.5,walking,state.phase==="carrying" && !riding,dt);
+    animate(playerBody,gait.phase()-Math.PI*.5,walking,state.phase==="carrying" && !riding,dt,weightShift);
     if(view==="mission" && !riding) playerBody.poseFeet(gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
     if(view==="missionScroll" && riding) poseFerryRider();
     const throwAge=stones.age();
@@ -1426,7 +1455,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       requestRestart(restartButton);
       return;
     }
-    clearInput();
+    clearPlayerControl();
     startMission();
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
     ui();
@@ -1465,7 +1494,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
       "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。";
     clearNotice();
-    clearInput();
+    clearPlayerControl();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
     introShade.hidden=intro.hidden=waypoint.hidden=true;
     groundMarker.visible=beacon.visible=startPillar.visible=false;
@@ -1481,7 +1510,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       url.searchParams.delete("restart");
       history.replaceState(history.state,"",url);
     }
-    clearInput();
+    clearPlayerControl();
     ui();
     const target=restartTrigger?.getClientRects().length ? restartTrigger : view==="mission" && !intro.hidden ? begin : canvas;
     restartTrigger=null;
@@ -1566,7 +1595,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     inspect: () => ({ phase: state.phase, coins: state.coins, method: state.method, view, firstPerson,
       player: { ...player, y: ferry.active() ? ferry.rider.y : floor(player.x, player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
-      gait:gait.inspect(),ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
+      gait:gait.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,

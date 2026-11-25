@@ -59,23 +59,12 @@ export function createSurfaceLibrary() {
     return mat;
   }
 
-  surface.project = (id, options, floor=false) => {
-    const street=floor==="street";
+  surface.project = (id, options) => {
     const material = new THREE.MeshStandardMaterial(options);
     const detail={
       finishColor:{value:null}, finishNormal:{value:null}, finishOrm:{value:null},
       finishMetres:{value:materialScale[id]}, finishReady:{value:0},
     };
-    if(street) {
-      detail.shoulderColor={value:null};
-      detail.shoulderNormal={value:null};
-      detail.shoulderReady={value:0};
-      maps("worn-stone").then(([color,normal])=>{
-        detail.shoulderColor.value=color;
-        detail.shoulderNormal.value=normal;
-        detail.shoulderReady.value=1;
-      },err=>console.warn("Street aggregate could not be loaded",err.message));
-    }
     maps(id).then(([color,normal,orm])=>{
       detail.finishColor.value=color;
       detail.finishNormal.value=normal;
@@ -83,8 +72,7 @@ export function createSurfaceLibrary() {
       detail.finishReady.value=1;
       material.userData.surfaceReady=true;
     },err=>console.warn("Projected material could not be loaded",id,err.message));
-    material.customProgramCacheKey=()=>street ? "weathered-market-earth" :
-      floor ? "projected-floor-finish" : "projected-building-finish";
+    material.customProgramCacheKey=()=>"projected-building-finish";
     material.onBeforeCompile=shader=>{
       Object.assign(shader.uniforms,detail);
       shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec3 finishPoint;")
@@ -93,158 +81,31 @@ export function createSurfaceLibrary() {
         varying vec3 finishPoint;
         uniform sampler2D finishColor,finishNormal,finishOrm;
         uniform float finishMetres,finishReady;
-        ${street ? `uniform sampler2D shoulderColor,shoulderNormal;
-        uniform float shoulderReady;` : ""}
-        ${floor ? `
-        float soilHash(vec2 p) {
-          vec3 q=fract(vec3(p.xyx)*.1031);
-          q+=dot(q,q.yzx+33.33);
-          return fract((q.x+q.y)*q.z);
-        }
-        float soilNoise(vec2 p) {
-          vec2 i=floor(p), f=fract(p);
-          f=f*f*(3.-2.*f);
-          return mix(mix(soilHash(i),soilHash(i+vec2(1.,0.)),f.x),
-            mix(soilHash(i+vec2(0.,1.)),soilHash(i+vec2(1.)),f.x),f.y);
-        }
-        ` : ""}
-        vec3 finishWeights() {
-          ${floor ? "return vec3(0.,1.,0.);" : `
-          vec3 v=abs(normalize(cross(dFdx(finishPoint),dFdy(finishPoint))));
-          v=pow(v,vec3(7.));
-          return v/max(dot(v,vec3(1.)),.001);`}
-        }
         vec3 finishSample(sampler2D source,vec3 p,vec3 w) {
-          ${floor ? "return texture2D(source,p.xz).rgb;" : `
           return texture2D(source,p.zy).rgb*w.x + texture2D(source,p.xz).rgb*w.y
-              + texture2D(source,p.xy).rgb*w.z;`}
+              + texture2D(source,p.xy).rgb*w.z;
         }
       `)
       .replace("#include <color_fragment>",`#include <color_fragment>
-        vec3 finishUV=finishPoint/finishMetres, finishWeight=finishWeights();
+        vec3 finishUV=finishPoint/finishMetres;
+        vec3 finishWeight=pow(abs(normalize(cross(dFdx(finishPoint),dFdy(finishPoint)))),vec3(7.));
+        finishWeight/=max(dot(finishWeight,vec3(1.)),.001);
         vec3 pigment=finishSample(finishColor,finishUV,finishWeight);
         vec3 relief=finishSample(finishOrm,finishUV,finishWeight);
         vec3 litSurface=diffuseColor.rgb*(.70+.62*smoothstep(.035,.46,dot(pigment,vec3(.2126,.7152,.0722))));
         litSurface*=mix(.78,1.,relief.r);
-        ${floor ? `
-        vec2 soilPoint=finishPoint.xz;
-        float districts=soilNoise(soilPoint*.37);
-        float compaction=soilNoise(soilPoint*vec2(.84,1.42)+vec2(districts*1.8,-districts));
-        float mottling=soilNoise(soilPoint*5.7+13.2);
-        vec3 dust=mix(vec3(.74,.72,.65),vec3(1.12,1.04,.93),smoothstep(.22,.80,districts));
-        vec3 grains=texture2D(finishColor,finishUV.zx*2.13+vec2(.21,.47)).rgb;
-        float aggregate=grains.r;
-        vec3 soil=litSurface*dust*(.77+.23*compaction+.12*mottling+.15*aggregate);
-        ${street ? `
-        float market=1.-smoothstep(8.,16.,length((soilPoint-vec2(25.06,-26.6))*vec2(1.,.56)));
-        float west=1.-smoothstep(5.,11.,length(soilPoint-vec2(-71.,-41.42)));
-        float east=1.-smoothstep(5.,11.,length(soilPoint-vec2(-43.,-41.42)));
-        float approach=max(west,east);
-        float wander=soilNoise(soilPoint*.38)+.24*sin(soilPoint.y*.37);
-        float crossTrack=mix(soilPoint.x-25.06-(soilPoint.y+26.6)*.08,soilPoint.y+41.42,approach);
-        float track=crossTrack-.25*wander;
-        float rutDist=abs(track);
-        float rutCentre=rutDist-(.83+.085*sin(mix(soilPoint.y+26.3,soilPoint.x+71.8,approach)*.56));
-        float route=max(market,approach);
-        float wornEdge=.094*(mottling-.5)+.052*(compaction-.5);
-        float wheel=(1.-smoothstep(.044,.235,abs(rutCentre+wornEdge)))*route;
-        float tread=(1.-smoothstep(.91,2.37,rutDist))*route;
-        float compressed=(.24*tread+.76*wheel)*(.64+.36*compaction);
-        vec2 swale=soilPoint+vec2(districts-.5,compaction-.5)*1.6;
-        float looseDust=smoothstep(.31,.78,soilNoise(swale*.83+5.8))*(1.-.81*tread);
-        float clay=smoothstep(.29,.73,soilNoise(swale*vec2(1.61,.91)+4.1));
-        float gravelMix=smoothstep(.28,.74,soilNoise(swale*vec2(.53,.39)+23.8));
-        mat2 soilTurn=mat2(.8,.6,-.6,.8);
-        vec2 aggregateUV=soilTurn*finishUV.xz*1.73+vec2(.19,.53);
-        vec3 aggregateColor=texture2D(finishColor,aggregateUV).rgb;
-        vec3 tilePigment=mix(pigment,aggregateColor,gravelMix*.74);
-        vec3 earth=mix(vec3(.39,.27,.16),tilePigment,.50)*vec3(1.52,1.72,1.93);
-        // The chalkier sediment is strongest at irregular shoulders and in pavement joints.
-        vec2 shoulderUV=soilTurn*soilPoint/.89+vec2(.18,.42);
-        vec3 stoneTexel=texture2D(shoulderColor,shoulderUV).rgb;
-        float stoneLuma=dot(stoneTexel,vec3(.2126,.7152,.0722));
-        vec3 stoneDust=mix(grains*vec3(1.6,1.83,2.05),
-          mix(vec3(.37,.36,.31),vec3(.77,.73,.61),smoothstep(.08,.59,stoneLuma)),shoulderReady);
-        float shoulder=route*smoothstep(1.14,2.79,rutDist)*(1.-smoothstep(2.8,5.4,rutDist));
-        float silt=clamp(.10+.40*looseDust+.33*shoulder+.16*gravelMix-.31*compressed,.05,.83);
-        soil=diffuseColor.rgb*mix(earth,stoneDust,silt);
-        soil*=mix(vec3(.92,.87,.82),vec3(1.10,1.10,1.05),districts);
-        soil*=mix(vec3(.90,.95,.99),vec3(1.09,1.01,.88),clay);
-        float wash=soilNoise(swale*vec2(2.62,1.71)+7.9);
-        float dampClay=smoothstep(.38,.76,clay*.60+wash*.40)*(1.-.56*looseDust);
-        soil*=mix(vec3(1.02,1.00,.95),vec3(.74,.78,.79),dampClay*.64);
-        soil*=mix(.89,1.08,relief.r)*mix(1.,.68,compressed);
-        float washSilt=soilNoise(swale*vec2(.68,1.09)+vec2(-5.,12.));
-        float dustEdge=smoothstep(.38,.74,washSilt+.13*mottling)*looseDust;
-        soil*=mix(vec3(.85,.77,.67),vec3(1.18,1.18,1.13),smoothstep(.23,.69,washSilt));
-        soil*=1.+.18*dustEdge;
-        vec2 prints=soilPoint+vec2(.12*soilNoise(soilPoint*1.7),0.);
-        float alongTrack=mix(prints.y,-prints.x,approach);
-        float hoof=(1.-smoothstep(.36,.95,length(vec2(
-          (abs(track)-(.46+.09*sin(floor(alongTrack*2.27)*2.4)))/.069,
-          (fract(alongTrack*2.27+.24*step(0.,track))-.5)*5.4))))*route;
-        soil*=1.-.14*hoof*(.3+.7*compaction);
-        float grainWidth=max(length(dFdx(swale)),length(dFdy(swale)));
-        float gritMask=1.-smoothstep(.018,.077,grainWidth);
-        float fineGrit=soilNoise(swale*22.7+17.)*soilNoise(swale*31.6);
-        soil*=1.+(smoothstep(.23,.61,fineGrit)-.27)*(.26+.16*looseDust)*gritMask;
-        // Long streaks follow traffic, with gaps where loose dirt settles back in.
-        vec2 alongAcross=vec2(alongTrack,track);
-        float abrasion=soilNoise(alongAcross*vec2(3.1,31.)+vec2(19.,4.));
-        float wheelScrape=smoothstep(.42,.75,abrasion)*wheel*(.60+.40*washSilt)*gritMask;
-        float shoulderChips=smoothstep(.37,.72,mottling+.24*aggregate)
-          *smoothstep(.26,.68,gravelMix)*(1.-.71*tread);
-        soil*=mix(vec3(1.),vec3(.79,.81,.80),wheelScrape*.53);
-        soil=mix(soil,soil*vec3(.84,.89,.93)+stoneDust*.052,shoulderChips*.52);
-        soil*=mix(vec3(1.),vec3(1.10,1.09,1.04),looseDust);
-        // Aggregate collects in pockets outside the ruts. Grains in the ruts
-        // are embedded, while eroded shoulders expose coarser fractured clay.
-        vec2 clayCells=soilPoint*vec2(24.,29.)+vec2(11.7,3.4);
-        vec2 cell=floor(clayCells);
-        vec2 fragment=fract(clayCells)-.5;
-        fragment+=vec2(soilHash(cell)-.5,soilHash(cell+18.7)-.5)*.43;
-        float chip=1.-smoothstep(.16,.40,abs(fragment.x)+.72*abs(fragment.y));
-        float pocket=smoothstep(.49,.71,soilNoise(swale*vec2(2.8,4.2)+19.));
-        float exposed=(1.-.79*compressed)*(.28+.72*pocket)*gritMask;
-        float facet=mix(.60,1.32,smoothstep(-.065,.035,fragment.x+.52*fragment.y));
-        vec3 chipTint=mix(vec3(.42,.32,.24),stoneDust,soilHash(cell+12.9));
-        soil=mix(soil,diffuseColor.rgb*chipTint*facet,chip*exposed*.63);
-        vec2 marketLocal=mat2(.9982,.05996,-.05996,.9982)*(soilPoint-vec2(25.18,-25.65));
-        float gutterLine=2.78+.11*sin(marketLocal.y*.82)+.14*cos(marketLocal.y*.37);
-        float gutter=(1.-smoothstep(.074,.25,abs(abs(marketLocal.x)-gutterLine)))
-          *(1.-smoothstep(7.1,8.8,abs(marketLocal.y)));
-        soil*=mix(vec3(1.),vec3(.62,.70,.71),gutter);
-        vec3 unloadedEarth=diffuseColor.rgb*mix(vec3(.34,.26,.18),vec3(.68,.56,.42),districts*.67+mottling*.33);
-        unloadedEarth*=mix(1.,.71,max(compressed,gutter*.86));
-        ` : ""}
-        diffuseColor.rgb=mix(${street ? "unloadedEarth" : "diffuseColor.rgb*dust"},soil,finishReady);
-        ` : `diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);`}
+        diffuseColor.rgb=mix(diffuseColor.rgb,litSurface,finishReady*.81);
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         roughnessFactor=mix(roughnessFactor,max(.48,relief.g),finishReady*.91);
-        ${street ? "roughnessFactor=clamp(roughnessFactor+(.07+.12*looseDust-.24*compressed-.15*dampClay+.10*chip*exposed)*finishReady,.51,1.);" : ""}
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
-        vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
-        vec3 reliefVector=vec3(sy.x,0.,sy.y)*(finishWeight.y*.64);
-        ${floor ? `
-        vec2 grit=texture2D(finishNormal,finishUV.zx*2.13+vec2(.21,.47)).yx*2.-1.;
-        reliefVector=vec3(sy.x,0.,sy.y)*${street ? ".76" : ".44"}+vec3(grit.x,0.,grit.y)*${street ? ".18" : ".29"};
-        ` : ""}
-        ${street ? `
-        float bank=exp(-31.*rutCentre*rutCentre)*rutCentre*sign(track)*route;
-        vec2 crossSlope=mix(vec2(1.,-.08),vec2(0.,1.),approach);
-        vec2 aggregateNormal=(texture2D(finishNormal,aggregateUV).xy*2.-1.)*soilTurn;
-        reliefVector=mix(reliefVector,vec3(aggregateNormal.x,0.,aggregateNormal.y)*.68,gravelMix*.74);
-        vec2 stoneNormal=(texture2D(shoulderNormal,shoulderUV).xy*2.-1.)*soilTurn;
-        reliefVector=mix(reliefVector,vec3(stoneNormal.x,0.,stoneNormal.y)*.44,silt*shoulderReady);
-        reliefVector=reliefVector*(1.-.53*compressed)-vec3(crossSlope.x,0.,crossSlope.y)*bank*.91;
-        ` : ""}
-        ${floor ? "" : `
         vec2 sx=texture2D(finishNormal,finishUV.zy).xy*2.-1.;
+        vec2 sy=texture2D(finishNormal,finishUV.xz).xy*2.-1.;
         vec2 sz=texture2D(finishNormal,finishUV.xy).xy*2.-1.;
-        reliefVector+=vec3(0.,sx.y,sx.x)*(finishWeight.x*.73)
-                     +vec3(sz.x,sz.y,0.)*(finishWeight.z*.73);`}
+        vec3 reliefVector=vec3(0.,sx.y,sx.x)*(finishWeight.x*.73)
+          +vec3(sy.x,0.,sy.y)*(finishWeight.y*.64)
+          +vec3(sz.x,sz.y,0.)*(finishWeight.z*.73);
         normal=normalize(normal+mat3(viewMatrix)*reliefVector*finishReady);
       `);
     };
