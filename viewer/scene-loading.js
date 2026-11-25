@@ -199,6 +199,11 @@ export function showFirstFrame() {
   entered=true;
   front.hidden=true;
   document.body.classList.remove("scene-loading");
+  const url=new URL(location.href);
+  if(url.searchParams.has("_scene_retry")) {
+    url.searchParams.delete("_scene_retry");
+    history.replaceState(history.state,"",url);
+  }
   if(groups.front.tasks.some(task=>task.failed)) {
     document.querySelector("#status").textContent+=" · 部分画面素材加载失败";
   }
@@ -225,7 +230,7 @@ window.addEventListener("unhandledrejection",()=>{
   if(!entered && !failed) failScene("资源加载中断，请重试。");
 });
 setInterval(()=>{
-  if(!entered && !failed && !groups.front.tasks.length && performance.now()-started>5000) {
+  if(!entered && !failed && !front.dataset.moduleFailed && !groups.front.tasks.length && performance.now()-started>5000) {
     info.textContent="正在连接服务器，请稍候。";
   }
   paint();
