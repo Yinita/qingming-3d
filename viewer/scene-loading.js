@@ -76,7 +76,7 @@ function paint(now=performance.now()) {
 
 export async function loadSceneSizes() {
   try {
-    const response=await fetch("./scene-sizes.json?v=131",{signal:AbortSignal.timeout(12_000)});
+    const response=await fetch("./scene-sizes.json?v=135",{signal:AbortSignal.timeout(12_000)});
     if(!response.ok) return;
     for(const [path,size] of Object.entries(await response.json())) {
       sizes.set(new URL(path,location.href).href,size);

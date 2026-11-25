@@ -49,7 +49,16 @@ function robeVolume(theta,y) {
 }
 
 function robeClothGeometry(profile,segments) {
-  const geometry=fabric(profile,.70,.012,segments,0,robeVolume);
+  const upper=profile.slice(6);
+  const contour=segments<=32 ? upper : upper.flatMap((point,i)=>{
+    if(i===0) return [point];
+    const y=upper[i-1][1];
+    return [.25,.5,.75,1].map(t=>{
+      const sample=THREE.MathUtils.lerp(y,point[1],t);
+      return [robeRadius(profile,sample),sample];
+    });
+  });
+  const geometry=fabric(contour,.70,.012,segments,0,robeVolume);
   const position=geometry.attributes.position, colors=[];
   for(let i=0;i<position.count;i++) {
     const theta=Math.atan2(position.getX(i),position.getZ(i)/.70);
@@ -85,9 +94,20 @@ function fabric(points, depth, offset = 0, count = 32, foldOrigin = 0, folds=fol
 }
 
 function robeRadius(profile,y) {
+  y=Math.min(y,profile[profile.length-1][1]);
   const i=profile.findIndex(([,h],j)=>j>0 && y<=h);
   const [a,low]=profile[i-1], [b,high]=profile[i];
-  return THREE.MathUtils.lerp(a,b,(y-low)/(high-low));
+  const step=(y-low)/(high-low);
+  if(i<=6) return THREE.MathUtils.lerp(a,b,step);
+  const slope=(b-a)/(high-low);
+  const before=(a-profile[i-2][0])/(low-profile[i-2][1]);
+  const after=i+1===profile.length ? slope : (profile[i+1][0]-b)/(profile[i+1][1]-high);
+  // A monotone Hermite section gives the shoulder a continuous slope through
+  // each measurement without adding overshoot near the neckline.
+  const tangent=(first,second)=>first*second>0 ? 2*first*second/(first+second)*(high-low) : 0;
+  const smooth=step*step*(3-2*step);
+  return THREE.MathUtils.lerp(a,b,smooth)+step*(1-step)*
+    ((1-step)*tangent(before,slope)-step*tangent(slope,after));
 }
 
 function surfacePoint(profile,theta,y,standOff) {
@@ -156,7 +176,7 @@ function splitRobeSkirt(parent,profile,cloth,binding,lowDetail) {
   mount(edges,binding,"Folded robe edges");
 }
 
-function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
+function robeSeam(parent,profile,points,material,width,detail,standOff=.008,roll=0) {
   const course=new THREE.CatmullRomCurve3(points.map(([theta,y])=>new THREE.Vector3(theta,y,0)));
   const vertices=[],uv=[],indices=[];
   const rows=detail ? 28 : 14, columns=detail ? 6 : 4;
@@ -169,7 +189,8 @@ function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
       const v=col/columns;
       const spread=(v-.5)*width*taper;
       const y=point.y+direction.y*spread, theta=point.x+direction.x*spread/arcRadius;
-      vertices.push(...surfacePoint(profile,theta,y,standOff));
+      const rolled=roll*Math.sin(Math.PI*v)**.7*taper;
+      vertices.push(...surfacePoint(profile,theta,y,standOff+rolled));
       uv.push(t,v);
       if(row>0 && col>0) {
         const i=row*(columns+1)+col, upper=i-columns-1;
@@ -183,6 +204,46 @@ function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
   shape.setIndex(indices);
   shape.computeVertexNormals();
   piece(parent,shape,material,0,0,0).name="Fitted robe binding";
+}
+
+function robeStitches(parent,profile,points,thread,standOff) {
+  // Use metres along the seam so the visible gap stays even around its curve.
+  const course=new THREE.CatmullRomCurve3(points.map(([theta,y])=>new THREE.Vector3(theta*.22,y,0)));
+  const length=course.getLength();
+  const stitchCount=Math.floor(length/.009);
+  const position=[], index=[];
+  const point=new THREE.Vector3(), right=new THREE.Vector3(), radial=new THREE.Vector3();
+  const along=new THREE.Vector3(), at=new THREE.Vector3();
+  for(let stitch=0;stitch<stitchCount;stitch++) {
+    const first=position.length/3;
+    for(let row=0;row<3;row++) {
+      const t=(stitch+.17+.32*row)/stitchCount;
+      course.getPointAt(t,at);
+      const theta=at.x/.22;
+      point.set(...surfacePoint(profile,theta,at.y,standOff));
+      radial.set(point.x,0,point.z/.49).normalize();
+      course.getTangentAt(t,along);
+      along.z=-.70*Math.sin(theta)*along.x;
+      along.x*=Math.cos(theta);
+      right.crossVectors(along,radial).normalize();
+      const lift=.0012*Math.sin(row*Math.PI*.5);
+      for(let side=0;side<4;side++) {
+        const angle=side*Math.PI*.5;
+        const r=lift+.00054*Math.sin(angle), u=.00069*Math.cos(angle);
+        position.push(point.x+radial.x*r+right.x*u,point.y+right.y*u,point.z+radial.z*r+right.z*u);
+        if(!row) continue;
+        const a=first+row*4+side,b=first+row*4+(side+1)%4;
+        index.push(a-4,a,b-4,b-4,a,b);
+      }
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute("position",new THREE.Float32BufferAttribute(position,3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  const seam=piece(parent,geometry,thread,0,0,0);
+  seam.name="Running linen stitches";
+  seam.castShadow=false;
 }
 
 function sashKnot(parent,point,angle,linen,hem,detail) {
@@ -549,14 +610,17 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   contour.setAttribute("skinIndex",new THREE.BufferAttribute(indices,4));
   contour.setAttribute("skinWeight",new THREE.BufferAttribute(weights,4));
   if(corrective) {
-    // Restore circumference lost to linear blending near a folded elbow.
+    // Restore the elbow's volume, gathering the inner cloth and tensioning the outside.
     const expanded=positions.clone();
     const cuffHeight=profile[cuffRow][1];
     for(let i=0;i<positions.count;i++) {
       const y=positions.getY(i),x=positions.getX(i),z=positions.getZ(i);
       const band=Math.exp(-(((y-joint)/.063)**2))*THREE.MathUtils.smoothstep(y,cuffHeight,cuffHeight+.035);
-      const width=1+band*(.36+.058*Math.cos(y*109));
-      expanded.setXYZ(i,x*width,y,z*width);
+      const inside=clamp(z/.070,0,1), outside=clamp(-z/.070,0,1);
+      const crease=Math.cos((y-joint)*158+x*21);
+      const width=1+band*(.31+.065*outside+inside*(.044+.16*crease));
+      const bunch=band*inside*(.0059*Math.sin((y-joint)*158+x*21)-.14*(y-joint));
+      expanded.setXYZ(i,x*width,y+bunch,z*width);
     }
     const normals=contour.clone();
     normals.setAttribute("position",expanded);
@@ -847,27 +911,30 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     helper: [0xa9b69e, 0x788275, 0x58604a, 0xc1aa7c],
     resident: [0xfdf5e3, 0xaaa591, 0x6e6453, 0xc1aa86],
   }[role];
-  const cloth = surface("indigo-linen", shades[0], .40);
-  const bodyLinen = surface("indigo-linen", shades[0], .39);
-  const trousers = surface("indigo-linen", profile?.trousers??shades[1], .55);
+  const fitted=!profile && !lowDetail;
+  const linenId=fitted ? "rough-linen" : "indigo-linen";
+  const cloth = surface(linenId, shades[0], fitted ? .78 : .40);
+  const bodyLinen = surface(linenId, shades[0], fitted ? .67 : .39);
+  const trousers = surface(linenId, profile?.trousers??shades[1], fitted ? .61 : .55);
   bodyLinen.vertexColors=true;
   bodyLinen.side=THREE.DoubleSide;
   cloth.userData.streetCloth=bodyLinen.userData.streetCloth=role==="resident";
   const apronColor=role==="merchant" ? 0xc7a079 : market?.apron??profile?.apron;
-  const apronLinen=apronColor ? surface("indigo-linen",apronColor,.57) : null;
+  const apronLinen=apronColor ? surface(linenId,apronColor,.57) : null;
   const coatColor=market?.coat??profile?.coat;
-  const coatLinen=coatColor ? surface("indigo-linen",coatColor,.54) : null;
+  const coatLinen=coatColor ? surface(linenId,coatColor,.54) : null;
   for(const linen of [bodyLinen,cloth,trousers,apronLinen,coatLinen].filter(Boolean)) {
     linen.onBeforeCompile=shader=>{
       shader.fragmentShader=shader.fragmentShader.replace("#include <map_fragment>",`
         #ifdef USE_MAP
           vec3 weave=texture2D(map,vMapUv).rgb;
           float lightness=dot(weave,vec3(.2126,.7152,.0722));
-          float fiber=smoothstep(.029,.47,lightness);
-          diffuseColor.rgb*=mix(vec3(.43,.41,.37),vec3(.96,1.01,1.02),fiber);
+          ${fitted ? `float fiber=clamp(.57+1.33*(lightness-.426),.31,.91);
+          diffuseColor.rgb*=fiber*vec3(.99,.97,.93);` : `float fiber=smoothstep(.029,.47,lightness);
+          diffuseColor.rgb*=mix(vec3(.43,.41,.37),vec3(.96,1.01,1.02),fiber);`}
         #endif`);
     };
-    linen.customProgramCacheKey=()=>"dyed-woven-linen";
+    linen.customProgramCacheKey=()=>fitted ? "dyed-scanned-linen" : "dyed-woven-linen";
   }
   const binding = plain(profile?.binding??shades[2], .78);
   const dyed = plain(profile?.cord??shades[3], .79);
@@ -895,11 +962,11 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const robe=[[0,.606+hemOffset],[.263*skirt,.619+hemOffset],[.276*skirt,.66+hemOffset],
     [.269*skirt,.722+hemOffset*.73],[.255*skirt,.798+hemOffset*.42],
     [.239*garmentWaist,.88],[.225*garmentWaist,.95],[.229*garmentWaist,1.04],
-    [.238*shoulders,1.13],[.254*shoulders,1.207],[.257*shoulders,1.248],
-    [.224*shoulders,1.286],[.186*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
+    [.238*shoulders,1.13],[.251*shoulders,1.202],[.246*shoulders,1.246],
+    [.220*shoulders,1.286],[.178*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
   const garmentSections=lowDetail ? 14 : 32;
   const robeSegments=lowDetail ? 16 : 64;
-  piece(figure,robeClothGeometry(robe.slice(6),robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
+  piece(figure,robeClothGeometry(robe,robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
   splitRobeSkirt(figure,robe,bodyLinen,binding,lowDetail);
   if(lowDetail) {
     piece(figure,fabric([[.084,1.327],[.077,1.356],[.067,1.389],[.068,1.421],
@@ -916,9 +983,18 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const overlap=[[3.52,1.334],[3.36,1.303],[3.19,1.257],[2.93,1.218],
     [2.69,1.173],[2.47,1.109],[2.35,sashBottom+sashHeight*.77]];
   // A separate folded edge catches light where the cloth crosses the chest.
-  robeSeam(figure,robe,overlap,binding,lapel,detail,.015);
-  robeSeam(figure,robe,overlap.map(([theta,y])=>[theta-.045,y+.013]),
-    dyed,.007,detail,.019);
+  robeSeam(figure,robe,overlap,binding,lapel,detail,fitted ? .008 : .015,fitted ? .007 : 0);
+  const piping=overlap.map(([theta,y])=>[theta-.045,y+.013]);
+  robeSeam(figure,robe,piping,dyed,.007,detail,.019,fitted ? .002 : 0);
+  if(fitted) {
+    const thread=plain(new THREE.Color(shades[3]).multiplyScalar(.88),.96);
+    const facing=[1.340,1.347,1.357,1.361].map((y,i)=>[robeRadius(robe,y)+[.002,.005,.006,.001][i],y]);
+    piece(figure,fabric(facing,.70,.012,garmentSections,0,robeVolume),binding,0,0,0).name="Turned neckline facing";
+    robeStitches(figure,robe,overlap.map(([theta,y])=>[theta+.059,y-.009]),thread,.016);
+    const back=[[.078,1.314],[.056,1.253],[.027,1.17],[-.015,1.096],[-.021,1.008]];
+    robeSeam(figure,robe,back,binding,.013,true,.003,.003);
+    robeStitches(figure,robe,back,thread,.0075);
+  }
   robeSeam(figure,robe,[[2.53,1.335],[2.69,1.305],[2.86,1.264],[3.03,1.239]],
     dyed,.028,detail,.016);
   if(role==="player" || role==="helper" || (role==="resident" && variant===2)) {
@@ -1220,7 +1296,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   for (const side of [-1, 1]) {
     articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     const arm = new THREE.Group();
-    arm.position.set(side*.236*shoulders,1.228,.005);
+    arm.position.set(side*(fitted ? .228 : .236)*shoulders,1.228,.005);
     arm.scale.set(profile?.armWidth??1,profile?.sleeve??1,profile?.armWidth??1);
     // Hang the arm slightly away from the body so the hand clears the flared robe.
     arm.rotation.z=side*.11;

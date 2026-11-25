@@ -45,6 +45,17 @@
     "surface_map_size": 1024,
     "provenance": "authored procedural"
   },
+  "rough-linen": {
+    "metres": 0.3,
+    "albedo_size": 1536,
+    "normal_size": 1024,
+    "surface_map_size": 512,
+    "provenance": "Rough Linen photographed by colormass and processed by Rico Cilliers, neutralized and dyed per character",
+    "source": "https://polyhaven.com/a/rough_linen",
+    "source_resolution": 4096,
+    "license": "CC0-1.0",
+    "build": "tools/build_linen_textures.py"
+  },
   "worn-stone": {
     "metres": 1.25,
     "albedo_size": 2048,

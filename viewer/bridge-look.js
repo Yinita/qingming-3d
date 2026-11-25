@@ -21,6 +21,7 @@ const materialScale = {
   "gray-roof-tile": 2.4, "lime-plaster": 2.5, "indigo-linen": 1.0,
   "worn-stone": 1.25, "willow-bark": 1.7, "packed-earth": 2.4,
   "sandstone-approach": 2.0,
+  "rough-linen": .30,
 };
 
 export function createSurfaceLibrary() {
@@ -28,6 +29,7 @@ export function createSurfaceLibrary() {
     return loadSurfaceTexture(materialRoot + id + "/" + file).then(map => {
       if (srgb) map.colorSpace = THREE.SRGBColorSpace;
       map.wrapS = map.wrapT = THREE.RepeatWrapping;
+      if (id === "rough-linen") map.repeat.setScalar(1 / materialScale[id]);
       map.anisotropy = 8;
       return map;
     });
@@ -35,14 +37,14 @@ export function createSurfaceLibrary() {
 
   function maps(id) {
     if (!finishSets.has(id)) {
-      const format=id==="sandstone-approach" ? "webp" : "png";
+      const format=["sandstone-approach","rough-linen"].includes(id) ? "webp" : "png";
       finishSets.set(id, Promise.all([load(id, "basecolor.webp", true), load(id, "normal."+format), load(id, "orm."+format)]));
     }
     return finishSets.get(id);
   }
 
   function surface(id, color = 0xffffff, normalStrength = 1, roughnessFactor = 1) {
-    const mat = id === "indigo-linen" ? new THREE.MeshPhysicalMaterial({
+    const mat = id.endsWith("linen") ? new THREE.MeshPhysicalMaterial({
       color, roughness:.85, sheen:.27, sheenColor:0xcabc9e, sheenRoughness:.81,
     }) : new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0 });
     mat.userData.tileMetres = materialScale[id];
