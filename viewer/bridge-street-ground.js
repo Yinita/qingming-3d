@@ -368,8 +368,8 @@ export function buildStreetGround(root,origin,surface) {
         #endif`);
   };
   stone.customProgramCacheKey=()=>"weathered-street-paving-minerals";
-  const cells=new Map();
-  function addSurface(p,i,j,k) {
+  const pavingCells=new Map(), rootCells=new Map();
+  function addSurface(p,i,j,k,cells=pavingCells) {
     const ax=p[i], az=p[i+2], bx=p[j]-ax, bz=p[j+2]-az, cx=p[k]-ax, cz=p[k+2]-az;
     const determinant=bx*cz-bz*cx;
     if(Math.abs(determinant)<1e-6) return;
@@ -388,8 +388,8 @@ export function buildStreetGround(root,origin,surface) {
   for(const lane of lanes) root.add(...paving(lane,origin,stone,addSurface));
   root.add(roadsideGrass(origin));
   const streetworks=buildStreetworks(root,surface,streetSurfaceHeight,addSurface);
-  const height=(x,z)=>{
-    let y=streetSurfaceHeight(x,z);
+  function surfaceHeight(cells,x,z) {
+    let y=-Infinity;
     const candidates=cells.get(Math.floor(x)+":"+Math.floor(z));
     if(candidates) for(const t of candidates) {
       const dx=x-t.ax, dz=z-t.az;
@@ -398,7 +398,12 @@ export function buildStreetGround(root,origin,surface) {
       if(u>=0 && v>=0 && u+v<=1) y=Math.max(y,t.ay+u*t.by+v*t.cy);
     }
     return y;
-  };
+  }
+  const pavedHeight=(x,z)=>surfaceHeight(pavingCells,x,z);
+  const rootHeight=(x,z)=>surfaceHeight(rootCells,x,z);
+  const height=(x,z)=>Math.max(streetSurfaceHeight(x,z),pavedHeight(x,z),rootHeight(x,z));
+  height.addRootSurface=(position,a,b,c)=>addSurface(position,a,b,c,rootCells);
+  height.rootHeight=rootHeight;
   height.frontages=streetworks;
   return height;
 }

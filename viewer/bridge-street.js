@@ -1,3 +1,4 @@
+import { buildStreetTrees } from "./bridge-street-trees.js";
 import { buildLivingMarket } from "./bridge-market.js";
 import { buildStreetHouses,revisedHouseIds } from "./bridge-houses.js";
 import { buildLivestock } from "./bridge-livestock.js";
@@ -13,7 +14,6 @@ import { tileRoof } from "./bridge-architecture.js";
 
 const robes=[0x728778,0x9c795b,0x687e91,0x9f7058,0xbeb194,0x718064,0x766475,0x9a9485];
 const houseIds=new Set(["o0260","o0315","o0430","o0291","o0551"]);
-const reedsHue=0x6d7551;
 const standingY=1.68;
 
 function digits(object) {
@@ -447,69 +447,6 @@ function timberHouse(root,collisions,surface,x,z,w,d,story,shade) {
   collisions.box("house",x-w*.5,x+w*.5,z-d*.5,z+d*.5,0,eave+.65);
 }
 
-function trees(root,entries,surface,solids) {
-  const trunk=surface("willow-bark",0xb4aa8a,.76,.93);
-  const green=new THREE.MeshStandardMaterial({color:reedsHue,roughness:.98});
-  const crown=new THREE.IcosahedronGeometry(1,3);
-  const tips=crown.attributes.position;
-  for(let i=0;i<tips.count;i++){
-    const x=tips.getX(i), y=tips.getY(i), z=tips.getZ(i);
-    const silhouette=1+.086*Math.sin(x*11+z*4)*Math.sin(y*12-z*10)+.06*Math.sin(z*24+y*12);
-    tips.setXYZ(i,x*silhouette,y*silhouette,z*silhouette);
-  }
-  green.onBeforeCompile=shader=>{
-    shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec3 crownP;")
-      .replace("#include <begin_vertex>","#include <begin_vertex>\ncrownP=position;");
-    shader.fragmentShader=shader.fragmentShader.replace("#include <common>","#include <common>\nvarying vec3 crownP;")
-      .replace("#include <color_fragment>",`#include <color_fragment>
-        float fleck=sin(crownP.x*106.+crownP.z*71.)*sin(crownP.y*93.-crownP.z*93.);
-        float detail=1.-smoothstep(.21,.85,length(fwidth(crownP)*95.));
-        diffuseColor.rgb*=.93+fleck*.26*detail+.13*sin(crownP.y*17.+crownP.z*9.);`);
-  };
-  green.customProgramCacheKey=()=>"scattered-leaf-clusters";
-  const limb=new THREE.CylinderGeometry(.39,1,1,8);
-  const wood=new THREE.InstancedMesh(limb,trunk,entries.length*5);
-  const leaves=new THREE.InstancedMesh(crown,green,entries.length*9);
-  wood.name="Volumetric tree trunks";
-  leaves.name="Volumetric tree crowns";
-  wood.castShadow=wood.receiveShadow=true;
-  leaves.castShadow=leaves.receiveShadow=true;
-  const pose=new THREE.Object3D(), color=new THREE.Color(), direction=new THREE.Vector3(), up=new THREE.Vector3(0,1,0), point=new THREE.Vector3();
-  for(const [i,o] of entries.entries()) {
-    const h=Math.max(2.4,Math.min(8.6,o.h)), w=Math.max(1.4,Math.min(5.2,o.w))*.50;
-    const spin=digits(o)*1.872;
-    const y=o.y||0;
-    pose.position.set(o.x,y+h*.30,o.z);
-    const trunkWidth=Math.max(.11,w*.12);
-    pose.scale.set(trunkWidth,h*.61,trunkWidth);
-    pose.quaternion.identity();
-    pose.updateMatrix();
-    wood.setMatrixAt(i*5,pose.matrix);
-    solids.cylinder("tree",o.x,o.z,y,y+h*.75,trunkWidth);
-    for(let j=0;j<9;j++) {
-      const phi=spin+j*2.399963, extent=j===0 ? 0 : w*(.54+.17*Math.sin(j*7.8));
-      point.set(o.x+extent*Math.cos(phi),y+h*(.64+j*.033),o.z+extent*Math.sin(phi));
-      if(j>0 && j<5) {
-        pose.position.set(o.x,y+h*.38,o.z);
-        direction.copy(point).sub(pose.position);
-        pose.position.addScaledVector(direction,.5);
-        pose.quaternion.setFromUnitVectors(up,direction.clone().normalize());
-        pose.scale.set(trunkWidth*.43,direction.length(),trunkWidth*.43);
-        pose.updateMatrix();
-        wood.setMatrixAt(i*5+j,pose.matrix);
-      }
-      pose.position.copy(point);
-      pose.rotation.set(j*.38,phi,j*.24);
-      const size=w*(.34+.18*(.5+.5*Math.sin(1.3*j+spin)));
-      pose.scale.set(size,size*(1.08+.23*Math.cos(j*9)),size*.90);
-      pose.updateMatrix();
-      leaves.setMatrixAt(i*9+j,pose.matrix);
-      leaves.setColorAt(i*9+j,color.setScalar(.62+.36*(.5+.5*Math.sin(spin*7+j*8.4))));
-    }
-  }
-  root.add(wood,leaves);
-}
-
 function marketProps(root,entries,surface,solids,anchor,origin) {
   const wood=surface("tea-wood",0xb4a082,.68,.84);
   const shade=surface("indigo-linen",0xc0af83,.31,.95);
@@ -642,7 +579,10 @@ export function createStreetScene(scene,objects,anchor) {
   const bank=[[-74.28,1.52],[-69.75,2.18],[-47.35,2.0],[-44.95,2.56],[-40.20,2.05]];
   for(const [i,[x,z]] of bank.entries())
     people.push({x,z:z+anchor.z,y:0,yaw:1.26+i*.44,scale:.99,width:.88,robe:robes[(i+3)%robes.length],hatted:i%2===0,variant:(i+1)%4});
-  trees(root,treeObjects,surface,collisions);
+  const crowns=buildStreetTrees(root,treeObjects,surface,collisions,anchor,{
+    groundAt:(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)),
+    registerRoot:streetHeight.addRootSurface,
+  });
   const props=marketProps(root,objects,surface,collisions,anchor,origin);
   const buildings=[
     [-71.73,-51.41,5.81,3.42,2.86,0xe4cfaa],[-69.32,-62.85,5.24,3.08,2.62,0xdac5a4],
@@ -674,7 +614,8 @@ export function createStreetScene(scene,objects,anchor) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,livestock,housing,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,livestock,housing,
+    updateTrees:crowns.update,foliage:crowns.inspect,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
     trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};
 }

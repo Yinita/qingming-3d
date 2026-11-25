@@ -214,13 +214,15 @@
   "./bridge-people.js": "./bridge-people.js?v=122",
   "./bridge-head.js": "./bridge-head.js?v=117",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
-  "./bridge-street.js": "./bridge-street.js?v=122",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=121",
+  "./bridge-street.js": "./bridge-street.js?v=123",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=123",
   "./bridge-streetworks.js": "./bridge-streetworks.js?v=121",
   "./bridge-market.js": "./bridge-market.js?v=122",
   "./bridge-market-gesture.js": "./bridge-market-gesture.js?v=122",
   "./bridge-steamer.js": "./bridge-steamer.js?v=122",
-  "./bridge-touch.js": "./bridge-touch.js?v=122"
+  "./bridge-touch.js": "./bridge-touch.js?v=122",
+  "./bridge-street-trees.js": "./bridge-street-trees.js?v=123",
+  "./bridge-leaf-light.js": "./bridge-leaf-light.js?v=123"
 } }
 </script>
 </head>
@@ -690,6 +692,7 @@ renderer.setAnimationLoop(now => {
     applyWalk();
   }
   const camPos = cam.position;
+  if(street.root.visible) street.updateTrees(cam,now*.001);
   if(street.root.visible && !mission?.restartOpen) {
     const {x,y,z}=walk.pos;
     const observer=mode==="walk" ? {x,y:y-1.54,z} : mission?.livestockVisitor();
@@ -725,7 +728,7 @@ document.getElementById("status").textContent =
 window.__scene = { L, setMode, startFly, setModels,
   get models(){return [...models,...street.housing.models.values()];},
   renderer, scene, persp, orbit, walk, walkClear,
-  housing:street.housing.inspect, frontages:street.streetHeight.frontages,
+  housing:street.housing.inspect, foliage:street.foliage, frontages:street.streetHeight.frontages,
   livestock: street.livestock.inspect, market:street.market.inspect,
   mission: () => mission?.inspect(),
   waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect, streetHeight:street.streetHeight };
