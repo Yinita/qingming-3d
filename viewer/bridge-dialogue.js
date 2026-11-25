@@ -46,7 +46,7 @@ export function createMissionDialogue(contextAction) {
   panel.id="missionDialogue";
   panel.hidden=true;
   panel.innerHTML=`
-    <button id="missionContext" type="button" aria-keyshortcuts="E" hidden><kbd>E</kbd><span></span></button>
+    <button id="missionContext" type="button" aria-keyshortcuts="E" hidden><kbd class="mission-key" aria-hidden="true">E</kbd><span></span></button>
     <p id="missionCaption" role="status" hidden><b></b><span></span></p>`;
   document.body.appendChild(panel);
   const prompt=panel.querySelector("button"), label=prompt.querySelector("span");

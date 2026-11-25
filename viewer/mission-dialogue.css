@@ -8,14 +8,26 @@
 #missionDialogue {
   position: fixed;
   z-index: 7;
-  bottom: max(14px, env(safe-area-inset-bottom));
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
   display: grid;
   justify-items: center;
-  gap: 8px;
-  width: min(560px, calc(100vw - 28px));
+  gap: 10px;
+  width: min(760px, calc(100% - 32px));
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
   pointer-events: none;
+  isolation: isolate;
+}
+#missionDialogue:has(#missionCaption:not([hidden]))::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -25px auto 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: linear-gradient(to top, #17110bdf, #17110b9c 56%, transparent);
 }
 #missionDialogue[hidden], #missionDialogue [hidden] { display: none; }
 body.scene-loading #missionDialogue { visibility: hidden; }
@@ -28,31 +40,42 @@ body.scene-loading #missionDialogue { visibility: hidden; }
   pointer-events: auto;
   font: 600 14px/1.25 system-ui, sans-serif;
 }
-#missionContext kbd {
+.mission-key {
   display: inline-grid;
+  vertical-align: middle;
   place-items: center;
   width: 23px;
   height: 23px;
   margin-right: 8px;
   color: #47261b;
-  background: #f5dfb2;
+  background: #f9e7c2;
+  border: 1px solid #995e3e80;
   border-radius: 3px;
   font: 700 14px/1 system-ui, sans-serif;
 }
+.mission-key[hidden] { display: none; }
+#missionContext:focus-visible { outline: 2px solid #ffe0a2; outline-offset: 3px; }
 #missionCaption {
   box-sizing: border-box;
   max-width: 100%;
   margin: 0;
-  padding: 8px 16px 10px;
-  color: #fff2db;
-  background: #201714ed;
-  border-bottom: 2px solid #a27e5b;
-  font: 400 clamp(16px, 2vw, 22px)/1.45 "Qingming Caption Serif", "Songti SC", "SimSun", "Noto Serif CJK SC", "Noto Serif SC", serif;
+  padding: 0 8px;
+  color: #fff7e7;
+  font: 400 clamp(18px, 1.8vw, 24px)/1.45 "Qingming Caption Serif", "Songti SC", "SimSun", "Noto Serif CJK SC", "Noto Serif SC", serif;
   text-align: center;
+  text-wrap: balance;
+  text-shadow: 0 1px 2px #131008, 0 2px 8px #131008;
 }
-#missionCaption b { margin-right: .6em; color: #edc995; font-size: .78em; font-weight: 600; }
+#missionCaption b { margin-right: .7em; color: #f1d29c; font-size: .8em; font-weight: 600; white-space: nowrap; }
 @media (max-width:760px), (max-height:525px) {
   #missionHud { margin-bottom: var(--mission-dialogue-height, 0px); }
   #missionTouchPad:not([hidden]) { margin-bottom: var(--mission-dialogue-height, 0px); }
-  #missionCaption { padding: 7px 12px; }
+}
+@media (max-width:760px) and (orientation:portrait) {
+  body:has(#missionDialogue:not([hidden]) #missionCaption:not([hidden])) #missionHud:not(:focus-within) {
+    visibility: hidden;
+  }
+}
+@media (hover:none) and (pointer:coarse) {
+  .mission-key { display: none; }
 }

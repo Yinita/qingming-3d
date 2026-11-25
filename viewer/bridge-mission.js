@@ -364,8 +364,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <p id="missionIntroDetail"></p>
     <div id="missionIntroRoute"><span>1　桥头取箱</span><span aria-hidden="true">→</span><span>2　过桥交货</span></div>
     <div class="entry-actions">
-      <button id="missionBegin" type="button">开始送茶</button>
-      <button id="missionContinue" type="button" hidden>继续逛街</button>
+      <button id="missionBegin" type="button" aria-keyshortcuts="E"><kbd class="mission-key" aria-hidden="true">E</kbd><span>开始送茶</span></button>
+      <button id="missionContinue" type="button" aria-keyshortcuts="E" hidden><kbd class="mission-key" aria-hidden="true">E</kbd>继续逛街</button>
       <button id="missionIntroExit" type="button">返回画卷</button>
     </div>`;
   document.body.appendChild(intro);
@@ -375,6 +375,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const introTitle=intro.querySelector("#missionIntroTitle");
   const introDetail=intro.querySelector("#missionIntroDetail");
   const begin=intro.querySelector("#missionBegin");
+  const beginLabel=begin.querySelector("span"), beginKey=begin.querySelector("kbd");
   const notice=document.createElement("div");
   notice.id="missionNotice";
   notice.setAttribute("role","status");
@@ -862,7 +863,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       intro.dataset.state=briefing;
       introTitle.textContent=title;
       introDetail.textContent=detail;
-      begin.textContent=action;
+      beginLabel.textContent=action;
+      beginKey.hidden=briefing==="finished";
+      if(beginKey.hidden) begin.removeAttribute("aria-keyshortcuts");
+      else begin.setAttribute("aria-keyshortcuts","E");
       introduced=briefingKey;
     }
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
@@ -1327,7 +1331,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     marketGuideButton.setAttribute("aria-pressed",String(guideMarket));
     interactButton.textContent = state.phase === "carrying"
       ? (distance(player, counter) < deliveryReach ? "交给掌柜 E" : "放下茶箱 E") : "拿取茶箱 E";
-    interactButton.disabled = view !== "mission" || ferry.active() || awaitingStart() || ["delivered", "courier"].includes(state.phase) ||
+    interactButton.disabled = view !== "mission" || passengerCarrier() || awaitingStart() || ["delivered", "courier"].includes(state.phase) ||
       (state.phase === "waiting" && distance(player, state.crate) >= 1.9);
     hireButton.disabled = view !== "mission" || ferry.active() || awaitingStart() || state.phase !== "waiting" ||
       state.coins < TEA_QUEST.economy.courierFee || distance(player, pickup) > 3 || distance(state.crate, pickup) > .9;
@@ -1938,7 +1942,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   byId("missionExit").onclick = () => setMode("paint");
   journalButton.onclick=()=>{if(!awaitingStart()) journal.toggle(state);};
   window.addEventListener("keydown", e => {
-    if (!root.visible || restartDialog.open || e.repeat || e.defaultPrevented) return;
+    if (!root.visible || restartDialog.open || e.repeat || e.isComposing || e.defaultPrevented) return;
     if (e.code === "Escape" && !journal.panel.hidden) {
       journal.toggle(state,false);
       journalButton.focus({preventScroll:true});
@@ -1954,16 +1958,18 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       requestRestart(restartButton);
       return;
     }
+    if(view==="mission" && e.code==="KeyE" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      if(!intro.hidden) (continueButton.hidden ? begin : continueButton).click();
+      else dialogue.dispatch();
+      return;
+    }
     if(awaitingStart()) return;
     if(e.code==="KeyG") useFerry();
     if(e.code==="KeyB") buyOrClaimCake();
     if(e.code==="KeyI") showSteamer();
     if(e.code==="KeyH") shareCake();
     if(e.code==="Escape") cancelShare();
-    if (e.code==="KeyE" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      if(!dialogue.dispatch()) useCargo();
-    }
     if (e.code === "KeyP") greetAnimal();
     if (e.code === "KeyV") toggleCamera();
     if (e.code === "KeyJ") journal.toggle(state);
