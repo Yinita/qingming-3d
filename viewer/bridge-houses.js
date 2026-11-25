@@ -417,22 +417,27 @@ function joinerRoom(parent,city,materials) {
     pivot.updateMatrixWorld(true);
     gateSolid.x=x+at;
   }
+  function collides(at,actors) {
+    return actors.some(body=>{
+      if(!body.enabled || body.top<=gateSolid.bottom || body.bottom+.02>=gateSolid.top) return false;
+      return body.radius>0 ?
+        circleTouchesBox(body.x,body.z,body.radius,x+at,gateSolid.z,gateSolid.halfX,gateSolid.halfZ,0) :
+        rectanglesOverlap(x+at,gateSolid.z,gateSolid.halfX,gateSolid.halfZ,0,
+          body.x,body.z,body.halfX,body.halfZ,body.yaw);
+    });
+  }
   function update(dt,time,actors) {
-    if(Math.abs(target-position)>.0005) {
+    const clearance=position+THREE.MathUtils.clamp(target-position,-.037,.037);
+    // Require a clear margin after contact so irregular frame times cannot
+    // move the gate in tiny increments against the same stationary actor.
+    if(Math.abs(target-position)>.0005 && (!blocked || !collides(clearance,actors))) {
       const next=damp(position,target,6.2,dt);
       const parts=Math.max(1,Math.ceil(Math.abs(next-position)/.027));
       const from=position;
       blocked=false;
       for(let i=1;i<=parts;i++){
         const at=THREE.MathUtils.lerp(from,next,i/parts);
-        const hit=actors.some(body=>{
-          if(!body.enabled || body.top<=gateSolid.bottom || body.bottom+.02>=gateSolid.top) return false;
-          return body.radius>0 ?
-            circleTouchesBox(body.x,body.z,body.radius,x+at,gateSolid.z,gateSolid.halfX,gateSolid.halfZ,0) :
-            rectanglesOverlap(x+at,gateSolid.z,gateSolid.halfX,gateSolid.halfZ,0,
-              body.x,body.z,body.halfX,body.halfZ,body.yaw);
-        });
-        if(hit) {blocked=true;break;}
+        if(collides(at,actors)) {blocked=true;break;}
         setSlide(at);
       }
       if(!blocked && Math.abs(target-position)<.002) setSlide(target);
