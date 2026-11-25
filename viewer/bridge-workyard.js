@@ -151,7 +151,7 @@ function buildSled(group,spec,materials) {
   });
 }
 
-function endGrain() {
+export function woodEndGrain() {
   const canvas=document.createElement("canvas");
   canvas.width=canvas.height=128;
   const ctx=canvas.getContext("2d");
@@ -183,7 +183,7 @@ export function createWorkyard(parent,city,surface,floor,dry) {
     wood:surface("rail-wood",0xbc9473,.78,.93), raw:surface("tea-wood",0xddb994,.79,.96),
     dark:surface("rail-wood",0x795a42,.74,.90), stone:surface("worn-stone",0xad9b80,.61,.94),
     rope:standard(0x8e714d,.94),glaze:standard(0x687c69,.39),clay:standard(0xa26544,.72),
-    metal:standard(0x5e554a,.64,.27),endGrain:endGrain(),
+    metal:standard(0x5e554a,.64,.27),endGrain:woodEndGrain(),
   };
   const blockY=floor(bollard.x,bollard.z);
   const block=lathe(root,[[0,0],[.305,0],[.302,.08],[.255,.135],[.228,.29],[.210,.37],[.158,.425],[0,.425]],

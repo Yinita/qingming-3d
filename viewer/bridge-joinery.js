@@ -53,11 +53,19 @@ export function createJoinery(parent,city,surface,floor,worktop,timberReady,soun
     return add(group,detailedBox(w,h,d,material,round,(x+z)*3),material,x,y,z);
   }
 
-  const board=block(desk,hardwood,boardW,.054,boardL,x,.0324,0,.004);
+  const boardAssembly=new THREE.Group();
+  boardAssembly.name="West bank planed board";
+  function returnBoard() {
+    desk.add(boardAssembly);
+    boardAssembly.position.set(x,0,0);
+    boardAssembly.quaternion.identity();
+  }
+  returnBoard();
+  const board=block(boardAssembly,hardwood,boardW,.054,boardL,0,.0324,0,.004);
   board.name="Rough wooden blank";
   const surfaceGeometry=new THREE.PlaneGeometry(boardW-.002,boardL-.002,18,49);
   surfaceGeometry.rotateX(-Math.PI*.5);
-  const boardTop=add(desk,surfaceGeometry,timber,x,0,0);
+  const boardTop=add(boardAssembly,surfaceGeometry,timber);
   boardTop.name="Planed board surface";
   const points=surfaceGeometry.attributes.position;
   function rough(u,v) {
@@ -155,7 +163,8 @@ export function createJoinery(parent,city,surface,floor,worktop,timberReady,soun
     shavings.instanceMatrix.needsUpdate=true;
   }
   function parkTool() {
-    plane.position.set(x+.012,topAt(.435,mode==="done" ? 1 : 0),.432);
+    const atBench=boardAssembly.parent===desk;
+    plane.position.set(x+.012,atBench ? topAt(.435,mode==="done" ? 1 : 0) : .010,.432);
     plane.rotation.set(0,0,-.024);
   }
   function restore() {
@@ -264,6 +273,16 @@ export function createJoinery(parent,city,surface,floor,worktop,timberReady,soun
 
   return {
     use,frame,near,
+    returnBoard() {
+      returnBoard();
+      parkTool();
+    },
+    planed:()=>mode==="done",
+    moveBoard(holder) {
+      holder.attach(boardAssembly);
+      parkTool();
+      return boardAssembly;
+    },
     action() {
       if(mode==="working") return null;
       return mode==="done" ? "问木匠看成品 E" : timberReady() ? "请木匠刨板 E" : "问木匠 E";

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { buildStreetworks,pavedAprons,streetworksRelief } from "./bridge-streetworks.js";
 import { canalDepth, waterHeight } from "./bridge-canal-bed.js";
+import { backlaneRelief } from "./bridge-backlane.js";
 
 // Shallow stonework set into the dirt at the market and bridge approaches.
 const lanes=[
@@ -56,7 +57,7 @@ export function streetSurfaceHeight(x,z) {
     const ditch=Math.abs(across-drainSide(Math.sign(across)||1,along));
     height-=.034*(1-smoothstep(ditch,.065,.28))*(1-smoothstep(Math.abs(along),7.1,8.8));
   }
-  return height+streetworksRelief(x,z);
+  return height+streetworksRelief(x,z)+backlaneRelief(x,z);
 }
 
 export function createStreetTerrain(width,depth) {
@@ -71,7 +72,7 @@ export function createStreetTerrain(width,depth) {
     return axis;
   }
   const apronRanges=pavedAprons.map(({x,w})=>[x-w*.5-.5,x+w*.5+.5]);
-  const west=coordinates(-width/2-9,-width/2,[[-77,-74]]);
+  const west=coordinates(-width/2-9,-width/2,[[-78.35,-74]]);
   const xs=[...west.slice(0,-1),...coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges])];
   const zs=coordinates(-depth,0,[[-52,-14],[-14,-11]]);
   const position=[],uv=[],index=[];

@@ -230,9 +230,10 @@
   "./bridge-look.js": "./bridge-look.js?v=136",
   "./bridge-earth.js": "./bridge-earth.js?v=125",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-joinery.js": "./bridge-joinery.js?v=141",
-  "./bridge-workyard.js": "./bridge-workyard.js?v=141",
-  "./bridge-mission.js": "./bridge-mission.js?v=142",
+  "./bridge-joinery.js": "./bridge-joinery.js?v=143",
+  "./bridge-backlane.js": "./bridge-backlane.js?v=143",
+  "./bridge-workyard.js": "./bridge-workyard.js?v=143",
+  "./bridge-mission.js": "./bridge-mission.js?v=143",
   "./bridge-audio.js": "./bridge-audio.js?v=141",
   "./bridge-weather.js": "./bridge-weather.js?v=133",
   "./bridge-gait.js": "./bridge-gait.js?v=140",
@@ -247,7 +248,7 @@
   "./bridge-head.js": "./bridge-head.js?v=142",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
   "./bridge-street.js": "./bridge-street.js?v=131",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=138",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=143",
   "./bridge-foreground.js": "./bridge-foreground.js?v=131",
   "./bridge-boat.js": "./bridge-boat.js?v=124",
   "./bridge-consignment.js": "./bridge-consignment.js?v=128",
@@ -344,6 +345,7 @@ import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
 import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetScene } from "./bridge-street.js";
 import { createStreetTerrain } from "./bridge-street-ground.js";
+import { cutDrainApron } from "./bridge-backlane.js";
 import { createEarthMaterial } from "./bridge-earth.js";
 import { createSurfaceLibrary, setSurfaceTextureLoader } from "./bridge-look.js";
 import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js?v=136";
@@ -410,6 +412,7 @@ ground.userData.perspectiveMaterial=walkingGround;
 
 const apron = new THREE.Mesh(new THREE.PlaneGeometry(GW * 3, GD * 4), new THREE.MeshBasicMaterial({ color: 0xE3D9C3 }));
 apron.rotation.x = -Math.PI / 2; apron.position.set(0, -0.02, -GD / 2); scene.add(apron);
+const showDrainOpening=cutDrainApron(apron.material);
 
 // Cards: fixed ones face the painting's viewer (+Z); sprites turn to face the camera about Y.
 // offPainting: extras that exist only away from the painting view (cross cards, shadows), so the
@@ -584,6 +587,7 @@ function placeMissionCam() {
   missionCam.updateProjectionMatrix();
 }
 function setPaintingExact(on) {
+  showDrainOpening(mode==="mission");
   for (const e of offPainting) e.visible = !on;
   for (const card of trailCards) card.visible = mode !== "mission";
   street.root.visible=!on;
