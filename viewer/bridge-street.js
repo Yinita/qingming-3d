@@ -10,7 +10,7 @@ import { buildStreetGround } from "./bridge-street-ground.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
-import { flagstones, walkwayHeight, willowSites } from "./bridge-foreground.js";
+import { willowSites } from "./bridge-foreground.js";
 import { tileRoof } from "./bridge-architecture.js";
 
 const robes=[0x728778,0x9c795b,0x687e91,0x9f7058,0xbeb194,0x718064,0x766475,0x9a9485];
@@ -332,7 +332,7 @@ function placeResidents(entries,collisions,anchor,origin,streetHeight) {
       const step=attempt ? .44*Math.ceil(attempt/8) : 0;
       const angle=(attempt%8)*Math.PI*.25+resident.yaw;
       const x=resident.source.x+step*Math.cos(angle), z=resident.source.z+step*Math.sin(angle);
-      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,walkwayHeight(anchor,x,z),streetHeight(x,z));
+      const y=resident.bridge ? resident.source.y : Math.max(resident.source.y,streetHeight(x,z));
       if(!resident.bridge) {
         const along=x-anchor.x, across=Math.abs(z-anchor.z);
         if(along>-15.6 && along<20.1 && across<1.38+radius) continue;
@@ -448,7 +448,7 @@ function timberHouse(root,collisions,surface,x,z,w,d,story,shade) {
   collisions.box("house",x-w*.5,x+w*.5,z-d*.5,z+d*.5,0,eave+.65);
 }
 
-function marketProps(root,entries,surface,solids,anchor,origin) {
+function marketProps(root,entries,surface,solids,anchor,origin,streetHeight) {
   const wood=surface("tea-wood",0xb4a082,.68,.84);
   const shade=surface("indigo-linen",0xc0af83,.31,.95);
   const iron=new THREE.MeshStandardMaterial({color:0x5e574c,roughness:.76,metalness:.32});
@@ -507,7 +507,7 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
       for(const [,geometry] of parts) geometry.dispose();
       continue;
     }
-    const y=Math.max(o.y||0,walkwayHeight(anchor,x,z));
+    const y=Math.max(o.y||0,streetHeight(x,z));
     placement.position.set(x,y,z);
     placement.rotation.y=yaw;
     placement.scale.setScalar(size);
@@ -532,7 +532,7 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
   return count;
 }
 
-export function createStreetScene(scene,objects,anchor) {
+export function createStreetScene(scene,objects,anchor,terrain) {
   const surface=createSurfaceLibrary();
   const root=new THREE.Group(), collisions=createStreetCollision();
   root.name="Volumetric perspective streets";
@@ -543,7 +543,7 @@ export function createStreetScene(scene,objects,anchor) {
   root.add(bridge);
   buildWoodenBridge(bridge,anchor,surface);
   const origin=canalOrigin(anchor);
-  const streetHeight=buildStreetGround(root,origin,surface);
+  const streetHeight=buildStreetGround(root,origin,surface,anchor,terrain);
   const replacements=new Set();
   const people=[], treeObjects=[];
   const curb=bridgeRailOffset-.365;
@@ -580,11 +580,6 @@ export function createStreetScene(scene,objects,anchor) {
   const bank=[[-74.28,1.52],[-69.75,2.18],[-47.35,2.0],[-44.95,2.56],[-40.20,2.05]];
   for(const [i,[x,z]] of bank.entries())
     people.push({x,z:z+anchor.z,y:0,yaw:1.26+i*.44,scale:.99,width:.88,robe:robes[(i+3)%robes.length],hatted:i%2===0,variant:(i+1)%4});
-  const crowns=buildStreetTrees(root,treeObjects,surface,collisions,anchor,{
-    groundAt:(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)),
-    registerRoot:streetHeight.addRootSurface,
-  });
-  const props=marketProps(root,objects,surface,collisions,anchor,origin);
   const buildings=[
     [-71.73,-51.41,5.81,3.42,2.86,0xe4cfaa],[-69.32,-62.85,5.24,3.08,2.62,0xdac5a4],
     [-47.15,-55.44,5.75,3.79,2.97,0xead6b8],[-41.74,-56.44,5.15,3.62,2.82,0xe3caaa],
@@ -596,15 +591,19 @@ export function createStreetScene(scene,objects,anchor) {
     if(i===0) continue;
     timberHouse(root,collisions,surface,...spec);
     const [x,z,width,depth]=spec;
-    flagstones(root,x,z+depth*.5+.57,width*.79,.94,surface,4379+i*37,.27);
+    streetHeight.addThreshold(x,z+depth*.5+.57,width*.79,.94,4379+i*37);
   }
   const housing=buildStreetHouses(root,collisions,surface,objects);
+  const crowns=buildStreetTrees(root,treeObjects,surface,collisions,anchor,{
+    groundAt:streetHeight,
+    registerRoot:streetHeight.addRootSurface,
+  });
+  const props=marketProps(root,objects,surface,collisions,anchor,origin,streetHeight);
   const livestock=buildLivestock(root,collisions,objects,anchor,origin,streetHeight);
-  const groundAt=(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z));
-  const market=buildLivingMarket(root,collisions,surface,groundAt,origin);
+  const market=buildLivingMarket(root,collisions,surface,streetHeight,origin);
   const freight=createFreightCart(root,collisions,surface,streetHeight);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
-  const {sync:syncResidents,updateHeads}=residents(root,placed,surface,groundAt);
+  const {sync:syncResidents,updateHeads}=residents(root,placed,surface,streetHeight);
   function registerHouse(object) {
     const house=collisions.meshBox("existing house",object);
     for(const p of placed) {

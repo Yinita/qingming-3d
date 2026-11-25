@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { willowPosition, willowWind } from "./bridge-wind.js";
 import { canalDepth, canalOrigin, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { detailedBox, walkPath } from "./bridge-look.js";
 
 function seeded(seed) {
   let state = seed;
@@ -29,40 +28,6 @@ function tint(geometry, color) {
     colors[k + 2] = color.b;
   }
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-}
-
-export function flagstones(parent, x, z, width, depth, surface, seed, relief=1) {
-  const random = seeded(seed);
-  const mortar = surface("stone-paving", 0xaf9f84, .64);
-  const rock = surface("worn-stone", 0xf5eddf, .79);
-  rock.vertexColors = true;
-  const base = walkPath(width + .14, depth + .47, mortar);
-  base.position.set(x, relief<.5 ? -.005 : .006, z);
-  parent.add(base);
-  const stones = [];
-  let left = x - width / 2;
-  let row = 0;
-  while (left < x + width / 2 - .22) {
-    const w = Math.min(.47 + random() * .31, x + width / 2 - left);
-    const offset = depth / 2 + Math.sin(row++ * 1.41) * .15;
-    let bottom = z - offset;
-    while (bottom < z + offset - .18) {
-      const d = Math.min(.34 + random() * .35, z + offset - bottom);
-      const h = (.035 + random() * .025)*Math.max(.63,relief);
-      const block = detailedBox(w - .017, h, d - .017, rock, .017, random() * 11);
-      block.rotateY((random() - .5) * .033);
-      block.rotateX((random() - .5) * .040);
-      block.translate(left + w / 2, h / 2 + (relief<.5 ? -.015 : .003), bottom + d / 2);
-      const shade = .71 + random() * .23;
-      tint(block, new THREE.Color(shade, shade * (1 - random() * .07), shade * (.91 + random() * .07)));
-      stones.push(block);
-      bottom += d;
-    }
-    left += w;
-  }
-  const masonry = combine(stones, rock);
-  masonry.name = "Individual worn paving stones";
-  parent.add(masonry);
 }
 
 function limb(points, base, tip, random, metres) {
@@ -315,27 +280,10 @@ export function willowSites(center) {
   ];
 }
 
-const bridgeWalkways=[
-  [-72.64,0,6.24,2.84,1457],
-  [-43.68,-.29,9.58,3.29,835],
-];
-
-export function walkwayHeight(center,x,z) {
-  let height=0;
-  for(const [px,offset,width,depth] of bridgeWalkways) {
-    const edge=Math.min(width*.5-Math.abs(x-px),depth*.5-Math.abs(z-center.z-offset));
-    height=Math.max(height,.048*THREE.MathUtils.smoothstep(edge,0,.2));
-  }
-  return height;
-}
-
 export function buildForeground(parent, center, surface) {
   const foreground = new THREE.Group();
   foreground.name = "Bridge-head near field";
   parent.add(foreground);
-  for (const [x, offset, width, depth, seed] of bridgeWalkways) {
-    flagstones(foreground, x, center.z+offset, width, depth, surface, seed);
-  }
   const windTime = { value: 0 };
   bank(foreground, center, surface, windTime);
   const origin=canalOrigin(center);
@@ -345,7 +293,6 @@ export function buildForeground(parent, center, surface) {
     setVisible(visible) { foreground.visible = visible; },
     shedLeaf:canopies[0].release,
     inspect() { return { time: windTime.value, leafCounts: canopies.map(({ leaves }) => leaves.count) }; },
-    floor:(x,z)=>walkwayHeight(center,x,z),
     update(camera, time) {
       windTime.value = time;
       for (const { tree, leaves, highDetail, twigCount, recover } of canopies) {

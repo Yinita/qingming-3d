@@ -20,6 +20,7 @@ const materialScale = {
   "tea-wood": 1.4, "rail-wood": 2.0, "stone-paving": 3.8,
   "gray-roof-tile": 2.4, "lime-plaster": 2.5, "indigo-linen": 1.0,
   "worn-stone": 1.25, "willow-bark": 1.7, "packed-earth": 2.4,
+  "sandstone-approach": 2.0,
 };
 
 export function createSurfaceLibrary() {
@@ -34,7 +35,8 @@ export function createSurfaceLibrary() {
 
   function maps(id) {
     if (!finishSets.has(id)) {
-      finishSets.set(id, Promise.all([load(id, "basecolor.webp", true), load(id, "normal.png"), load(id, "orm.png")]));
+      const format=id==="sandstone-approach" ? "webp" : "png";
+      finishSets.set(id, Promise.all([load(id, "basecolor.webp", true), load(id, "normal."+format), load(id, "orm."+format)]));
     }
     return finishSets.get(id);
   }
@@ -212,38 +214,6 @@ export function buildWoodenBridge(group,center,surface) {
     group.add(model);
   }
   return piers;
-}
-
-export function walkPath(w, depth, mat) {
-  const size = 128;
-  const mask = document.createElement("canvas");
-  mask.width = mask.height = size;
-  const paint = mask.getContext("2d");
-  const coverage = paint.createImageData(size, size);
-  for (let j = 0; j < size; j++) {
-    for (let i = 0; i < size; i++) {
-      const e = Math.min(i, j, size - 1 - i, size - 1 - j);
-      const b = 3 * Math.sin(i * .47 + j * .28) + 2 * Math.sin(i * .15 - j * .31);
-      const a = THREE.MathUtils.smoothstep(e + b, 2, 13) * 255;
-      const offset = (j * size + i) * 4;
-      coverage.data.set([a, a, a, 255], offset);
-    }
-  }
-  paint.putImageData(coverage, 0, 0);
-  mat.alphaMap ||= new THREE.CanvasTexture(mask);
-  mat.alphaMap.channel = 1;
-  mat.transparent = true;
-  mat.alphaTest = .07;
-  const geometry = new THREE.PlaneGeometry(w, depth);
-  const uv = geometry.attributes.uv;
-  geometry.setAttribute("uv1", uv.clone());
-  for (let i = 0; i < uv.count; i++) {
-    uv.setXY(i, uv.getX(i) * w / mat.userData.tileMetres, uv.getY(i) * depth / mat.userData.tileMetres);
-  }
-  const model = new THREE.Mesh(geometry, mat);
-  model.rotation.x = -Math.PI / 2;
-  model.receiveShadow = true;
-  return model;
 }
 
 export function buildBridgeLook(parent, center, surface, ground, apron) {

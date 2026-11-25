@@ -204,7 +204,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return stallFloor.max.y;
     }
     const depth=depthAt(x,z);
-    const ground=Math.max(teaRoom.support(x,z),ferryDeckHeight(x,z),workshop.support(x,z),foreground.floor(x,z),
+    const ground=Math.max(teaRoom.support(x,z),ferryDeckHeight(x,z),workshop.support(x,z),
       depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }

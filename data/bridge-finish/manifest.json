@@ -17,6 +17,16 @@
     "surface_map_size": 1024,
     "provenance": "authored procedural"
   },
+  "sandstone-approach": {
+    "metres": 2.0,
+    "albedo_size": 1536,
+    "normal_size": 896,
+    "surface_map_size": 512,
+    "provenance": "Sandstone Cracks by Rob Tuytel, color-graded for the bridge approaches",
+    "source": "https://polyhaven.com/a/sandstone_cracks",
+    "license": "CC0-1.0",
+    "source_resolution": 4096
+  },
   "gray-roof-tile": {
     "metres": 2.4,
     "albedo_size": 2048,
