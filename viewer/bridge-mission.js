@@ -78,6 +78,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   scene.add(root);
   const city=street.collisions;
   const livestock=street.livestock;
+  const workshop=street.housing.workshop;
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
   const material = createSurfaceLibrary();
@@ -187,7 +188,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return stallFloor.max.y;
     }
     const depth=depthAt(x,z);
-    const ground=Math.max(foreground.floor(x,z),depth===0 ? street.streetHeight(x,z) : 0);
+    const ground=Math.max(workshop.support(x,z),foreground.floor(x,z),depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }
   function wadeDepth(x,z) {
@@ -267,6 +268,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionPebble" hidden title="朝向河面投掷小石子">投石 F</button>
       <button id="missionMooring" hidden>拉缆绳 R</button>
       <button id="missionAnimal" hidden type="button" aria-keyshortcuts="P">伸手 P</button>
+      <button id="missionWorkshop" hidden type="button" aria-keyshortcuts="E">拉开木格门 E</button>
     </div>
     <div class="mission-actions">
       <button id="missionScroll">查看任务画卷</button>
@@ -353,6 +355,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const pebbleButton = byId("missionPebble");
   const mooringButton=byId("missionMooring");
   const animalButton=byId("missionAnimal");
+  const workshopButton=byId("missionWorkshop");
 
   let state = loadSave();
   let previous = null;
@@ -378,6 +381,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const teaRotation = new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().lookAt(teaEye, teaFocus, camera.up));
   const player={...spawn};
+  const workshopVisitor={radius:workerRadius,enabled:true};
+  const boardCargo={radius:0,halfX:cargoWidth,halfZ:cargoDepth};
+  const gateObstacles=[workshopVisitor,boardCargo,looseCargo,courierSolid,merchantSolid,courierCargo];
   let bodyYaw=player.yaw, heading=player.yaw;
   function syncActors() {
     const hull=bridgeLook.hull;
@@ -401,7 +407,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canStep(x,z,radius=workerRadius,ignored=null,height=workerHeight,ignoredCargo=null) {
-    return walkable(x,z) && !city.blocking(x,z,floor(x,z),radius,height,ignored,ignoredCargo);
+    return (walkable(x,z) || Number.isFinite(workshop.support(x,z))) &&
+      !city.blocking(x,z,floor(x,z),radius,height,ignored,ignoredCargo);
   }
   const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
     const depth=bridgeLook.field.height(x,z,time)-y;
@@ -668,6 +675,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function restart() {
     livestock.cancel();
+    workshop.reset();
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
@@ -760,6 +768,27 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
 
+  function canUseWorkshop() {
+    return view==="mission" && !showStart && !restartDialog.open && state.phase!=="carrying" &&
+      !Number.isFinite(teaShotStart);
+  }
+
+  function showWorkshopAction() {
+    const label=canUseWorkshop() ? workshop.action(player) : null;
+    workshopButton.hidden=!label;
+    if(label && workshopButton.textContent!==label) workshopButton.textContent=label;
+  }
+
+  function useWorkshop() {
+    if(!canUseWorkshop()) return false;
+    const text=workshop.use(player);
+    if(!text) return false;
+    hint.textContent=text;
+    canvas.focus({preventScroll:true});
+    ui();
+    return true;
+  }
+
   function ui() {
     const {objective}=stageOf(state.phase);
     if(status.textContent!==objective) status.textContent=objective;
@@ -793,6 +822,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     pebbleButton.disabled = !aimStone();
     mooringButton.hidden=!byMooring();
     showAnimalAction();
+    showWorkshopAction();
     journal.update(state);
     labels.dataset.phase = state.phase;
     labels.dataset.wading = String(wading);
@@ -901,6 +931,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         input.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
       const v = pace * dt * drag / (Math.hypot(dx, dz) || 1);
       syncActors();
+      const feet=floor(player.x,player.z);
+      Object.assign(workshopVisitor,{x:player.x,z:player.z,bottom:feet,top:feet+workerHeight});
+      boardCargo.enabled=carrying;
+      if(carrying) {
+        const pose=cargoPose(player.x,player.z,feet+harnessHeight,bodyYaw);
+        Object.assign(boardCargo,pose,{bottom:pose.y,top:pose.y+cargoHeight});
+      }
+      workshop.update(dt,elapsed,gateObstacles);
       const oldX = player.x;
       const oldZ = player.z;
       sweepHorizontal(player,(fwd.x*dz+side.x*dx)*v,(fwd.z*dz+side.z*dx)*v,
@@ -955,7 +993,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       foreground.update(camera, elapsed);
     }
-    if(view==="mission") showAnimalAction();
+    if(view==="mission") {
+      showAnimalAction();
+      showWorkshopAction();
+    }
     const animalGesture=livestock.gesture(livestockVisitor());
     showGreetingArms(firstPerson && !!animalGesture);
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
@@ -1074,6 +1115,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   pebbleButton.onclick=tossStone;
   mooringButton.onclick=pullMooring;
   animalButton.onclick=greetAnimal;
+  workshopButton.onclick=useWorkshop;
   switchButton.onclick = toggleScroll;
   byId("missionUndo").onclick = undo;
   function requestRestart(trigger) {
@@ -1130,7 +1172,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return;
     }
     if(awaitingStart()) return;
-    if (e.code === "KeyE") useCargo();
+    if (e.code === "KeyE" && !useWorkshop()) useCargo();
     if (e.code === "KeyP") greetAnimal();
     if (e.code === "KeyV") toggleCamera();
     if (e.code === "KeyJ") journal.toggle(state);
@@ -1178,6 +1220,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
         bodyOverlap:city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
+      workshop:workshop.inspect(),
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }

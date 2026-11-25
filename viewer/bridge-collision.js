@@ -19,6 +19,16 @@ export function circleTouchesBox(x,z,radius,boxX,boxZ,halfX,halfZ,yaw) {
   return side*side+forward*forward<radius*radius;
 }
 
+export function rectanglesOverlap(x,z,halfX,halfZ,yaw,otherX,otherZ,otherHalfX,otherHalfZ,otherYaw) {
+  const dx=otherX-x,dz=otherZ-z;
+  const cos=Math.cos(yaw),sin=Math.sin(yaw),c=Math.cos(otherYaw),s=Math.sin(otherYaw);
+  const ac=Math.abs(Math.cos(yaw-otherYaw)),as=Math.abs(Math.sin(yaw-otherYaw));
+  return Math.abs(dx*c-dz*s)<=otherHalfX+ac*halfX+as*halfZ &&
+    Math.abs(dx*s+dz*c)<=otherHalfZ+as*halfX+ac*halfZ &&
+    Math.abs(dx*cos-dz*sin)<=halfX+ac*otherHalfX+as*otherHalfZ &&
+    Math.abs(dx*sin+dz*cos)<=halfZ+as*otherHalfX+ac*otherHalfZ;
+}
+
 export function createStreetCollision() {
   const solids=[];
   const ray=new Ray(), direction=new Vector3(), hit=new Vector3(), bounds=new Box3();
@@ -73,14 +83,8 @@ export function createStreetCollision() {
         continue;
       }
       const extentX=s.halfX ?? (s.maxX-s.minX)*.5, extentZ=s.halfZ ?? (s.maxZ-s.minZ)*.5;
-      const dx=(s.x ?? (s.minX+s.maxX)*.5)-x, dz=(s.z ?? (s.minZ+s.maxZ)*.5)-z;
-      const rotation=s.yaw||0, c=Math.cos(rotation), t=Math.sin(rotation);
-      const ac=Math.abs(Math.cos(yaw-rotation)), as=Math.abs(Math.sin(yaw-rotation));
-      if(Math.abs(dx*c-dz*t)>extentX+ac*halfX+as*halfZ ||
-         Math.abs(dx*t+dz*c)>extentZ+as*halfX+ac*halfZ) continue;
-      if(Math.abs(dx*cos-dz*sin)>halfX+ac*extentX+as*extentZ) continue;
-      if(Math.abs(dx*sin+dz*cos)>halfZ+as*extentX+ac*extentZ) continue;
-      return s;
+      if(rectanglesOverlap(x,z,halfX,halfZ,yaw,s.x ?? (s.minX+s.maxX)*.5,
+        s.z ?? (s.minZ+s.maxZ)*.5,extentX,extentZ,s.yaw||0)) return s;
     }
     return null;
   }

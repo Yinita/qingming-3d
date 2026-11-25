@@ -1,3 +1,4 @@
+import { buildStreetHouses,revisedHouseIds } from "./bridge-houses.js";
 import { buildLivestock } from "./bridge-livestock.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -574,7 +575,7 @@ export function createStreetScene(scene,objects,anchor) {
       if(o.id==="o0288" || o.id==="o0400") return;
       if(Math.abs(o.z-origin.y)<15 && canalDepth(origin,o.x,o.z)>.08) return;
       treeObjects.push(o);
-    } else if(houseIds.has(o.id) || ["cart","horse","donkey","ox","sedan chair","umbrella"].includes(o.label)) {
+    } else if(houseIds.has(o.id) || revisedHouseIds.has(o.id) || ["cart","horse","donkey","ox","sedan chair","umbrella"].includes(o.label)) {
       replacements.add(o.id);
     }
   });
@@ -596,10 +597,12 @@ export function createStreetScene(scene,objects,anchor) {
     [71.79,-57.14,5.87,3.21,2.49,0xe1cbaa],
   ];
   for(const [i,spec] of buildings.entries()) {
+    if(i===0) continue;
     timberHouse(root,collisions,surface,...spec);
     const [x,z,width,depth]=spec;
     flagstones(root,x,z+depth*.5+.57,width*.79,.94,surface,4379+i*37,.27);
   }
+  const housing=buildStreetHouses(root,collisions,surface,objects);
   const livestock=buildLivestock(root,collisions,objects,anchor,origin,streetHeight);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
   const syncResidents=residents(root,placed,surface,(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)));
@@ -614,7 +617,7 @@ export function createStreetScene(scene,objects,anchor) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,livestock,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,livestock,housing,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
     trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};
 }

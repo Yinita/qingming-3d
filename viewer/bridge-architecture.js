@@ -1,8 +1,9 @@
 import * as THREE from "three";
 
-export function tileRoof(parent,material,width,run,eave,centreZ,slope) {
-  const columns=Math.ceil(width/.218);
-  const rows=Math.ceil(run/.29);
+export function tileRoof(parent,material,width,run,eave,centreZ,slope,
+  {courseWidth=.218,courseLength=.29,segments=6}={}) {
+  const columns=Math.ceil(width/courseWidth);
+  const rows=Math.ceil(run/courseLength);
   const pitch=width/columns, length=run/rows;
   const positions=[], uvs=[], colours=[], indices=[];
   const {tileMetres}=material.userData;
@@ -11,7 +12,7 @@ export function tileRoof(parent,material,width,run,eave,centreZ,slope) {
   const level=distance=>eave+(run-distance)*slope+.129*(distance/run)**4;
 
   function tile(x,start,end,half,raised,side,shade) {
-    const base=positions.length/3, steps=6, stride=steps+1;
+    const base=positions.length/3, steps=segments, stride=steps+1;
     for(const underside of [0,1]) {
       for(const at of [start,end]) {
         for(let i=0;i<=steps;i++) {
@@ -62,6 +63,8 @@ export function tileRoof(parent,material,width,run,eave,centreZ,slope) {
   geometry.computeVertexNormals();
   const roof=new THREE.Mesh(geometry,material);
   roof.name="Curved ceramic roof tiles";
+  roof.userData.roofProfile={width,run,eave,centreZ,slope};
   roof.castShadow=roof.receiveShadow=true;
-  parent.add(roof);
+  parent?.add(roof);
+  return roof;
 }
