@@ -1,8 +1,9 @@
 import { MathUtils } from "three";
 
-export const legRig={separation:.109, hip:.717, upper:.351, lower:.326, ankle:.067};
-const {separation,hip,upper,lower,ankle:ankleHeight}=legRig;
+export const legRig={separation:.109, hip:.717, upper:.351, lower:.326, ankle:.067, heel:.070, toe:-.149};
+const {separation,hip,upper,lower,ankle:ankleHeight,heel,toe}=legRig;
 const angleDelta=(a,b)=>Math.atan2(Math.sin(b-a),Math.cos(b-a));
+const {clamp,damp,smoothstep}=MathUtils;
 
 // Advance ground velocity in metres per second. The collision sweep reports
 // actual movement back to the caller, so braking never stores force at a wall.
@@ -54,12 +55,35 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
     return [x,z];
   }
 
-  function update(dt,time,x,z,yaw,vx,vz,depth) {
+  function steer(dt,yaw,target,speed,laden) {
+    const delta=angleDelta(yaw,target), sign=Math.sign(delta);
+    if(!ready || !sign) return yaw;
+    const stride=smoothstep(speed,.12,1.3);
+    const maxTurn=MathUtils.lerp(laden ? 3.6 : 4.65,9.2,stride)*dt;
+    const limit=MathUtils.lerp(swing ? .58 : .32,.79,stride);
+    let advance=Math.min(Math.abs(delta)*(1-Math.exp(-16*dt)),maxTurn);
+    for(const [i,foot] of feet.entries()) {
+      if(swing?.index===i) continue;
+      advance=Math.min(advance,Math.max(0,limit-sign*angleDelta(foot.yaw,yaw)));
+    }
+    return yaw+sign*advance;
+  }
+
+  function update(dt,time,x,z,yaw,vx,vz,depth,targetYaw=yaw) {
     const speed=Math.hypot(vx,vz);
     const moving=speed>.14;
+    const turning=angleDelta(yaw,targetYaw);
+    // Start the next foothold toward the intended facing while the planted
+    // leg limits how far the pelvis may turn in this frame.
+    const footYaw=yaw+clamp(turning,-.73,.73);
+    const locomotion=smoothstep(speed,.1,2.75);
+    const ground=floor(x,z);
+    const grade=moving ? Math.abs(floor(x+.42*vx/speed,z+.42*vz/speed)-ground)/.42 : 0;
+    const incline=smoothstep(grade,.065,.32);
+    const strideReach=.424+.021*locomotion-.047*incline;
     if (!ready) {
       ready=true;
-      height=floor(x,z);
+      height=ground;
       for (const foot of feet) {
         [foot.x,foot.z]=nominal(foot,x,z,yaw);
         foot.y=floor(foot.x,foot.z);
@@ -72,19 +96,40 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
     for(const [i,foot] of feet.entries()) {
       if(swing?.index===i) continue;
       foot.plantAge+=dt;
-      foot.pitch=MathUtils.damp(foot.pitch,0,36,dt);
+      const sin=Math.sin(foot.yaw),cos=Math.cos(foot.yaw);
+      const ahead=-(x-foot.x)*sin-(z-foot.z)*cos;
+      const along=-(vx*sin+vz*cos);
+      const direction=Math.sign(along);
+      const pushOff=moving && swing && !swing.pivot ? direction*smoothstep(Math.abs(along),.26,.9)*
+        smoothstep(ahead*direction,.072,.32)*smoothstep(foot.plantAge,.065,.195)*(.30+.075*incline) : 0;
+      foot.pitch=damp(foot.pitch,-pushOff,pushOff ? 18 : 36,dt);
     }
     if (swing) {
       const foot=feet[swing.index];
-      swing.age+=dt;
+      const support=feet[1-swing.index];
+      const launchSpeed=Math.hypot(swing.velocityX,swing.velocityZ);
+      const redirect=speed>.19 && vx*swing.velocityX+vz*swing.velocityZ<.46*speed*launchSpeed;
+      const stopping=speed<.16 && launchSpeed>.55;
+      let rate=1;
+      if(moving) {
+        const dx=x-support.x, dz=z-support.z;
+        const along=(dx*vx+dz*vz)/speed;
+        const side2=Math.max(0,dx*dx+dz*dz-along*along);
+        const until=(Math.sqrt(Math.max(0,strideReach**2-side2))-along)/speed;
+        // On acceleration or a sharp turn, finish the swing before the
+        // trailing leg reaches full extension and drags the planted shoe.
+        rate=clamp((swing.duration-swing.age)/Math.max(.048,until),redirect ? 1.24 : 1,3.8);
+      }
+      swing.age+=dt*rate;
       const t=Math.min(1,swing.age/swing.duration);
-      if (t<.73) {
-        const anticipation=swing.duration*(1.36-t);
-        const [px,pz]=destination(foot,x,z,yaw,vx,vz,anticipation);
-        swing.toX=MathUtils.damp(swing.toX,px,17,dt);
-        swing.toZ=MathUtils.damp(swing.toZ,pz,17,dt);
+      if (t<.73 || (swing.pivot || redirect || stopping) && t<.90) {
+        const anticipation=Math.max(moving ? .084 : 0,swing.duration*(1.34-t)/rate);
+        const [px,pz]=destination(foot,x,z,footYaw,vx,vz,anticipation);
+        const correction=redirect || stopping ? 25 : 17;
+        swing.toX=damp(swing.toX,px,correction,dt);
+        swing.toZ=damp(swing.toZ,pz,correction,dt);
         swing.toY=floor(swing.toX,swing.toZ);
-        swing.targetYaw=yaw;
+        swing.targetYaw=footYaw;
       }
       const step=MathUtils.smoothstep(t,0,1);
       foot.x=MathUtils.lerp(swing.fromX,swing.toX,step);
@@ -103,7 +148,10 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
         foot.plantAge=0;
         cadence+=Math.PI;
         landings++;
-        const wet=touchdown(foot.x,foot.y,foot.z,time,swing.velocityX,swing.velocityZ,foot);
+        const shuffle=swing.pivot ? .49/swing.duration : 0;
+        const impactX=swing.velocityX+shuffle*(foot.x-swing.fromX);
+        const impactZ=swing.velocityZ+shuffle*(foot.z-swing.fromZ);
+        const wet=touchdown(foot.x,foot.y,foot.z,time,impactX,impactZ,foot);
         if(wet) wetLandings++;
         last={ foot:swing.index,x:foot.x,y:foot.y,z:foot.z,time,wet };
         next=1-swing.index;
@@ -111,33 +159,32 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
         swing=null;
       }
     }
-    if (!swing && pause<=0) {
+    if (!swing && (pause<=0 || moving && feet.some(foot=>Math.hypot(foot.x-x,foot.z-z)>strideReach*.92))) {
       const feetOffset=feet.map(foot=>{
-        const [fx,fz]=nominal(foot,x,z,yaw);
-        return Math.hypot(fx-foot.x,fz-foot.z)+.12*Math.abs(angleDelta(foot.yaw,yaw));
+        const [fx,fz]=nominal(foot,x,z,footYaw);
+        return Math.hypot(fx-foot.x,fz-foot.z)+.12*Math.abs(angleDelta(foot.yaw,footYaw));
       });
-      const shouldMove=Math.max(...feetOffset)>(moving ? .037 : .125);
+      const pivot=!moving && (Math.abs(turning)>.31 || feet.some(foot=>Math.abs(angleDelta(foot.yaw,targetYaw))>.37));
+      const shouldMove=Math.max(...feetOffset)>(moving ? .037 : pivot ? .049 : .117);
       if (shouldMove) {
-        const index=feetOffset[next]>(moving ? .029 : .069) ? next : 1-next;
+        const stretched=moving ? feet.findIndex(foot=>Math.hypot(foot.x-x,foot.z-z)>strideReach*.89) : -1;
+        const index=stretched>=0 ? stretched : feetOffset[next]>(moving ? .029 : pivot ? .040 : .069) ? next : 1-next;
         const foot=feet[index], support=feet[1-index];
         const inWater=MathUtils.smoothstep(depth,.015,.48);
         const run=MathUtils.smoothstep(speed,1.72,3.42);
-        const grade=moving ? Math.abs(floor(x+.42*vx/speed,z+.42*vz/speed)-floor(x,z))/.42 : 0;
-        const incline=MathUtils.smoothstep(grade,.065,.32);
-        let duration=.24, exchange=.029;
+        let duration=pivot ? .218 : .24, exchange=pivot ? .018 : .029;
         const direction=vx*Math.sin(yaw)+vz*Math.cos(yaw)>0 ? -1 : 1;
         if (moving) {
           exchange=.037*(1-run)*(1-.52*incline);
           const natural=MathUtils.lerp(.348,.174,run)*(1-.24*incline)+.040*inWater;
           const lead=((support.x-x)*vx+(support.z-z)*vz)/speed;
-          const reach=.39+.11*run-.055*incline;
-          duration=MathUtils.clamp((lead+reach)/speed-exchange,.115,natural);
+          duration=MathUtils.clamp((lead+strideReach)/speed-exchange,.088,natural);
         }
-        const [toX,toZ]=destination(foot,x,z,yaw,vx,vz,duration*1.36);
+        const [toX,toZ]=destination(foot,x,z,footYaw,vx,vz,duration*1.34);
         const stride=Math.hypot(toX-foot.x,toZ-foot.z);
         swing={ index,age:0,fromX:foot.x,fromY:foot.y,fromZ:foot.z,
-          toX,toY:floor(toX,toZ),toZ,yaw:foot.yaw,targetYaw:yaw,duration,
-          clearance:.030+.071*Math.min(stride,.67)+.053*inWater,
+          toX,toY:floor(toX,toZ),toZ,yaw:foot.yaw,targetYaw:footYaw,duration,pivot,
+          clearance:(pivot ? .023 : .030)+.071*Math.min(stride,.67)+.053*inWater,
           pitch:foot.pitch,release:moving ? -direction*(.23+.18*run) : 0,
           clearPitch:moving ? .12*direction : 0,
           contact:moving ? direction*(.21-.085*run)*(1-.61*inWater) : 0,exchange,
@@ -147,13 +194,16 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
     const motion=MathUtils.smoothstep(speed,.10,.92);
     const amount=swing ? Math.sin(Math.PI*Math.min(1,swing.age/swing.duration)) : 0;
     rise=MathUtils.damp(rise,(-.025+.027*amount)*motion,13,dt);
-    const ground=floor(x,z);
     let bound=Infinity;
     for (const [i,foot] of feet.entries()) {
       if (swing?.index===i) continue;
       const [hipX,hipZ]=nominal(foot,x,z,yaw);
-      const reach=Math.hypot(foot.x-hipX,foot.z-hipZ)+.076*Math.abs(foot.pitch);
-      const upperBound=foot.y+ankleHeight+Math.sqrt(Math.max(.06,(upper+lower-.026)**2-reach*reach))-hip;
+      const contact=foot.pitch>=0 ? heel : toe;
+      const sin=Math.sin(foot.pitch),cos=Math.cos(foot.pitch);
+      const ankleShift=contact*(1-cos)+ankleHeight*sin;
+      const ankleLift=ankleHeight*(cos-1)+contact*sin;
+      const reach=Math.hypot(foot.x+ankleShift*Math.sin(foot.yaw)-hipX,foot.z+ankleShift*Math.cos(foot.yaw)-hipZ);
+      const upperBound=foot.y+ankleHeight+ankleLift+Math.sqrt(Math.max(.012,(upper+lower-.029)**2-reach*reach))-hip;
       bound=Math.min(bound,upperBound);
     }
     // The pelvis leaves a low support gradually after the other boot takes the load.
@@ -162,7 +212,8 @@ export function createGroundedGait(floor,stepAllowed,touchdown) {
   }
 
   return {
-    update,rootHeight:(x,z)=>ready ? height : floor(x,z),feet,
+    update,steer,rootHeight:(x,z)=>ready ? height : floor(x,z),feet,
+    pivotLean:()=>swing?.pivot ? .115*feet[1-swing.index].side*Math.sin(Math.PI*swing.age/swing.duration) : 0,
     reset() { ready=false; swing=null; next=0; cadence=0; rise=0; pause=0; landings=wetLandings=0; last=null; },
     phase:()=>cadence+(swing ? Math.PI*Math.min(1,swing.age/swing.duration) : 0),
     inspect:()=>({ feet:feet.map((foot,i)=>({...foot,planted:swing?.index!==i})),landings,wetLandings,last }),

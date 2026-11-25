@@ -529,7 +529,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const fwd = new THREE.Vector3();
   const side = new THREE.Vector3();
   const streetVelocity=new THREE.Vector2();
-  const weightShift={side:0,forward:0};
+  const weightShift={side:0,forward:0,plant:0,twist:0};
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
   let boomLength=3.2, cameraObstacle=null, cameraClose=false;
   const peekTarget=new THREE.Vector2();
@@ -1530,7 +1530,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function clearStreetMotion() {
     streetVelocity.set(0,0);
-    weightShift.side=weightShift.forward=0;
+    weightShift.side=weightShift.forward=weightShift.plant=weightShift.twist=0;
   }
 
   function clearPlayerControl() {
@@ -1698,13 +1698,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         weightShift.forward=damp(weightShift.forward,clamp((-ax*sin-az*cos)*.010,-.095,.095),12,dt);
       }
       if(shareYaw!==null) heading=shareYaw;
-      const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
-      const nextYaw=bodyYaw+turn*(1-Math.exp(-(walking ? 17 : 6)*dt));
       if(aboard) bodyYaw=carrier.rider.facing;
       else if(chairBefore) bodyYaw=teaRoom.chair.yaw;
       else {
-        if(!cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
-        gait.update(dt,elapsed,player.x,player.z,bodyYaw,vx,vz,depth);
+        const {clamp,damp}=THREE.MathUtils;
+        const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
+        const target=!carrying || !cargoCollision(player.x,player.z,bodyYaw+clamp(turn,-.14,.14)) ? heading : bodyYaw;
+        const previousYaw=bodyYaw;
+        const nextYaw=gait.steer(dt,bodyYaw,target,Math.hypot(vx,vz),carrying);
+        if(!carrying || !cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
+        gait.update(dt,elapsed,player.x,player.z,bodyYaw,vx,vz,depth,target);
+        weightShift.plant=damp(weightShift.plant,gait.pivotLean(),16,dt);
+        const lead=clamp(turn*.11,-.17,.17);
+        const counter=clamp((bodyYaw-previousYaw)/dt*.022,-.11,.11);
+        weightShift.twist=damp(weightShift.twist,(lead-counter)*(carrying ? .44 : .88),13,dt);
       }
       const y=aboard ? carrier.rider.y : chairBefore ? teaRoom.chair.y : floor(player.x,player.z);
       const indoors=teaRoom.contains(player.x,player.z);

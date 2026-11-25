@@ -1427,7 +1427,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
           .multiply(heading.setFromAxisAngle(up,foot.yaw-yaw));
         const pitch=foot.pitch || 0;
         leg.ankle.quaternion.copy(flat).multiply(rock.setFromAxisAngle(pitchAxis,pitch));
-        pivot.set(0,-ankle,pitch>=0 ? .070 : -.149);
+        pivot.set(0,-ankle,pitch>=0 ? legRig.heel : legRig.toe);
         flatPivot.copy(pivot).applyQuaternion(flat);
         anklePoint.add(flatPivot.sub(pivot.applyQuaternion(leg.ankle.quaternion)));
         let lift=0;
@@ -1499,9 +1499,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     carryWeight=THREE.MathUtils.damp(carryWeight,Number(carrying),15,dt);
     const balance=effort*(1-.65*carryWeight);
     if(torso!==figure) {
-      const roll=shift?.side??0,pitch=shift?.forward??0;
+      const roll=(shift?.side??0)+(shift?.plant??0),pitch=shift?.forward??0;
       torsoPivot.position.x=.014*balance*Math.sin(phase)+.065*roll;
-      torsoPivot.rotation.set(-effort*(.033+.032*carryWeight)-pitch,.064*balance*Math.sin(phase+.32),
+      torsoPivot.rotation.set(-effort*(.033+.032*carryWeight)-pitch,.064*balance*Math.sin(phase+.32)+(shift?.twist??0),
         .043*balance*Math.sin(phase-.21)-roll,"YXZ");
       head.rotation.z=-.029*balance*Math.sin(phase-.21)+.54*roll;
       head.rotation.x=.013*effort*Math.sin(phase*2+.45)+.55*pitch;
