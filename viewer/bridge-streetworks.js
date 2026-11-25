@@ -134,6 +134,17 @@ function slab(data,random,box,support,shade,register,{cut=false,chip=false}={}) 
   }
 }
 
+export function buildFlagstoneWalk(root,surface,stones,register) {
+  const material=surface("worn-stone",0xffeee0,1.14,.94);
+  material.vertexColors=true;
+  const data=meshData(), random=seeded(7012);
+  for(const stone of stones) {
+    slab(data,random,stone,()=>stone.y,stone.chip ? .83 : .99+random()*.07,register,
+      {chip:stone.chip});
+  }
+  root.add(createMesh(data,material,"Worn flagstones and broken edges in the timber court"));
+}
+
 function draining(data,random,a,height,register) {
   const start=a.x-a.w*.5, stop=a.x+a.w*.5;
   const supply=(x,z)=>height(x,z)+.015+.014*clamp((x-start)/a.w,0,1);

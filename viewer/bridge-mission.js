@@ -226,7 +226,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const consignment=buildConsignment(root,city,material,freight);
   const yard=createWorkyard(root,city,material,floor,(x,z)=>walkable(x,z) && depthAt(x,z)===0);
   const joinery=createJoinery(root,city,material,floor,workshop.worktop,yard.timberReady,audio.scrape);
-  backlane=createBacklane(root,city,material,joinery,audio.scrape);
+  backlane=createBacklane(root,city,material,joinery,audio.scrape,street.streetHeight.registerPavedSurface);
   const yardGrip=new THREE.Vector3(),yardFrame=new THREE.Quaternion();
   const standByYard=(x,z,solid)=>canStep(x,z,workerRadius,solid);
   function wadeDepth(x,z) {
@@ -471,7 +471,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let restartTrigger;
   let noticeTimer, hasRestarted=false;
   let firstPerson = false;
-  let activeLens=58;
+  let activeLens=58, sawFraming=0;
   let teaShotStart = -Infinity;
   let lastPrepare = 0;
   let pullTime=-Infinity;
@@ -584,6 +584,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const toDrain=view==="mission" && !showStart && !restartDialog.open && backlane.carrying();
     if(guideCourt && player.x<-78.70) guideCourt=false;
     const toCourt=view==="mission" && guideCourt && !restartDialog.open;
+    const toSaw=view==="mission" && !showStart ? backlane.sawGuide(player) : null;
     if(guideYard && yard.near(player)) guideYard=false;
     const toYard=view==="mission" && !showStart && !restartDialog.open && guideYard && !hasCargo();
     const atMarket=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
@@ -603,7 +604,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const stop=ferry.stands[0];
     const atDock=toDock && ferry.nearby(player)>=0;
     groundMarker.visible=view==="mission" && !restartDialog.open && !yard.active() && !atDock &&
-      !backlane.fitting() && (toDrain || toCourt || phase!=="delivered" || atMarket || atRoom || toFreight || toYard);
+      !backlane.locked() && (toDrain || toCourt || toSaw || phase!=="delivered" || atMarket || atRoom || toFreight || toYard);
     beacon.visible=groundMarker.visible;
     const pending=phase==="waiting" && !state.started;
     startPillar.visible=beacon.visible && pending;
@@ -614,14 +615,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const freightAim=toFreight ? freightGoal() : null;
     const aroundFence=toDrain && player.x>-75.39 && player.z<-42.1;
     const at=toDrain ? (aroundFence ? {x:-74.42,z:drainBridgeApproach.z} : drainBridgeApproach) :
-      toCourt ? {x:-79.2,z:drainBridgeApproach.z} :
-      toYard ? workyardEntry : freightAim?.point??(atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
-      phase==="waiting" ? state.crate : counter);
-    const x=at.x, z=at.z+(toDrain || toCourt || toYard || phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
+      toCourt ? {x:-79.2,z:drainBridgeApproach.z} : toSaw ??
+      (toYard ? workyardEntry : freightAim?.point??(atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
+      phase==="waiting" ? state.crate : counter));
+    const x=at.x, z=at.z+(toDrain || toCourt || toSaw || toYard || phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
     markerGold.material.color.setHex(atMarket ? 0xcbd49b : state.started ? 0xefd99a : 0xffc863);
-    const hover=y+(phase==="waiting" ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
+    const hover=y+(phase==="waiting" || toSaw ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
     if(startPillar.visible) {
       const bottom=y+.26, top=hover-.23;
@@ -656,7 +657,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" :
+    const target=toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" : toSaw ? "锯台" :
       toYard ? "西岸料场" : freightAim?.label??(atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
       phase==="waiting" ? "取茶叶箱" : "茶铺 · 交货处");
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
@@ -875,6 +876,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     journal.toggle(state,false);
     previous=null;
     firstPerson=false;
+    sawFraming=0;
     deliveryTime=-10;
     pullTime=-Infinity;
     wading=false;
@@ -1235,7 +1237,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view!=="mission" || awaitingStart() || restartDialog.open || !journal.panel.hidden) return null;
     if(Number.isFinite(teaShotStart)) return teaButton;
     if(yard.active()) return yardButton;
-    if(freightTransfer || backlane.fitting()) return null;
+    if(freightTransfer || backlane.locked()) return null;
     if(freight.active()) return !freightButton.hidden ? freightButton : null;
     if(teaRoom.chairActive()) return !roomTeaButton.hidden ? roomTeaButton : !seatButton.hidden ? seatButton : null;
     const visibleCrate=!interactButton.disabled && (state.phase==="waiting" || distance(player,counter)<deliveryReach);
@@ -1702,16 +1704,24 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     let walking = false;
     stones.update(elapsed);
     if (view === "mission") {
-      if(backlane.update(dt,camera,bodyYaw)) {
-        guideCourt=true;
-        hint.textContent="小桥已修好。过桥可进西岸木料后院。";
+      const courtEvent=backlane.update(dt,camera,bodyYaw,player);
+      if(courtEvent) {
+        if(courtEvent==="repaired") guideCourt=true;
+        hint.textContent={
+          repaired:"小桥已修好。过桥可进西岸木料后院。",
+          sawStroke:"锯口深了一层。再按 E 继续，也可以晚些回来。",
+          sawDone:"木板锯成了两段，短木块已落在锯台边。",
+          sawRetry:"站到锯台正面，再拉锯。",
+        }[courtEvent];
         ui();
       }
       weather.frame(dt,elapsed,player);
       light.storm(weather.intensity);
       updateRainStatus();
-      const input=awaitingStart() || backlane.fitting() ? noInput : keys;
-      if(backlane.fitting()) heading=player.yaw=backlane.facing();
+      const courtLocked=backlane.locked(), sawStation=backlane.sawStation();
+      const input=awaitingStart() || courtLocked ? noInput : keys;
+      if(courtLocked) heading=player.yaw=backlane.facing();
+      if(backlane.sawing()) player.pitch=THREE.MathUtils.damp(player.pitch,firstPerson ? -.575 : -.13,8,dt);
       const dx = Number(input.has("d") || input.has("arrowright") || input!==noInput && touchPad.move("d")) -
                  Number(input.has("a") || input.has("arrowleft") || input!==noInput && touchPad.move("a"));
       const dz = Number(input.has("w") || input.has("arrowup") || input!==noInput && touchPad.move("w")) -
@@ -1735,8 +1745,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const pace=backpedaling ? (handsLoaded ? 1.03 : 1.21) :
         input.has("shift") ? (handsLoaded ? 2.72 : 3.51) : (handsLoaded ? 1.40 : 1.64);
       const movementScale=pace*drag*weather.traction(player.x,player.z)/(Math.hypot(dx,dz)||1);
-      const targetX=(fwd.x*dz+side.x*dx)*movementScale;
-      const targetZ=(fwd.z*dz+side.z*dx)*movementScale;
+      let targetX=(fwd.x*dz+side.x*dx)*movementScale;
+      let targetZ=(fwd.z*dz+side.z*dx)*movementScale;
+      if(sawStation) {
+        const approachX=sawStation.x-player.x, approachZ=sawStation.z-player.z;
+        const speed=Math.min(7,1.06/Math.max(.01,Math.hypot(approachX,approachZ)));
+        targetX=approachX*speed;
+        targetZ=approachZ*speed;
+      }
       syncActors();
       const feet=floor(player.x,player.z);
       Object.assign(workshopVisitor,{x:player.x,z:player.z,bottom:feet,top:feet+workerHeight});
@@ -1792,7 +1808,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       const oldX=player.x, oldZ=player.z;
       const previousVX=streetVelocity.x, previousVZ=streetVelocity.y;
-      if(aboard || landed || freightTransfer || chairBefore || awaitingStart() || backlane.fitting()) clearStreetMotion();
+      if(aboard || landed || freightTransfer || chairBefore || awaitingStart() || courtLocked && !sawStation) clearStreetMotion();
       else if(yard.active()) {
         yard.frame(dt,player,bodyYaw,dx,dz,weather.traction(player.x,player.z),standByYard,audio.scrape);
         streetVelocity.set((player.x-oldX)/dt,(player.z-oldZ)/dt);
@@ -1853,11 +1869,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       audio.weather(weather.intensity,weather.sheltered);
       cameraObstacle=null;
       cameraClose=false;
+      const {clamp,damp,lerp}=THREE.MathUtils;
+      sawFraming=damp(sawFraming,Number(backlane.frameSaw(player)),7,dt);
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
-      const lens=firstPerson && yard.active() ? THREE.MathUtils.clamp(seatFov,70,96) :
+      const lens=firstPerson && yard.active() ? clamp(seatFov,70,96) :
         firstPerson && aboard ? 70 : firstPerson && chairBefore ?
-        THREE.MathUtils.clamp(seatFov,58,100) : 58;
-      if(activeLens!==lens) {
+        clamp(seatFov,58,100) : firstPerson ? lerp(58,clamp(seatFov,71,91),sawFraming) : 58;
+      if(Math.abs(activeLens-lens)>.07) {
         activeLens=lens;
         camera.fov=lens;
         camera.updateProjectionMatrix();
@@ -1867,15 +1885,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : player.yaw;
         const haul=yard.gripWeight();
         const pitch=player.pitch-.048*seat-.60*haul;
-        const eyeOffset=.083*seat+.082*haul+(chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
-        const lateral=carrier===freight ? .28*seat : 0;
-        camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),y+1.57,
+        const eyeOffset=.083*seat+.082*haul-.025*sawFraming+
+          (chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
+        const lateral=carrier===freight ? .28*seat : -.064*sawFraming;
+        camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),y+1.57-.020*sawFraming,
           player.z+eyeOffset*Math.cos(yaw)-lateral*Math.sin(yaw));
         camera.quaternion.setFromEuler(new THREE.Euler(pitch,yaw,0,"YXZ"));
       } else {
-        const boom=indoors ? 1.26 : 3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44);
+        const boom=indoors ? 1.26 : lerp(3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44),1.92,sawFraming);
         cameraPivot.set(player.x,y+1.48,player.z);
-        const offset=indoors ? .24 : .62;
+        const offset=indoors ? .24 : lerp(.62,1.30,sawFraming);
         cameraGoal.set(player.x-fwd.x*boom+side.x*offset,y+(indoors ? 1.69 : 2.18)+player.pitch*-.78,
                        player.z-fwd.z*boom+side.z*offset);
         const length=cameraPivot.distanceTo(cameraGoal);
@@ -1884,7 +1903,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         boomLength=Math.min(clearance.distance,THREE.MathUtils.damp(boomLength,clearance.distance,12,dt));
         cameraClose=boomLength<(indoors ? .53 : .75);
         camera.position.copy(cameraPivot).lerp(cameraGoal,boomLength/length);
-        camera.lookAt(player.x+fwd.x*2.0,y+1.05+player.pitch*2.3,player.z+fwd.z*2.0);
+        const lookAhead=lerp(2,.83,sawFraming);
+        camera.lookAt(player.x+fwd.x*lookAhead,y+1.05+player.pitch*2.3,player.z+fwd.z*lookAhead);
       }
       if (Number.isFinite(teaShotStart)) {
         const t = elapsed - teaShotStart;
@@ -2149,7 +2169,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restartTrigger=trigger;
     restartDetail.textContent=(state.phase==="delivered" ?
       "本次送茶已经完成。重置会清除交货记录，让茶箱归位，铜钱恢复为六文。" :
-      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场、作坊和排水沟小桥也会恢复初始状态。";
+      "重置会清除当前进度。你会回到桥头，茶箱归位，铜钱恢复为六文。")+"西岸料场、作坊、排水沟小桥和锯台也会恢复初始状态。";
     clearNotice();
     clearPlayerControl();
     if(document.pointerLockElement===canvas) document.exitPointerLock();
@@ -2264,7 +2284,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       bridgeLook.prepare(renderer,scene,camera);
     },
     turn(dx, dy) {
-      if (view !== "mission" || restartDialog.open || awaitingStart() || backlane.fitting()) return;
+      if (view !== "mission" || restartDialog.open || awaitingStart() || backlane.locked()) return;
       if (Number.isFinite(teaShotStart)) {
         stopTeaShot();
         ui();

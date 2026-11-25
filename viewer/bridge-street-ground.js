@@ -484,6 +484,7 @@ export function buildStreetGround(root,origin,surface,anchor,terrain) {
   };
   height.addThreshold=(x,z,length,width,seed)=>addPaving({x,z,length,width,seed,angle:Math.PI/2,
     coursed:true,name:"Stone threshold"});
+  height.registerPavedSurface=addSurface;
   height.addRootSurface=(position,a,b,c)=>addSurface(position,a,b,c,rootCells);
   height.rootHeight=rootHeight;
   height.frontages=streetworks;

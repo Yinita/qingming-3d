@@ -114,10 +114,10 @@ export function createStreetAudio(listener) {
     if(!active() || context?.state!=="running" || voices.size>=14) return;
     const {distance,pan}=space(x,z,false);
     if(distance>7) return;
-    const strike=kind==="impact", planing=kind==="plane";
+    const strike=kind==="impact", planing=kind==="plane", sawing=kind==="saw";
     if(!scrapeCues[kind]) {
       const sampleRate=context.sampleRate;
-      const cue=context.createBuffer(1,Math.round(sampleRate*(strike ? .18 : planing ? .56 : .24)),sampleRate);
+      const cue=context.createBuffer(1,Math.round(sampleRate*(strike ? .18 : planing || sawing ? .56 : .24)),sampleRate);
       const data=cue.getChannelData(0);
       let low=0,grit=0;
       for(let i=0;i<data.length;i++) {
@@ -128,6 +128,10 @@ export function createStreetAudio(listener) {
         if(strike) {
           const body=Math.sin(2*Math.PI*91*t)+.37*Math.sin(2*Math.PI*137*t);
           data[i]=(.40*body+.28*(grit-low))*Math.exp(-36*t)*Math.min(1,t*510);
+        } else if(sawing) {
+          const envelope=Math.sin(Math.PI*i/(data.length-1))**.89;
+          const teeth=.68+.21*Math.sin(2*Math.PI*(43*t+21*t*t))+.11*Math.sin(2*Math.PI*178*t);
+          data[i]=envelope*(teeth*(.73*(grit-low)+.40*(white-grit))+.12*Math.sin(2*Math.PI*(136*t+17*t*t)));
         } else {
           const envelope=Math.sin(Math.PI*i/(data.length-1))**.85;
           const texture=planing ? (white-grit)*.58+grit*.39 : grit-low*.66;
@@ -153,7 +157,7 @@ export function createStreetAudio(listener) {
     };
     source.start();
     counts[kind]=(counts[kind]??0)+1;
-    lastBySource[planing ? "joiner" : "workyard"]={surface:kind,level,pan};
+    lastBySource[planing ? "joiner" : sawing ? "sawbench" : "workyard"]={surface:kind,level,pan};
   }
 
   function loop(sound,start,end) {

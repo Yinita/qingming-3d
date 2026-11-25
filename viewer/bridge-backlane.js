@@ -5,6 +5,8 @@ import { tileRoof } from "./bridge-architecture.js";
 import { buildStreetTrees } from "./bridge-street-trees.js";
 import { woodEndGrain } from "./bridge-workyard.js";
 import { bladeGeometry, lightLeaf } from "./bridge-leaf-light.js";
+import { createCourtSaw } from "./bridge-court-saw.js";
+import { buildFlagstoneWalk } from "./bridge-streetworks.js";
 
 const saveKey="qingming-west-drain-v1";
 const {smoothstep}=THREE.MathUtils;
@@ -43,7 +45,7 @@ export function cutDrainApron(material) {
   return active=>{cut.value=Number(active);};
 }
 
-export function createBacklane(parent,city,surface,joinery,sound) {
+export function createBacklane(parent,city,surface,joinery,sound,registerPavedSurface) {
   const root=new THREE.Group();
   root.name="West bank timber court";
   parent.add(root);
@@ -277,24 +279,27 @@ export function createBacklane(parent,city,surface,joinery,sound) {
   }
   block("Covered timber store",store.position.x,store.position.z,3.39,2.17,0,2.6);
 
-  const pavers=new THREE.Group();
-  pavers.name="Timber court flagstones";
-  fixed.add(pavers);
+  const flagstones=[];
   for(let i=0;i<23;i++) {
     const z=-41.43-i*.315;
     const x=-79.56-.44*smoothstep(i,1,11)+.09*Math.sin(i*1.65);
     for(const side of [-1,1]) {
-      const slab=box(pavers,paving,.44+.071*Math.sin(i*3.46+side),.075,.275+.036*Math.cos(i*5.1),
-        x+side*.247,-.022+.005*Math.sin(i*2.7+side),z,.035);
-      slab.rotation.y=.12*Math.sin(i*7.7+side);
+      flagstones.push({x:x+side*.247,z:z+.035*Math.sin(i*4.9+side),w:.468+.071*Math.sin(i*3.46+side),
+        d:.290+.032*Math.cos(i*5.1),y:.027+.008*Math.sin(i*2.7+side)});
+      if(i%3!==0) {
+        const size=.045+.037*Math.sin(i*2.73+side)**2;
+        flagstones.push({x:x+side*(.49+.14*Math.sin(i*1.9)**2),z:z+.081*Math.cos(i+side),
+          w:size*1.29,d:size,y:.009,chip:true});
+      }
     }
   }
   for(let i=0;i<4;i++) {
-    box(pavers,paving,.327,.068,.552,westHingeX-.64-i*.311,-.020,crossing.z,.031)
-      .rotation.y=.062*Math.sin(i*3.2);
+    flagstones.push({x:westHingeX-.64-i*.311,z:crossing.z+.023*Math.sin(i*2.4),
+      w:.304,d:.548+.072*Math.cos(i*7.7),y:.025+.008*Math.sin(i*5)});
   }
+  buildFlagstoneWalk(root,surface,flagstones,registerPavedSurface);
 
-  // The low sawbuck and offcuts leave a loop around the centre of the yard.
+  // The sawing station leaves a loop around the centre of the yard.
   const horse=new THREE.Group();
   horse.name="Timber court sawbench";
   horse.position.set(-81.22,0,-44.78);
@@ -304,12 +309,10 @@ export function createBacklane(parent,city,surface,joinery,sound) {
     const leg=box(horse,wood,.111,.82,.097,x,.415,side*.256,.009);
     leg.rotation.x=-side*.35;
   }
-  box(horse,darkWood,1.49,.123,.322,0,.752,0,.022);
+  box(horse,darkWood,.834,.123,.322,-.328,.752,0,.014);
+  box(horse,darkWood,.590,.123,.322,.450,.752,0,.014);
   box(horse,wood,1.18,.095,.078,0,.425,0,.014);
-  for(let i=0;i<4;i++) {
-    const offcut=box(horse,i%2 ? fresh : wood,.23+.09*i,.061,.104,-.41+.238*i,.84+(i%2)*.015,.020*i,.010);
-    offcut.rotation.y=.44-i*.22;
-  }
+  const saw=createCourtSaw(root,horse,{wood,darkWood,fresh,iron,endGrain},sound);
   solids.push(city.orientedBox("Timber court sawbench",.76,.37,.86));
   Object.assign(solids.at(-1),{x:horse.position.x,z:horse.position.z,yaw:horse.rotation.y});
   for(const x of [-82.38,-81.57])
@@ -417,6 +420,7 @@ export function createBacklane(parent,city,surface,joinery,sound) {
       Math.abs(player.z-crossing.z)<.54;
   }
   function action(player) {
+    if(stage==="open") return saw.action(player);
     if(stage==="bench" && offered && joinery.near(player)) return "拿起刨好的木板 E";
     if(stage==="carried" && approach(player)) return "嵌上木板修桥 E";
     if(stage==="carried" && joinery.near(player)) return "把木板放回工案 E";
@@ -424,6 +428,7 @@ export function createBacklane(parent,city,surface,joinery,sound) {
   }
   function use(player) {
     if(!action(player)) return null;
+    if(stage==="open") return saw.use(player) ? "扶稳木料，沿锯口拉锯。" : null;
     if(stage==="bench") {
       board=joinery.moveBoard(fittedBoard);
       stage="carried";
@@ -444,15 +449,16 @@ export function createBacklane(parent,city,surface,joinery,sound) {
     save("bench");
     return "木板放回工案了。";
   }
-  function update(dt,camera,bodyYaw) {
+  function update(dt,camera,bodyYaw,player) {
     flow.value+=dt;
     trees.update(camera,flow.value);
-    if(stage!=="fitting") return false;
+    if(stage==="open") return saw.update(dt,player,bodyYaw);
+    if(stage!=="fitting") return null;
     const previous=age-placingAt;
     age+=dt;
     if(placingAt===Infinity) {
       const delta=startYaw+turnYaw-bodyYaw;
-      if(age<turnTime || (Math.abs(Math.atan2(Math.sin(delta),Math.cos(delta)))>.15 && age<2.2)) return false;
+      if(age<turnTime || (Math.abs(Math.atan2(Math.sin(delta),Math.cos(delta)))>.15 && age<2.2)) return null;
       from.copy(board.position);
       fromRotation.copy(board.quaternion);
       placingAt=age;
@@ -464,15 +470,19 @@ export function createBacklane(parent,city,surface,joinery,sound) {
     board.quaternion.copy(fromRotation).slerp(socketRotation,progress);
     syncDeck();
     if(previous<seatTime && fittingAge>=seatTime) sound("impact",boardAt.x,boardAt.z,.46);
-    if(fittingAge<landTime) return false;
+    if(fittingAge<landTime) return null;
     settle();
     stage="open";
     save("open");
     syncDeck();
     sound("impact",crossing.x,crossing.z,.68);
-    return true;
+    return "repaired";
   }
   function pose(playerBody) {
+    if(stage==="open") {
+      saw.pose(playerBody);
+      return;
+    }
     const holding=stage==="carried" || stage==="fitting" && placingAt===Infinity;
     if(holding) {
       const person=playerBody.figure;
@@ -499,9 +509,16 @@ export function createBacklane(parent,city,surface,joinery,sound) {
     offer() { if(stage==="bench") offered=true; },
     open:()=>stage==="open",
     carrying:()=>stage==="carried",
-    fitting:()=>stage==="fitting",
-    facing:()=>startYaw+turnYaw*smoothstep(age,0,turnTime),
-    busy:()=>stage==="carried" || stage==="fitting",
+    locked:()=>stage==="fitting" || saw.active(),
+    facing:()=>saw.active() ? saw.facing() : startYaw+turnYaw*smoothstep(age,0,turnTime),
+    sawing:saw.active,
+    frameSaw:player=>stage==="open" && (saw.active() || saw.viewAligned(player)),
+    sawGuide(player) {
+      return stage==="open" && saw.unfinished() && !saw.near(player) && player.x<-78.70 &&
+        contains(player.x,player.z) ? saw.approach : null;
+    },
+    sawStation:()=>saw.active() ? saw.station() : null,
+    busy:()=>stage==="carried" || stage==="fitting" || saw.active(),
     materialAt(x,y,z) {
       if(support(x,z)<y-.012) return null;
       return stage==="open" && x>westHingeX && x<eastSillX+.227 ? "wood" : "stone";
@@ -517,8 +534,9 @@ export function createBacklane(parent,city,surface,joinery,sound) {
       stage="bench"; offered=false; age=0;
       save("bench");
       syncDeck();
+      saw.reset();
     },
     inspect:()=>({stage,offered,age,angle:deck.rotation.z,support:stage==="open" ? crossing.y : null,
-      walkTo:drainBridgeApproach,board:board?.position.toArray()??null}),
+      walkTo:drainBridgeApproach,board:board?.position.toArray()??null,saw:saw.inspect()}),
   };
 }
