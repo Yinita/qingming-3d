@@ -587,7 +587,7 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
     [0,-.381],[.055,-.382],[.062,-.373],[.065,-.351],[.071,-.332],
     [.075,-.305],[.079,-.265],[.080,-.221],[.082,-.181],
     [.087,-.130],[.085,-.067],[.078,-.024],[.063,.012],[.040,.039],[0,.051],
-  ];
+  ].map(([r,y])=>[r*THREE.MathUtils.lerp(1,.86,THREE.MathUtils.smoothstep(y,-.36,-.29)),y]); // slimmer arm, same cuff
   function drape(angle,y) {
     const elbow=Math.exp(-(((y-joint)/.092)**2));
     const fullness=Math.sin(Math.PI*clamp((y+.376)/.426,0,1));
@@ -964,8 +964,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const hemOffset=profile?.hem??market?.hem??0, skirt=profile?.skirt??market?.skirt??1;
   const robe=[[0,.606+hemOffset],[.263*skirt,.619+hemOffset],[.276*skirt,.66+hemOffset],
     [.269*skirt,.722+hemOffset*.73],[.255*skirt,.798+hemOffset*.42],
-    [.239*garmentWaist,.88],[.225*garmentWaist,.95],[.229*garmentWaist,1.04],
-    [.238*shoulders,1.13],[.251*shoulders,1.202],[.246*shoulders,1.246],
+    // Chest a little narrower and the waist drawn in, for a shoulders-over-waist line
+    // rather than a barrel.
+    [.228*garmentWaist,.88],[.208*garmentWaist,.95],[.218*garmentWaist,1.04],
+    [.232*shoulders,1.13],[.240*shoulders,1.202],[.238*shoulders,1.246],
     [.220*shoulders,1.286],[.178*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
   const garmentSections=lowDetail ? 14 : 32;
   const robeSegments=lowDetail ? 16 : 64;
@@ -1300,7 +1302,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   for (const side of [-1, 1]) {
     articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     const arm = new THREE.Group();
-    arm.position.set(side*(fitted ? .228 : .236)*shoulders,1.228,.005);
+    arm.position.set(side*(fitted ? .222 : .228)*shoulders,1.228,.005);
     arm.scale.set(profile?.armWidth??1,profile?.sleeve??1,profile?.armWidth??1);
     // Hang the arm slightly away from the body so the hand clears the flared robe.
     arm.rotation.z=side*.11;

@@ -29,9 +29,11 @@ function skinColour(x,y,z,role) {
   const jaw=smoothstep(6.88-y,0,.74);
   const brow=gaussian(a,y,.352,7.393,.184,.130)*front;
   const lipU=clamp(a/.258,0,1);
-  const lipMid=6.711-.027*lipU**2;
-  const top=lipMid+.082*(1-lipU**1.52);
-  const bottom=lipMid-.082*(1-lipU**1.83);
+  // The closed mouth line sits near y 6.72; colour the full upper lip above it as well as
+  // the lower lip, so the line reads as the parting of two lips rather than a mark on skin.
+  const lipMid=6.722-.027*lipU**2;
+  const top=lipMid+.058*(1-lipU**1.4);
+  const bottom=lipMid-.072*(1-lipU**1.83);
   const lip=(1-smoothstep(a,.203,.264))*smoothstep(y,bottom-.018,bottom+.018)*
     (1-smoothstep(y,top-.012,top+.018))*smoothstep(z,1.424,1.544);
   const cavity=.62*(1-smoothstep(z,1.35,1.57))*gaussian(a,y,.078,6.719,.262,.112);
@@ -41,11 +43,12 @@ function skinColour(x,y,z,role) {
   const lashU=a-.31;
   const lash=Math.exp(-(((y-7.346+.38*lashU*lashU)/.015)**2))*(1-smoothstep(Math.abs(lashU),.115,.155))*smoothstep(z,1.30,1.40);
   const beard=role==="merchant" ? .24*gaussian(a,y,.149,6.45,.358,.32)*front : 0;
-  const tone=1+mottle-.078*jaw-.071*brow-.66*cavity-beard-.42*lash;
+  const parting=Math.exp(-(((y-lipMid)/.013)**2))*(1-smoothstep(a,.19,.25))*smoothstep(z,1.42,1.52);
+  const tone=1+mottle-.078*jaw-.071*brow-.66*cavity-beard-.42*lash-.22*parting;
   return [
-    tone+flush+.017*lip,
-    tone-.43*flush-.23*lip-underEye,
-    tone-.66*flush-.24*lip-underEye*.67,
+    tone+flush+.032*lip,
+    tone-.43*flush-.28*lip-underEye,
+    tone-.66*flush-.27*lip-underEye*.67,
   ];
 }
 
@@ -154,7 +157,7 @@ function makeHeadGeometry(role,animated,beard) {
     const a=upper*3,b=lower*3;
     const x=.5*(source[a]+source[b]);
     const seam=.5*(source[a+1]+source[b+1]);
-    const gap=.00046*(1-smoothstep(Math.abs(x),.17,.213));
+    const gap=0; // closed seam; the parting is painted in skinColour and opened by the speak morph
     const brink=.5*(source[a+2]+source[b+2]);
     source[a]=source[b]=x;
     source[a+1]=seam+gap;
