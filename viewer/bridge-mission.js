@@ -628,7 +628,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
     const target=freightAim?.label??(atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
-      phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处");
+      phase==="waiting" ? "取茶叶箱" : "茶铺 · 交货处");
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
     if(text!==markerText) {markerText=text;waypoint.textContent=text;}
     waypoint.hidden=false;
@@ -1125,13 +1125,21 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
   function contextAction() {
-    if(view!=="mission" || awaitingStart() || restartDialog.open) return null;
+    if(view!=="mission" || awaitingStart() || restartDialog.open || !journal.panel.hidden) return null;
     if(Number.isFinite(teaShotStart)) return teaButton;
     if(freightTransfer) return null;
     if(freight.active()) return !freightButton.hidden ? freightButton : null;
     if(teaRoom.chairActive()) return !roomTeaButton.hidden ? roomTeaButton : !seatButton.hidden ? seatButton : null;
-    const crate=state.phase==="waiting" || distance(player,counter)<deliveryReach ? interactButton : null;
-    return [consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,workshopButton,cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton]
+    const visibleCrate=!interactButton.disabled && (state.phase==="waiting" || distance(player,counter)<deliveryReach);
+    let crate=visibleCrate ? interactButton : null;
+    if(crate && state.phase==="waiting" && !talkButton.hidden) {
+      const forwardX=-Math.sin(player.yaw), forwardZ=-Math.cos(player.yaw);
+      const facing=point=>((point.x-player.x)*forwardX+(point.z-player.z)*forwardZ)/Math.max(.01,distance(player,point));
+      const courierFacing=facing(helper.figure.position);
+      if(courierFacing>.78 && courierFacing>facing(state.crate)+.12) crate=talkButton;
+    }
+    return [consignmentButton,ferryButton,freightButton,crate,seatButton,roomTeaButton,doorButton,workshopButton,
+      cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton,mooringButton,pebbleButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
   }
 
@@ -1370,7 +1378,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       state.cakeClaimed===true || market.atCounter(player);
     marketGuideButton.setAttribute("aria-pressed",String(guideMarket));
     interactButton.textContent = state.phase === "carrying"
-      ? (distance(player, counter) < deliveryReach ? "交给掌柜 E" : "放下茶箱 E") : "拿取茶箱 E";
+      ? (distance(player, counter) < deliveryReach ? "交给掌柜" : "放下茶箱") : "拿取茶箱";
     interactButton.disabled = view !== "mission" || passengerCarrier() || awaitingStart() || ["delivered", "courier"].includes(state.phase) ||
       (state.phase === "waiting" && distance(player, state.crate) >= 1.9);
     hireButton.disabled = view !== "mission" || ferry.active() || awaitingStart() || state.phase !== "waiting" ||
@@ -2031,7 +2039,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   byId("missionExit").onclick = () => setMode("paint");
   journalButton.onclick=()=>{if(!awaitingStart()) journal.toggle(state);};
   window.addEventListener("keydown", e => {
-    if (!root.visible || restartDialog.open || e.repeat || e.isComposing || e.defaultPrevented) return;
+    if (!root.visible || restartDialog.open || document.body.classList.contains("scene-loading") ||
+      e.repeat || e.isComposing || e.defaultPrevented) return;
     if (e.code === "Escape" && !journal.panel.hidden) {
       journal.toggle(state,false);
       journalButton.focus({preventScroll:true});
@@ -2050,7 +2059,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view==="mission" && e.code==="KeyE" && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       if(!intro.hidden) (continueButton.hidden ? begin : continueButton).click();
-      else dialogue.dispatch();
+      else if(dialogue.dispatch()) canvas.focus({preventScroll:true});
       return;
     }
     if(awaitingStart()) return;

@@ -117,14 +117,14 @@ export function createMissionDialogue(contextAction) {
     },
     update, dispatch, clear, speech,
     speak(id) {
-      if(!active) return;
+      if(!active || performance?.id===id) return;
       const [name,line]=lines[id];
       performance={id,age:-.075};
       clearTimeout(timer);
       speaker.textContent=name;
       text.textContent=line;
       caption.hidden=false;
-      timer=setTimeout(clear,Math.max(4000,line.length*190));
+      timer=setTimeout(clear,Math.max(4500,line.length*210));
       update();
     },
   };
