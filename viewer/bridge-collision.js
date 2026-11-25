@@ -31,7 +31,7 @@ export function rectanglesOverlap(x,z,halfX,halfZ,yaw,otherX,otherZ,otherHalfX,o
 
 export function createStreetCollision() {
   const solids=[];
-  const ray=new Ray(), direction=new Vector3(), hit=new Vector3(), bounds=new Box3();
+  const ray=new Ray(), localRay=new Ray(), direction=new Vector3(), hit=new Vector3(), bounds=new Box3();
 
   function box(name,minX,maxX,minZ,maxZ,bottom,top) {
     const solid={name,minX,maxX,minZ,maxZ,bottom,top,enabled:true,radius:0};
@@ -94,21 +94,38 @@ export function createStreetCollision() {
     const length=direction.length();
     if(length<.001) return { distance:0, obstacle:null };
     ray.set(anchor,direction.multiplyScalar(1/length));
+    const left=Math.min(anchor.x,destination.x)-padding, right=Math.max(anchor.x,destination.x)+padding;
+    const near=Math.min(anchor.z,destination.z)-padding, far=Math.max(anchor.z,destination.z)+padding;
+    const low=Math.min(anchor.y,destination.y)-padding, high=Math.max(anchor.y,destination.y)+padding;
     let distance=length, obstacle=null;
     for(const s of solids) {
-      if(!s.enabled || s.camera===false) continue;
+      if(!s.enabled || s.camera===false || s.top<low || s.bottom>high) continue;
+      let minX,maxX,minZ,maxZ;
       if(s.halfX) {
         const c=Math.abs(Math.cos(s.yaw)), t=Math.abs(Math.sin(s.yaw));
         const x=c*s.halfX+t*s.halfZ, z=t*s.halfX+c*s.halfZ;
-        bounds.min.set(s.x-x,s.bottom,s.z-z);
-        bounds.max.set(s.x+x,s.top,s.z+z);
+        minX=s.x-x; maxX=s.x+x; minZ=s.z-z; maxZ=s.z+z;
       } else {
-        bounds.min.set(s.radius ? s.x-s.radius : s.minX,s.bottom,s.radius ? s.z-s.radius : s.minZ);
-        bounds.max.set(s.radius ? s.x+s.radius : s.maxX,s.top,s.radius ? s.z+s.radius : s.maxZ);
+        minX=s.radius ? s.x-s.radius : s.minX;
+        maxX=s.radius ? s.x+s.radius : s.maxX;
+        minZ=s.radius ? s.z-s.radius : s.minZ;
+        maxZ=s.radius ? s.z+s.radius : s.maxZ;
       }
+      if(maxX<left || minX>right || maxZ<near || minZ>far) continue;
+      let trace=ray;
+      if(s.halfX) {
+        const c=Math.cos(s.yaw),t=Math.sin(s.yaw),x=anchor.x-s.x,z=anchor.z-s.z;
+        trace=localRay;
+        trace.origin.set(x*c-z*t,anchor.y,x*t+z*c);
+        const {x:dx,y:dy,z:dz}=ray.direction;
+        trace.direction.set(dx*c-dz*t,dy,dx*t+dz*c);
+        minX=-s.halfX;maxX=s.halfX;minZ=-s.halfZ;maxZ=s.halfZ;
+      }
+      bounds.min.set(minX,s.bottom,minZ);
+      bounds.max.set(maxX,s.top,maxZ);
       bounds.expandByScalar(padding);
-      if(!ray.intersectBox(bounds,hit)) continue;
-      const point=bounds.containsPoint(anchor) ? 0 : anchor.distanceTo(hit);
+      if(!trace.intersectBox(bounds,hit)) continue;
+      const point=bounds.containsPoint(trace.origin) ? 0 : trace.origin.distanceTo(hit);
       if(point<distance) {
         distance=Math.max(0,point-.022);
         obstacle=s.name;

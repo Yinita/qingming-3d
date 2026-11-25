@@ -516,6 +516,9 @@ const residentProfiles=[
 ];
 
 const marketProfiles={
+  attendant:{head:[.81,.91,.86],headModel:"merchant",
+    colors:[0xa8b2a1,0x646b61,0x574f40,0xd2bd9a],skin:0xb58c6c,shoulders:.86,waist:.92,hem:-.088,skirt:1.04,
+    apron:0xe1c9a0,hair:0x40332b,headcloth:0x667166},
   baker:{head:[.80,.87,.77],
     colors:[0xa67462,0x626b61,0x514b3d,0xbcaa81],skin:0xca9d83,shoulders:.86,waist:.92,hem:-.104,skirt:1.21,
     apron:0xd4c39d,hair:0x342b25,headcloth:0x796658},
@@ -846,7 +849,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const leadHead=role==="merchant" ? [.91,.89,.92] : role==="helper" ? [.79,.91,.89] : [.81,.89,.84];
   head.scale.set(...(profile?.head??market?.head??leadHead));
   figure.add(head);
-  const face=!lowDetail ? buildAnatomicalHead(head,profile ? "resident"+variant : role,skin.color,{
+  const face=!lowDetail ? buildAnatomicalHead(head,profile ? "resident"+variant : market?.headModel??role,skin.color,{
     static:!animatedFace,beard:profile?.beard,
     hair:profile?.hair??market?.hair??(role==="merchant" ? 0x544838 : 0x3e342b),
     headcloth:market?.headcloth??(role==="helper" || (profile?.wrap && !residentHat) ? 0x73745d :
@@ -1108,7 +1111,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
   let holdKettle;
-  if(role==="merchant") {
+  if(role==="merchant" || role==="attendant") {
     const arm=limbs.arms[0], elbow=limbs.elbows[0], hand=limbs.hands[0];
     const handlePoint=new THREE.Vector3(.018,-.058,0);
     const socket=new THREE.Object3D();

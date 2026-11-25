@@ -5,6 +5,8 @@ const lines={
     "lai de zheng hao / cha ye fang zher ba , wu wen qian shou hao"],
   pour:["掌柜","坐会儿，给你斟一盏热茶。",
     "zuo huir , gei ni zhen yi zhan re cha"],
+  roomTea:["茶博士","茶马上好。请慢坐，外头风大。",
+    "cha ma shang hao / qing man zuo , wai tou feng da"],
   cake:["摊主","一文。刚蒸好的，我给您包一块。",
     "yi wen / gang zheng hao de , wo gei nin bao yi kuai"],
   shopper:["采买客","多谢，这一路正饿着。",

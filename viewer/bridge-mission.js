@@ -6,6 +6,7 @@ import { bridgeDeckHeight, bridgeRailOffset, buildBridgeLook, createPlayLighting
 import { buildForeground, willowSites } from "./bridge-foreground.js";
 import { counterCeramics, riverWorker } from "./bridge-people.js";
 import { buildTea } from "./bridge-tea.js";
+import { buildTeaRoom } from "./bridge-tearoom.js";
 import { canalDepth, canalHalfLength, canalOrigin, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
@@ -66,7 +67,7 @@ function loadSave() {
         Number.isInteger(saved.coins) && saved.coins >= 0 && saved.coins <= maxCoins() &&
         ["waiting", "delivered"].includes(saved.phase) &&
         (saved.phase === "delivered" || walkable(crate.x, crate.z))) {
-      return {...saved,started:saved.started===true || saved.phase==="delivered" || distance(crate,pickup)>=.04};
+      return {...saved,teaServed:saved.phase==="delivered" && saved.teaServed===true,started:saved.started===true || saved.phase==="delivered" || distance(crate,pickup)>=.04};
     }
   } catch (err) {
     // The mission can run without storage.
@@ -162,6 +163,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   box(stall, ink, 4.9, .13, .17, 0, 3.255, .33);
   counterCeramics(stall);
   const tea = buildTea(stall);
+  const teaRoom=buildTeaRoom(stall,city,material);
+  teaRoom.show(false);
   const counterFill = new THREE.PointLight(0xffdeb0, 2.3, 4.5, 2);
   counterFill.position.set(.54, 2.25, 1.39);
   stall.add(counterFill);
@@ -196,7 +199,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return stallFloor.max.y;
     }
     const depth=depthAt(x,z);
-    const ground=Math.max(ferryDeckHeight(x,z),workshop.support(x,z),foreground.floor(x,z),
+    const ground=Math.max(teaRoom.support(x,z),ferryDeckHeight(x,z),workshop.support(x,z),foreground.floor(x,z),
       depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }
@@ -279,6 +282,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionFerryGuide" type="button" hidden aria-pressed="false">指路到渡口</button>
       <button id="missionFerry" type="button" hidden aria-keyshortcuts="E G">叫渡船 E</button>
       <button id="missionTea" hidden>看掌柜斟茶</button>
+      <button id="missionRoomGuide" hidden type="button" aria-pressed="false">指路到茶间</button>
+      <button id="missionDoor" hidden type="button" aria-keyshortcuts="E">推开茶间门 E</button>
+      <button id="missionSeat" hidden type="button" aria-keyshortcuts="E">坐下 E</button>
+      <button id="missionRoomTea" hidden type="button" aria-keyshortcuts="E">点一盏茶 · 一文 E</button>
       <button id="missionMarketGuide" type="button" hidden aria-pressed="false">指路到蒸糕摊</button>
       <button id="missionSteamer" type="button" hidden aria-keyshortcuts="I">看竹笼 I</button>
       <button id="missionCake" type="button" hidden aria-keyshortcuts="B">买蒸糕 B</button>
@@ -374,7 +381,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const hireButton = byId("missionHire");
   const talkButton=byId("missionAskCourier");
   const switchButton = byId("missionScroll");
-  const teaButton = byId("missionTea");
+  const teaButton=byId("missionTea"), roomGuideButton=byId("missionRoomGuide");
+  const doorButton=byId("missionDoor"), seatButton=byId("missionSeat"), roomTeaButton=byId("missionRoomTea");
   const pebbleButton = byId("missionPebble");
   const mooringButton=byId("missionMooring");
   const animalButton=byId("missionAnimal");
@@ -386,7 +394,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const continueButton=intro.querySelector("#missionContinue");
 
   let state = loadSave();
-  let guideMarket=false, guideFerry=false;
+  let guideMarket=false, guideFerry=false, guideRoom=false;
   const hasParcel=()=>state.cakeBought===true && state.cakeClaimed===true && state.cakeGifted!==true;
   function restoreMarket(reset=false) {
     market.restore(state.cakeBought===true,state.cakeClaimed===true,reset,state.cakeGifted===true);
@@ -396,6 +404,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let previous = null;
   let courierLeg = 0;
   let elapsed = 0;
+  teaRoom.restore(state.teaServed===true,elapsed);
   let ferryViewPausedAt=null;
   let deliveryTime = -10;
   let view = "outside";
@@ -405,7 +414,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let restartTrigger;
   let noticeTimer, hasRestarted=false;
   let firstPerson = false;
-  let rowingLens=false;
+  let activeLens=58;
   let teaShotStart = -Infinity;
   let lastPrepare = 0;
   let pullTime=-Infinity;
@@ -446,7 +455,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canStep(x,z,radius=workerRadius,ignored=null,height=workerHeight,ignoredCargo=null) {
-    return (walkable(x,z) || Number.isFinite(workshop.support(x,z))) &&
+    return (walkable(x,z) || Number.isFinite(workshop.support(x,z)) || Number.isFinite(teaRoom.support(x,z))) &&
       !city.blocking(x,z,floor(x,z),radius,height,ignored,ignoredCargo);
   }
   const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
@@ -496,7 +505,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       guideMarket && state.cakeClaimed!==true && !market.atCounter(player);
     const shopper=view==="mission" && !showStart && !restartDialog.open && hasParcel() &&
       !market.sharing() && distance(player,market.shopperPosition)<9;
-    if(ferry.active()) {
+    const atRoom=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
+      guideRoom && !teaRoom.atDoor(player) && !teaRoom.contains(player.x,player.z);
+    if(ferry.active() || teaRoom.chairActive()) {
       groundMarker.visible=beacon.visible=startPillar.visible=false;
       waypoint.hidden=true;
       return;
@@ -504,13 +515,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const toDock=phase==="carrying" && guideFerry;
     const stop=ferry.stands[0];
     const atDock=toDock && ferry.nearby(player)>=0;
-    groundMarker.visible=view==="mission" && !restartDialog.open && !atDock && (phase!=="delivered" || atMarket);
+    groundMarker.visible=view==="mission" && !restartDialog.open && !atDock && (phase!=="delivered" || atMarket || atRoom);
     beacon.visible=groundMarker.visible;
     const pending=phase==="waiting" && !state.started;
     startPillar.visible=beacon.visible && pending;
     waypoint.hidden=!groundMarker.visible && !shopper;
     if(waypoint.hidden) return;
-    const at=atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
+    const at=atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
       phase==="waiting" ? state.crate : counter;
     const x=at.x, z=at.z+(phase==="waiting" || atMarket || shopper || toDock ? 0 : .83);
     const y=floor(x,z);
@@ -551,7 +562,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
+    const target=atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
       phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处";
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
     if(text!==markerText) {markerText=text;waypoint.textContent=text;}
@@ -678,7 +689,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canAimStone() {
-    return view==="mission" && !ferry.active() && state.phase!=="carrying" && !onBridge(player.x,player.z) &&
+    return view==="mission" && !teaRoom.contains(player.x,player.z) && !ferry.active() && state.phase!=="carrying" && !onBridge(player.x,player.z) &&
       Math.abs(player.z-routeZ)>1.52 && Math.abs(player.x-riverOrigin.x)<12.9;
   }
 
@@ -752,7 +763,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
-    guideMarket=guideFerry=false;
+    guideMarket=guideFerry=guideRoom=false;
     ferry.reset();
     ferryViewPausedAt=null;
     restoreMarket(true);
@@ -769,6 +780,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     sendCourierHome();
     stopTeaShot();
     tea.reset();
+    teaRoom.restore(false,elapsed,true);
     dialogue.clear();
     showStart=true;
     hasRestarted=true;
@@ -786,6 +798,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     restoreMarket();
     stopTeaShot();
     tea.reset();
+    teaRoom.restore(state.teaServed===true,elapsed);
     previous = null;
     sendCourierHome();
     hint.textContent = "已恢复上一个可交互状态。";
@@ -821,7 +834,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
-    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !Number.isFinite(teaShotStart));
+    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !teaRoom.chairActive() && !Number.isFinite(teaShotStart));
     touchPad.rowing(ferry.active());
     dialogue.activate(view==="mission" && intro.hidden && !restartDialog.open);
     tools.hidden=labels.hidden;
@@ -978,11 +991,67 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     wrappedCake.visible=hasParcel() && !market.liftedParcel();
   }
 
+  function canUseRoom() {
+    return view==="mission" && !showStart && !restartDialog.open && !ferry.active() &&
+      !Number.isFinite(teaShotStart) && !market.sharing();
+  }
+  function canOrderTea() {
+    return canUseRoom() && state.phase==="delivered" && !state.teaServed && state.coins>=TEA_QUEST.economy.teaPrice
+      && teaRoom.atTable(player);
+  }
+  function showRoomActions() {
+    const active=canUseRoom();
+    const door=teaRoom.doorLabel();
+    doorButton.hidden=!active || !teaRoom.atDoor(player);
+    if(doorButton.textContent!==door) doorButton.textContent=door;
+    seatButton.hidden=!active || state.phase!=="delivered" ||
+      !(teaRoom.seated() || (!teaRoom.chairActive() && teaRoom.atChair(player)));
+    const seatAction=teaRoom.seated() ? "从凳上起身 E" : "坐到桌边 E";
+    if(seatButton.textContent!==seatAction) seatButton.textContent=seatAction;
+    roomTeaButton.hidden=!canOrderTea();
+  }
+  function useRoomDoor() {
+    if(!canUseRoom() || !teaRoom.atDoor(player)) return;
+    teaRoom.toggleDoor();
+    guideRoom=false;
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+  function useChair() {
+    if(!canUseRoom() || state.phase!=="delivered") return;
+    if(teaRoom.seated()) {
+      if(!teaRoom.standUp()) {
+        hint.textContent="门扇挡住了桌边，待门停稳再起身。";
+        return;
+      }
+    } else if(!teaRoom.beginChair(player,bodyYaw)) return;
+    clearPlayerControl();
+    livestock.cancel();
+    guideRoom=false;
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+  function orderTea() {
+    if(!canOrderTea()) return;
+    remember();
+    const cost=TEA_QUEST.economy.teaPrice;
+    state.coins-=cost;
+    state.teaServed=true;
+    record(state,"在河边茶间点了一盏茶",-cost);
+    teaRoom.serve(elapsed);
+    dialogue.speak("roomTea");
+    hint.textContent="已付一文。茶博士正提壶斟茶。";
+    guideRoom=false;
+    store();
+    ui();
+    canvas.focus({preventScroll:true});
+  }
   function contextAction() {
     if(view!=="mission" || awaitingStart() || restartDialog.open) return null;
     if(Number.isFinite(teaShotStart)) return teaButton;
+    if(teaRoom.chairActive()) return !roomTeaButton.hidden ? roomTeaButton : !seatButton.hidden ? seatButton : null;
     const crate=state.phase==="waiting" || distance(player,counter)<deliveryReach ? interactButton : null;
-    return [ferryButton,crate,workshopButton,cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton]
+    return [ferryButton,crate,seatButton,roomTeaButton,doorButton,workshopButton,cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
   }
 
@@ -1024,8 +1093,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
 
+  function toggleRoomGuide() {
+    guideRoom=!guideRoom;
+    if(guideRoom) {
+      guideMarket=false;
+      hint.textContent="茶间在柜台旁。走到「茶間」木牌下，按 E 推门。";
+    }
+    ui();
+    markObjective();
+    canvas.focus({preventScroll:true});
+  }
+
   function toggleMarketGuide() {
     guideMarket=!guideMarket;
+    if(guideMarket) guideRoom=false;
     if(guideMarket) hint.textContent="沿茶铺前的街道往对侧走，跟着「蒸糕摊」标记。";
     ui();
     markObjective();
@@ -1047,7 +1128,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     updateBriefing();
     economy.textContent = `铜钱 ${state.coins} 文　·　茶铺库存 ${state.phase === "delivered" ? "1 箱" : "0 箱"}`+
       (state.cakeGifted ? "　·　蒸糕已送出" : hasParcel() ? "　·　蒸糕 1 份" : "");
-    marketGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" ||
+    marketGuideButton.hidden=view!=="mission" || teaRoom.contains(player.x,player.z) || showStart || state.phase!=="delivered" ||
       state.cakeClaimed===true || market.atCounter(player);
     marketGuideButton.setAttribute("aria-pressed",String(guideMarket));
     interactButton.textContent = state.phase === "carrying"
@@ -1056,8 +1137,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       (state.phase === "waiting" && distance(player, state.crate) >= 1.9);
     hireButton.disabled = view !== "mission" || ferry.active() || awaitingStart() || state.phase !== "waiting" ||
       state.coins < TEA_QUEST.economy.courierFee || distance(player, pickup) > 3 || distance(state.crate, pickup) > .9;
-    const teaShot = Number.isFinite(teaShotStart);
-    teaButton.hidden = state.phase !== "delivered";
+    const indoors=view==="mission" && teaRoom.contains(player.x,player.z);
+    document.body.classList.toggle("tea-room-open",indoors);
+    document.body.classList.toggle("tea-seated",indoors && teaRoom.chairActive());
+    const teaShot=Number.isFinite(teaShotStart);
+    teaButton.hidden=state.phase!=="delivered" || teaRoom.contains(player.x,player.z);
+    roomGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" ||
+      teaRoom.contains(player.x,player.z);
+    roomGuideButton.setAttribute("aria-pressed",String(guideRoom));
+    showRoomActions();
     byId("missionReplay").hidden = state.phase !== "delivered";
     teaButton.disabled = view !== "mission" || (!teaShot && distance(player, counter) >= 2.75);
     teaButton.textContent = teaShot ? "返回街道 E" : "请掌柜斟茶 E";
@@ -1132,11 +1220,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function setView(mode) {
     view = mode;
     if(mode!=="mission") {
+      if(teaRoom.leaveChair(player)) gait.reset();
+      document.body.classList.remove("tea-room-open","tea-seated");
       dialogue.activate(false);
+      teaRoom.speech(null,1);
       market.speech(dialogue.speech(0),1);
       merchant.face.speak(null,1);
       helper.face.speak(null,1);
-      rowingLens=false;
+      activeLens=58;
       clearStreetMotion();
     }
     if(mode!=="mission") {
@@ -1155,6 +1246,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     syncActors();
     root.visible = active;
     ferryLanding.show(mode==="mission");
+    teaRoom.show(mode==="mission");
     foreground.setVisible(mode === "mission");
     bridgeLook.setVisible(mode==="mission",mode==="missionScroll" && ferry.active());
     if(view==="mission" && ferryViewPausedAt!==null) {
@@ -1257,6 +1349,25 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       market.frame(dt,{x:player.x,y:feet,z:player.z,radius:workerRadius,
         moveX:(fwd.x*dz+side.x*dx)*driftScale,moveZ:(fwd.z*dz+side.z*dx)*driftScale,
         cargo:carrying ? boardCargo : null});
+      const chairBefore=teaRoom.chairActive(), sitting=teaRoom.chair.phase==="sitting";
+      if(teaRoom.seated() && (dx || dz)) teaRoom.standUp();
+      const transferred=teaRoom.seatFrame(dt,player);
+      if(sitting) {
+        player.yaw=teaRoom.chair.yaw;
+        player.pitch=THREE.MathUtils.damp(player.pitch,-.13,9,dt);
+        fwd.set(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
+        side.set(-fwd.z,0,fwd.x);
+      }
+      if(transferred) {
+        gait.reset();
+        heading=bodyYaw=teaRoom.chair.yaw;
+        clearStreetMotion();
+        ui();
+      }
+      const served=teaRoom.update(dt,elapsed,gateObstacles,player);
+      if(served && hint.textContent==="已付一文。茶博士正提壶斟茶。") {
+        hint.textContent="茶已经斟在桌上的青瓷碗里。";
+      }
       const landed=ferry.update(dt,elapsed,player,dz)==="landed";
       const aboard=ferry.active();
       if(landed) {
@@ -1271,7 +1382,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       const oldX=player.x, oldZ=player.z;
       const previousVX=streetVelocity.x, previousVZ=streetVelocity.y;
-      if(aboard || landed || awaitingStart()) clearStreetMotion();
+      if(aboard || landed || chairBefore || awaitingStart()) clearStreetMotion();
       else {
         advanceStreetVelocity(streetVelocity,targetX,targetZ,dt,carrying);
         sweepHorizontal(player,streetVelocity.x*dt,streetVelocity.y*dt,
@@ -1303,35 +1414,41 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
       const nextYaw=bodyYaw+turn*(1-Math.exp(-(walking ? 17 : 6)*dt));
       if(aboard) bodyYaw=ferry.rider.facing;
+      else if(chairBefore) bodyYaw=teaRoom.chair.yaw;
       else {
         if(!cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
         gait.update(dt,elapsed,player.x,player.z,bodyYaw,vx,vz,depth);
       }
-      const y = aboard ? ferry.rider.y : floor(player.x, player.z);
+      const y=aboard ? ferry.rider.y : chairBefore ? teaRoom.chair.y : floor(player.x,player.z);
+      const indoors=teaRoom.contains(player.x,player.z);
       cameraObstacle=null;
       cameraClose=false;
-      const wide=firstPerson && aboard;
-      if(rowingLens!==wide) {
-        rowingLens=wide;
-        camera.fov=wide ? 70 : 58;
+      const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
+      const lens=firstPerson && aboard ? 70 : firstPerson && chairBefore ?
+        THREE.MathUtils.clamp(seatFov,58,100) : 58;
+      if(activeLens!==lens) {
+        activeLens=lens;
+        camera.fov=lens;
         camera.updateProjectionMatrix();
       }
       if (firstPerson) {
         const seat=aboard ? ferry.rider.seated : 0;
         const yaw=aboard ? ferry.viewYaw(player.yaw) : player.yaw;
         const pitch=player.pitch-.048*seat;
-        camera.position.set(player.x+.083*seat*Math.sin(yaw),y+1.57,player.z+.083*seat*Math.cos(yaw));
+        const eyeOffset=.083*seat+(chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
+        camera.position.set(player.x+eyeOffset*Math.sin(yaw),y+1.57,player.z+eyeOffset*Math.cos(yaw));
         camera.quaternion.setFromEuler(new THREE.Euler(pitch,yaw,0,"YXZ"));
       } else {
-        const boom=3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44);
+        const boom=indoors ? 1.26 : 3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44);
         cameraPivot.set(player.x,y+1.48,player.z);
-        cameraGoal.set(player.x-fwd.x*boom+side.x*.62,y+2.18+player.pitch*-.78,
-                       player.z-fwd.z*boom+side.z*.62);
+        const offset=indoors ? .24 : .62;
+        cameraGoal.set(player.x-fwd.x*boom+side.x*offset,y+(indoors ? 1.69 : 2.18)+player.pitch*-.78,
+                       player.z-fwd.z*boom+side.z*offset);
         const length=cameraPivot.distanceTo(cameraGoal);
         const clearance=city.cameraDistance(cameraPivot,cameraGoal);
         cameraObstacle=clearance.obstacle;
         boomLength=Math.min(clearance.distance,THREE.MathUtils.damp(boomLength,clearance.distance,12,dt));
-        cameraClose=boomLength<.75;
+        cameraClose=boomLength<(indoors ? .53 : .75);
         camera.position.copy(cameraPivot).lerp(cameraGoal,boomLength/length);
         camera.lookAt(player.x+fwd.x*2.0,y+1.05+player.pitch*2.3,player.z+fwd.z*2.0);
       }
@@ -1358,6 +1475,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       showAnimalAction();
       showFerryAction();
       showWorkshopAction();
+      showRoomActions();
       showCakeAction();
       showShareAction();
     }
@@ -1366,14 +1484,26 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     showGreetingArms(view==="mission" && firstPerson && (!!animalGesture || market.sharing() || riding));
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
       handsOnly || (view==="missionScroll" && (riding || state.phase==="carrying"));
-    const bodyY=riding ? ferry.rider.y : view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z);
+    const seated=view==="mission" && teaRoom.chairActive();
+    const bodyY=riding ? ferry.rider.y : seated ? teaRoom.chair.y :
+      view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z);
     playerBody.figure.position.set(player.x,bodyY,player.z);
     playerBody.figure.rotation.y=bodyYaw;
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
     footShadow.visible = playerBody.figure.visible && !wading && !riding;
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
     animate(playerBody,gait.phase()-Math.PI*.5,walking,state.phase==="carrying" && !riding,dt,weightShift);
-    if(view==="mission" && !riding) playerBody.poseFeet(gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
+    if(view==="mission" && !riding) {
+      playerBody.poseFeet(seated ? teaRoom.chairFeet : gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
+      if(seated) {
+        const weight=teaRoom.chair.weight;
+        playerBody.torsoPivot.rotation.x-=.11*weight;
+        for(let i=0;i<2;i++) {
+          playerBody.limbs.arms[i].rotation.x=.48*weight;
+          playerBody.limbs.elbows[i].rotation.x=.32*weight;
+        }
+      }
+    }
     if(view==="missionScroll" && riding) poseFerryRider();
     const throwAge=stones.age();
     playerBody.limbs.arms[0].rotation.z=0;
@@ -1462,6 +1592,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     merchant.face.speak(merchantSpeaking ? speech.shape : null,dt);
     helper.face.speak(speech.id==="courier" ? speech.shape : null,dt);
     market.speech(speech,dt);
+    teaRoom.speech(speech.id==="roomTea" ? speech.shape : null,dt);
     positionCrate();
     if(view==="mission") syncActors();
     if (walking) ui();
@@ -1528,7 +1659,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   hireButton.onclick = hire;
   talkButton.onclick=askCourier;
   byId("missionCamera").onclick = toggleCamera;
-  teaButton.onclick = toggleTeaShot;
+  teaButton.onclick=toggleTeaShot;
+  roomGuideButton.onclick=toggleRoomGuide;
+  doorButton.onclick=useRoomDoor;
+  seatButton.onclick=useChair;
+  roomTeaButton.onclick=orderTea;
   pebbleButton.onclick=tossStone;
   mooringButton.onclick=pullMooring;
   animalButton.onclick=greetAnimal;
@@ -1641,14 +1776,14 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     },
     sampleWater:bridgeLook.probe,
     inspect: () => ({ phase: state.phase, coins: state.coins, method: state.method, view, firstPerson,
-      player: { ...player, y: ferry.active() ? ferry.rider.y : floor(player.x, player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
+      player: { ...player, y: ferry.active() ? ferry.rider.y : teaRoom.chairActive() ? teaRoom.chair.y : floor(player.x,player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
       gait:gait.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
-        bodyOverlap:ferry.active() ? null : city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
-      workshop:workshop.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
+        bodyOverlap:ferry.active() || teaRoom.chairActive() ? null : city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
+      teaRoom:teaRoom.inspect(player),workshop:workshop.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }

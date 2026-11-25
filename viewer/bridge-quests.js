@@ -9,7 +9,7 @@ export const TEA_QUEST = {
   id: "tea-shop-opening",
   title: "桥畔茶铺",
   premise: "对岸茶铺今晚要开张，可新到的一箱茶叶还搁在桥头。掌柜等着它下锅。",
-  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5 },
+  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1 },
   stages: {
     waiting:   { title: "桥头取箱",   objective: "任务起点 · 取茶叶箱，再送到对岸茶铺。" },
     carrying:  { title: "送往茶铺",   objective: "已拿到茶叶。过桥，到茶铺柜台交货。" },
@@ -35,7 +35,7 @@ export const TEA_QUEST = {
   ],
   rules: [
     "货箱只有一只。两条路线交付的是同一只箱子，不会多出货物。",
-    "铜钱只在委托和交货时变化，每一笔都记在下面的账目里。",
+    "委托、交货和逛街消费都会计入账目。交货后可以在茶间花一文点茶。",
     "撤销回到上一次拿取或委托之前；重置清空全部进度。",
   ],
 };

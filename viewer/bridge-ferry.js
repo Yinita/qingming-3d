@@ -136,7 +136,8 @@ export function createFerry(landing,boat,floor) {
 
   function nearby(player) {
     if(!Number.isFinite(ferryDeckHeight(player.x,player.z))) return -1;
-    return landing.stands.findIndex(({x,z})=>Math.hypot(player.x-x,player.z-z)<.64);
+    return landing.stands.findIndex(({x,z})=>
+      Math.abs(player.x-x)<.85 && Math.abs(player.z-z)<.34);
   }
 
   function docked() {
@@ -187,11 +188,12 @@ export function createFerry(landing,boat,floor) {
     boat.toWorld(worldSeat.set(0,.221,seatZ));
     const destination=landing.stands[exitBank];
     const incoming=passenger==="boarding";
-    const align=incoming ? smoothstep(t,0,.36) : 1;
-    const amount=passenger==="aboard" ? 1 : incoming ? smoothstep(t,.31,1) : 1-smoothstep(t,0,1);
-    const fromX=incoming ? lerp(stepFrom.x,destination.x,align) : destination.x;
-    const fromZ=incoming ? lerp(stepFrom.z,destination.z,align) : destination.z;
-    const fromY=incoming ? lerp(stepFrom.y,deckY,align) : deckY;
+    const alignAcross=incoming ? smoothstep(t,0,.19) : 1;
+    const alignAlong=incoming ? smoothstep(t,.08,.40) : 1;
+    const amount=passenger==="aboard" ? 1 : incoming ? smoothstep(t,.40,1) : 1-smoothstep(t,0,1);
+    const fromX=incoming ? lerp(stepFrom.x,destination.x,alignAlong) : destination.x;
+    const fromZ=incoming ? lerp(stepFrom.z,destination.z,alignAcross) : destination.z;
+    const fromY=incoming ? lerp(stepFrom.y,deckY,alignAlong) : deckY;
     const angleChange=Math.atan2(Math.sin(faceYaw-fromYaw),Math.cos(faceYaw-fromYaw));
     player.x=lerp(fromX,worldSeat.x,amount);
     player.z=lerp(fromZ,worldSeat.z,amount);
