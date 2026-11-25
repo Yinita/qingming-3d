@@ -4,6 +4,7 @@
   "sample_rate_hz": 24000,
   "clip_slot_seconds": 0.5,
   "river_loop_seconds": [10.5, 24.5],
+  "rain_file": "rain-v1.mp3",
   "sources": [
     {
       "cues": ["stone", "earth"],
@@ -27,6 +28,12 @@
       "cues": ["river"],
       "author": "RandomMind",
       "source": "https://opengameart.org/content/sea-and-river-wave-sounds",
+      "license": "CC0-1.0"
+    },
+    {
+      "cues": ["rain"],
+      "author": "Kresiek The Furry",
+      "source": "https://opengameart.org/content/amb-rain-loop-1",
       "license": "CC0-1.0"
     }
   ]

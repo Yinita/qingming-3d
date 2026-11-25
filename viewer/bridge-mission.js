@@ -1,5 +1,6 @@
 import { createMissionDialogue } from "./bridge-dialogue.js";
 import { createStreetAudio } from "./bridge-audio.js";
+import { createBridgeWeather } from "./bridge-weather.js";
 import { buildFerryLanding, createFerry, ferryDeckHeight, ferryLandingMaterial } from "./bridge-ferry.js";
 import { createMissionTouchPad } from "./bridge-touch.js";
 import * as THREE from "three";
@@ -214,6 +215,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }
+  const weather=createBridgeWeather({root,street:street.root,ground,surface:floor,depthAt,onBridge,
+    water:bridgeLook.field.height});
   const consignment=buildConsignment(root,city,material,freight);
   function wadeDepth(x,z) {
     return onBridge(x,z) ? 0 : Math.max(0,waterHeight-floor(x,z));
@@ -288,11 +291,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <p id="missionObjective" aria-live="polite"></p>
     <p class="mission-metrics" id="missionEconomy"></p>
     <p class="mission-metrics" id="missionFreightStatus" hidden></p>
+    <p class="mission-metrics" id="missionRainStatus" hidden></p>
     <div class="mission-actions">
       <button id="missionInteract">拿取</button>
       <button id="missionHire">委托伙计</button>
       <button id="missionAskCourier" type="button" hidden>问伙计</button>
       <button id="missionCamera">切换第一人称</button>
+      <button id="missionWeather" type="button" aria-keyshortcuts="T" aria-pressed="false">等一场雨 T</button>
       <button id="missionFerryGuide" type="button" hidden aria-pressed="false">指路到渡口</button>
       <button id="missionFreightGuide" type="button" hidden aria-pressed="false">瓷器货运</button>
       <button id="missionConsignment" type="button" hidden aria-keyshortcuts="E"></button>
@@ -353,6 +358,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const steps=byId("missionSteps").children;
   const tools=byId("missionTools");
   const soundButton=tools.querySelector("#missionSound");
+  const weatherButton=byId("missionWeather"),weatherStatus=byId("missionRainStatus");
   const journalButton=tools.querySelector("#missionJournal");
   document.body.appendChild(tools);
   document.body.appendChild(restartDialog);
@@ -512,7 +518,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
       bridgeLook.hit(x,z,time,strength,"step",vx,vz);
     }
-    footfall(x,y,z,vx,vz,"player",wet);
+    footfall(x,y,z,vx,vz,"player",wet || (Math.hypot(vx,vz)>.24 && weather.footstep(x,y,z,time)));
     return wet;
   });
   const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),(x,y,z,t,vx,vz)=>{
@@ -841,6 +847,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     wetLine=dampness=0;
     boomLength=3.2;
     gait.reset();
+    weather.reset();
     sendCourierHome();
     stopTeaShot();
     tea.reset();
@@ -1458,6 +1465,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function setView(mode) {
     view = mode;
+    weather.show(mode==="mission");
+    light.storm(mode==="mission" ? weather.intensity : 0);
     if(mode!=="mission") {
       if(teaRoom.leaveChair(player)) gait.reset();
       document.body.classList.remove("tea-room-open","tea-seated");
@@ -1541,6 +1550,19 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   const noInput=new Set();
+  function updateRainStatus() {
+    const label=weather.active ? "等雨停 T" : "等一场雨 T";
+    if(weatherButton.textContent!==label) {
+      weatherButton.textContent=label;
+      weatherButton.setAttribute("aria-pressed",String(weather.active));
+    }
+    weatherStatus.hidden=!weather.active && weather.intensity<.04 && weather.clothing<.03;
+    if(weatherStatus.hidden) return;
+    const location=weather.sheltered ? "屋檐下" : "露天";
+    const damp=Math.round(weather.clothing*10)*10;
+    const text=location+" · 衣衫湿度 "+damp+"%";
+    if(weatherStatus.textContent!==text) weatherStatus.textContent=text;
+  }
   function frame(dt, keys) {
     if (!root.visible || dt<=0) return;
     if(restartDialog.open) {
@@ -1555,6 +1577,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     let walking = false;
     stones.update(elapsed);
     if (view === "mission") {
+      weather.frame(dt,elapsed,player);
+      light.storm(weather.intensity);
+      updateRainStatus();
       const input=awaitingStart() ? noInput : keys;
       const dx = Number(input.has("d") || input.has("arrowright") || touchPad.move("d")) -
                  Number(input.has("a") || input.has("arrowleft") || touchPad.move("a"));
@@ -1578,7 +1603,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const backpedaling=dz<0;
       const pace=backpedaling ? (carrying ? 1.03 : 1.21) :
         input.has("shift") ? (carrying ? 2.72 : 3.51) : (carrying ? 1.40 : 1.64);
-      const movementScale=pace*drag/(Math.hypot(dx,dz)||1);
+      const movementScale=pace*drag*weather.traction(player.x,player.z)/(Math.hypot(dx,dz)||1);
       const targetX=(fwd.x*dz+side.x*dx)*movementScale;
       const targetZ=(fwd.z*dz+side.z*dx)*movementScale;
       syncActors();
@@ -1682,6 +1707,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const audibleZ=riverOrigin.y+along;
       const riverDistance=Math.hypot(player.x-audibleX,player.z-audibleZ);
       audio.ambience(audibleX,audibleZ,(indoors ? .032 : .185)*Math.exp(-riverDistance/4.9),indoors);
+      audio.weather(weather.intensity,weather.sheltered);
       cameraObstacle=null;
       cameraClose=false;
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
@@ -1756,6 +1782,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     playerBody.figure.position.set(player.x,bodyY,player.z);
     playerBody.figure.rotation.y=bodyYaw;
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
+    playerBody.rainWear.value=view==="mission" ? weather.clothing : 0;
     footShadow.visible = playerBody.figure.visible && !wading && !riding;
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
     const carrying=hasCargo() && !riding && !freightTransfer;
@@ -1974,6 +2001,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(event.detail) canvas.focus({preventScroll:true});
   };
   soundLabel();
+  weatherButton.onclick=()=>{
+    if(view!=="mission" || awaitingStart() || restartDialog.open) return;
+    weather.toggle();
+    updateRainStatus();
+    canvas.focus({preventScroll:true});
+  };
   const restartButton=tools.querySelector("#missionRestart");
   restartButton.onclick=event=>requestRestart(event.currentTarget);
   restartDialog.addEventListener("close",()=>{
@@ -2021,6 +2054,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return;
     }
     if(awaitingStart()) return;
+    if(e.code==="KeyT" && !e.ctrlKey && !e.metaKey && !e.altKey) weatherButton.click();
     if(e.code==="KeyG") useFerry();
     if(e.code==="KeyB") buyOrClaimCake();
     if(e.code==="KeyI") showSteamer();
@@ -2070,7 +2104,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     inspect: () => ({ phase: state.phase, coins: state.coins, method: state.method, view, firstPerson,
       player: { ...player, y: ferry.active() ? ferry.rider.y : teaRoom.chairActive() ? teaRoom.chair.y : floor(player.x,player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
-      gait:gait.inspect(),audio:audio.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
+      gait:gait.inspect(),audio:audio.inspect(),weather:weather.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,

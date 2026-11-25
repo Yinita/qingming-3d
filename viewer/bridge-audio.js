@@ -1,4 +1,5 @@
 const bankFile=new URL("../data/bridge-audio/street-v1.mp3",import.meta.url);
+const rainFile=new URL("../data/bridge-audio/rain-v1.mp3",import.meta.url);
 const slotDuration=.5, riverStart=10.5, riverEnd=24.5;
 const slots={stone:[0,6],wood:[6,3],earth:[9,6],water:[15,6]};
 const preference="qingming-street-sound-v1";
@@ -13,6 +14,7 @@ export function createStreetAudio(listener) {
   const Context=window.AudioContext || window.webkitAudioContext;
   let enabled=initialPreference(), sceneActive=false;
   let context, master, buffer, download, decoding, river;
+  let rainBuffer,rainLoad,rainRetry=0,rainTrack;
   const voices=new Set(), variants={}, counts={}, lastBySource={};
 
   function load() {
@@ -36,6 +38,8 @@ export function createStreetAudio(listener) {
     for(const voice of voices) voice.stop(now+.075);
     if(river) river.source.stop(now+.075);
     river=null;
+    if(rainTrack) rainTrack.source.stop(now+.075);
+    rainTrack=null;
   }
   document.addEventListener("visibilitychange",sync);
 
@@ -106,29 +110,31 @@ export function createStreetAudio(listener) {
     lastBySource[emitter]={surface,variant,rate,level,laden,pan};
   }
 
+  function loop(sound,start,end) {
+    const source=context.createBufferSource(), gain=context.createGain(), filter=context.createBiquadFilter();
+    source.buffer=sound;
+    source.loop=true;
+    source.loopStart=start;
+    source.loopEnd=Math.min(end,sound.duration);
+    gain.gain.value=0;
+    filter.type="lowpass";
+    filter.frequency.value=4100;
+    source.connect(filter).connect(gain);
+    const stereo=spatialPan(gain,0);
+    source.onended=()=>{
+      source.disconnect();
+      filter.disconnect();
+      gain.disconnect();
+      stereo?.disconnect();
+    };
+    source.start(0,start);
+    return {source,gain,filter,stereo,next:0,level:0};
+  }
+
   function ambience(x,z,level,indoors) {
     if(!active() || !buffer || context.state!=="running") return;
     const now=context.currentTime;
-    if(!river) {
-      const source=context.createBufferSource(), gain=context.createGain(), filter=context.createBiquadFilter();
-      source.buffer=buffer;
-      source.loop=true;
-      source.loopStart=riverStart;
-      source.loopEnd=Math.min(riverEnd,buffer.duration);
-      gain.gain.value=0;
-      filter.type="lowpass";
-      filter.frequency.value=4100;
-      source.connect(filter).connect(gain);
-      const stereo=spatialPan(gain,0);
-      source.onended=()=>{
-        source.disconnect();
-        filter.disconnect();
-        gain.disconnect();
-        stereo?.disconnect();
-      };
-      river={source,gain,filter,stereo,next:0,level:0};
-      source.start(0,riverStart);
-    }
+    river??=loop(buffer,riverStart,riverEnd);
     if(river.next>now) return;
     river.next=now+.10;
     river.level=level;
@@ -137,10 +143,39 @@ export function createStreetAudio(listener) {
     river.stereo?.pan.setTargetAtTime(space(x,z,false).pan*.43,now,.16);
   }
 
+  function weather(level,covered) {
+    if(!active() || context?.state!=="running") return;
+    const now=context.currentTime;
+    if(level<.018) {
+      if(rainTrack) {
+        rainTrack.gain.gain.setTargetAtTime(0,now,.075);
+        rainTrack.source.stop(now+.35);
+        rainTrack=null;
+      }
+      return;
+    }
+    if(!rainBuffer) {
+      if(!rainLoad && now>=rainRetry) {
+        rainLoad=fetch(rainFile,{signal:AbortSignal.timeout(12_000)}).then(response=>{
+          if(!response.ok) throw new Error("Rain audio");
+          return response.arrayBuffer();
+        }).then(bytes=>context.decodeAudioData(bytes)).then(decoded=>{rainBuffer=decoded;})
+          .catch(()=>{rainRetry=context.currentTime+4;}).finally(()=>{rainLoad=null;});
+      }
+      return;
+    }
+    rainTrack??=loop(rainBuffer,0,rainBuffer.duration);
+    if(rainTrack.next>now) return;
+    rainTrack.next=now+.10;
+    rainTrack.level=level*(covered ? .13 : .36);
+    rainTrack.gain.gain.setTargetAtTime(rainTrack.level,now,.18);
+    rainTrack.filter.frequency.setTargetAtTime(covered ? 1170 : 6300,now,.14);
+  }
+
   return {
     supported:!!Context,
     get enabled() { return enabled; },
-    unlock, play, ambience,
+    unlock, play, ambience, weather,
     setActive(value) {
       if(sceneActive===value) return;
       sceneActive=value;
@@ -154,6 +189,6 @@ export function createStreetAudio(listener) {
       sync();
     },
     inspect:()=>({enabled,active:active(),loaded:!!buffer,context:context?.state??"locked",
-      voices:voices.size,river:river?.level??0,counts:{...counts},lastBySource:{...lastBySource}}),
+      voices:voices.size,river:river?.level??0,rain:rainTrack?.level??0,counts:{...counts},lastBySource:{...lastBySource}}),
   };
 }

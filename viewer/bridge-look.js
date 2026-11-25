@@ -276,9 +276,32 @@ export function createPlayLighting(scene, renderer, center, ambient, sun) {
   key.shadow.bias = -.0003;
   key.shadow.radius = 2;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  return function activate(active) {
+  function activate(active) {
     renderer.shadowMap.enabled = active;
     sky.visible = key.visible = active;
     ambient.visible = sun.visible = !active;
+  }
+  const dryBackground=scene.background.clone(),rainBackground=new THREE.Color(0xb4c0b8);
+  const drySky=sky.color.clone(),rainSky=new THREE.Color(0xd1e0df);
+  const dryKey=key.color.clone(),rainKey=new THREE.Color(0xe5eeeb);
+  const fogSettings=new WeakMap();
+  let lastAmount,lastFog;
+  activate.storm=amount=>{
+    if(lastAmount===amount && lastFog===scene.fog) return;
+    lastAmount=amount;
+    lastFog=scene.fog;
+    sky.color.copy(drySky).lerp(rainSky,amount);
+    key.color.copy(dryKey).lerp(rainKey,amount);
+    sky.intensity=1.15+amount*.16;
+    key.intensity=2.15-amount*1.47;
+    scene.background.copy(dryBackground).lerp(rainBackground,amount);
+    if(!scene.fog?.isFog) return;
+    const fog=scene.fog;
+    if(!fogSettings.has(fog)) fogSettings.set(fog,{near:fog.near,far:fog.far,color:fog.color.clone()});
+    const baseline=fogSettings.get(fog);
+    fog.color.copy(baseline.color).lerp(rainBackground,amount);
+    fog.near=THREE.MathUtils.lerp(baseline.near,9,amount);
+    fog.far=THREE.MathUtils.lerp(baseline.far,86,amount);
   };
+  return activate;
 }

@@ -581,24 +581,27 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   return {elbow,sleeve};
 }
 
-function waterStain(material, moisture) {
+function waterStain(material, moisture, rainWear) {
   const previous=material.onBeforeCompile;
   const key=material.customProgramCacheKey();
   material.onBeforeCompile=shader=>{
     previous.call(material,shader);
     shader.uniforms.wetCloth=moisture;
+    shader.uniforms.rainWear=rainWear;
     shader.vertexShader=shader.vertexShader
       .replace("#include <common>","#include <common>\nvarying vec3 wetPoint;")
       .replace("#include <skinning_vertex>","#include <skinning_vertex>\nwetPoint=(modelMatrix*vec4(transformed,1.)).xyz;");
     shader.fragmentShader=shader.fragmentShader
       .replace("#include <common>",`#include <common>
         uniform vec3 wetCloth;
+        uniform float rainWear;
         varying vec3 wetPoint;
       `)
       .replace("#include <color_fragment>",`#include <color_fragment>
         float margin=.025*sin(wetPoint.x*41.+wetPoint.z*37.)+.012*sin(wetPoint.z*72.);
         float wet=wetCloth.z*(1.-smoothstep(wetCloth.y-.075,wetCloth.y+.018,
           wetPoint.y-wetCloth.x+margin));
+        wet=max(wet,rainWear*(.48+.49*smoothstep(.55,1.42,wetPoint.y-wetCloth.x+margin)));
         diffuseColor.rgb*=mix(vec3(1.),vec3(.49,.55,.53),wet);
       `)
       .replace("#include <roughnessmap_fragment>",
@@ -883,8 +886,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const hem = plain(0x554c3b, .84);
   const strapPaint = plain(0x9a8968);
   const moisture={ value:new THREE.Vector3() };
+  const rainWear={value:0};
   if (role==="player") {
-    for (const mat of [trousers,footwear,hem,dyed,cloth,bodyLinen]) waterStain(mat,moisture);
+    for (const mat of [trousers,footwear,hem,dyed,cloth,bodyLinen]) waterStain(mat,moisture,rainWear);
   }
   const detail=!lowDetail;
   const hemOffset=profile?.hem??market?.hem??0, skirt=profile?.skirt??market?.skirt??1;
@@ -1447,7 +1451,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
   return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,poseFeet,poseSleeves,stand,walkBody,
-    face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value};
+    face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value,rainWear};
 }
 
 export function counterCeramics(stall) {
