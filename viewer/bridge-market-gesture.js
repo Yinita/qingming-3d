@@ -149,8 +149,6 @@ export function createMarketHandoff(shopper,parcel,{city,floor,obstruction,place
     body.torsoPivot.rotation.x-=.17*receiverWeight*(1-pull);
     giver.head.rotation.x+=.21*giverWeight;
     body.head.rotation.x+=.25*receiverWeight*(1-pull)+.23*Math.sin(Math.PI*smoothstep(age,1.94,2.77));
-    const thanks=smoothstep(age,1.46,1.65)*(1-smoothstep(age,2.36,2.57));
-    body.articulate(thanks*(.28+.60*Math.pow(.5+.5*Math.sin(age*34),2)));
     body.lookEyes(-.12*receiverWeight,-.92*receiverWeight*(1-pull),dt);
     giver.figure.updateMatrixWorld(true);
     body.figure.updateMatrixWorld(true);

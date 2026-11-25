@@ -508,7 +508,6 @@ export function buildLivingMarket(root,city,surface,floor,riverOrigin,sampleAir)
     seller.head.rotation.y=damp(seller.head.rotation.y,lerp(look,-.12,progress)+.45*stoveEffort,7,dt);
     seller.head.rotation.x=.012*Math.sin(time*1.77)-.26*progress-.23*stoveEffort;
     seller.lookEyes(lerp(clamp(look*1.4,-1,1),-.72,stoveEffort),-.94*Math.max(stoveEffort,progress),dt);
-    seller.articulate(progress*.58*Math.pow(.5+.5*Math.sin(time*18),3));
     blink(seller,time+.81);
     if(service.lidArm>0) seller.reachHand(0,steamer.lidGrip(grip),service.lidArm);
     if(service.toolArm>0) seller.reachHand(1,steamer.toolGrip(grip),service.toolArm);
@@ -517,6 +516,7 @@ export function buildLivingMarket(root,city,surface,floor,riverOrigin,sampleAir)
       packet.localToWorld(grip.set(side*.100,.054,.003+side*.020*Math.sin(age*11)));
       seller.reachHand(i,grip,progress*.94);
     }
+    seller.poseSleeves();
   }
 
   function resetActors() {
@@ -532,6 +532,10 @@ export function buildLivingMarket(root,city,surface,floor,riverOrigin,sampleAir)
 
   const visitorPoint={x:shopX,z:shopZ-.65};
   return {
+    speech(dialogue,dt) {
+      seller.face.speak(dialogue.id==="cake" ? dialogue.shape : null,dt);
+      shopper.worker.face.speak(dialogue.id==="shopper" ? dialogue.shape : null,dt);
+    },
     frame(dt,player=null) {
       if(!dt) return;
       time+=dt;

@@ -3,6 +3,7 @@ import * as THREE from "three";
 const start = .88;
 const stop = 3.11;
 const duration = 4.60;
+const pickupTime=.86;
 const rows = 27;
 const sides = 8;
 const splashCount = 18;
@@ -315,10 +316,18 @@ export function buildTea(stall) {
     }
   }
 
+  const graspFrame=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
+  const handleContact=new THREE.Object3D();
+  handleContact.name="Kettle handle contact";
+  handleContact.position.set(.311,.174,-.002);
+  pot.add(handleContact);
   return {
-    duration,
-    grip(target) { return pot.localToWorld(target.set(.278,.175,-.008)); },
-    start(time) { began = time; peakDrops = 0; update(time); },
+    duration:duration+pickupTime,
+    grip(target,orientation) {
+      if(orientation) pot.getWorldQuaternion(orientation).multiply(graspFrame);
+      return handleContact.getWorldPosition(target);
+    },
+    start(time) { began = time+pickupTime; peakDrops = 0; update(time); },
     age: () => age,
     reset() {
       began = -Infinity;

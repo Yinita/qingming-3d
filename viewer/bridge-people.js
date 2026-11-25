@@ -226,10 +226,33 @@ function sleevelessCoat(figure,robe,material,short,lowDetail) {
   piece(figure,geometry,material,0,0,0).name="Open sleeveless work coat";
 }
 
+function bambooWeave(material) {
+  material.customProgramCacheKey=()=>"bamboo-over-under";
+  material.onBeforeCompile=shader=>{
+    shader.vertexShader=shader.vertexShader
+      .replace("#include <common>","#include <common>\nvarying vec2 bambooPoint;")
+      .replace("#include <begin_vertex>","#include <begin_vertex>\nbambooPoint=position.xz;");
+    shader.fragmentShader=shader.fragmentShader
+      .replace("#include <common>","#include <common>\nvarying vec2 bambooPoint;")
+      .replace("#include <color_fragment>",`#include <color_fragment>
+        float radius=length(bambooPoint);
+        float azimuth=atan(bambooPoint.x,bambooPoint.y);
+        float width=length(dFdx(bambooPoint))+length(dFdy(bambooPoint));
+        float closeWeave=(1.-smoothstep(.002,.010,width))*smoothstep(.032,.068,radius);
+        float warp=cos(azimuth*150.+.33*sin(radius*62.));
+        float weft=cos(radius*1041.+.39*sin(azimuth*18.));
+        float crossings=warp*weft;
+        float channels=pow(max(0.,-warp),5.)+pow(max(0.,-weft),6.);
+        float fleck=cos(radius*1433.+azimuth*273.);
+        diffuseColor.rgb*=1.+closeWeave*(.077*crossings-.075*channels+.021*fleck);
+      `);
+  };
+}
+
 function wovenHat(head,straw,rim,lowDetail,shape) {
   const hat=new THREE.Group();
   hat.scale.set(...shape);
-  hat.position.y=.105;
+  hat.position.y=.083;
   head.add(hat);
   const segments=lowDetail ? 20 : 48;
   const crown=[[0,.184],[.065,.180],[.114,.151],[.175,.105],[.219,.077],
@@ -246,6 +269,7 @@ function wovenHat(head,straw,rim,lowDetail,shape) {
   geometry.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
   geometry.computeVertexNormals();
   straw.vertexColors=true;
+  if(!lowDetail) bambooWeave(straw);
   piece(hat,geometry,straw,0,0,0).name="Woven bamboo hat";
   for(const [r,y] of crown.slice(2)) {
     const braid=new THREE.TorusGeometry(r,r>.34?.007:.0027,5,segments).rotateX(Math.PI/2);
@@ -396,7 +420,7 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
   return { upper,calf,ankle,footprint,hip };
 }
 
-function tailoredSleeve(arm, cloth, binding, sections, cut) {
+function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   const joint=-.212;
   const profile=[
     [0,-.381],[.055,-.382],[.062,-.373],[.065,-.351],[.071,-.332],
@@ -423,6 +447,21 @@ function tailoredSleeve(arm, cloth, binding, sections, cut) {
   }
   contour.setAttribute("skinIndex",new THREE.BufferAttribute(indices,4));
   contour.setAttribute("skinWeight",new THREE.BufferAttribute(weights,4));
+  if(corrective) {
+    // Restore circumference lost to linear blending near a folded elbow.
+    const expanded=positions.clone();
+    for(let i=0;i<positions.count;i++) {
+      const y=positions.getY(i),x=positions.getX(i),z=positions.getZ(i);
+      const band=Math.exp(-(((y-joint)/.063)**2));
+      const width=1+band*(.36+.058*Math.cos(y*109));
+      expanded.setXYZ(i,x*width,y,z*width);
+    }
+    const normals=contour.clone();
+    normals.setAttribute("position",expanded);
+    normals.computeVertexNormals();
+    contour.morphAttributes.position=[expanded];
+    contour.morphAttributes.normal=[normals.attributes.normal];
+  }
   const sleeve=new THREE.SkinnedMesh(contour,cloth);
   sleeve.name="Tailored articulated sleeve";
   sleeve.castShadow=sleeve.receiveShadow=true;
@@ -436,7 +475,7 @@ function tailoredSleeve(arm, cloth, binding, sections, cut) {
   sleeve.bind(new THREE.Skeleton([shoulder,elbow]));
   const edge=fabric([[.056,-.172],[.063,-.167],[.065,-.150],[.063,-.145]],.88,0,sections);
   piece(elbow,edge,binding,0,0,.005).name="Bound sleeve cuff";
-  return elbow;
+  return {elbow,sleeve};
 }
 
 function waterStain(material, moisture) {
@@ -1013,20 +1052,22 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     const satchel=surface("indigo-linen",market?.satchel??0xad9b79,.76,.94);
     shoulderSatchel(figure,robe,satchel,binding,lowDetail);
   }
-  // The courier and player reuse their gait phase to drive the loose cloth.
+  // The courier and player use their gait and the posed thighs to move the robe.
   const clothPanels=role==="player" || role==="helper"
     ? figure.children.filter(part=>["Outer robe shell","Bound robe hem","Fitted robe binding","Overlapping skirt panel"].includes(part.name))
         .map(({geometry})=>({geometry,rest:geometry.attributes.position.array.slice()}))
     : [];
-  let clothMotion=0;
-  const torsoPivot=new THREE.Group(), torso=role==="merchant" ? figure : new THREE.Group();
-  if(torso!==figure) {
-    for(const part of [...figure.children]) torso.add(part);
-    torsoPivot.position.y=.91;
-    torso.position.y=-.91;
-    torsoPivot.add(torso);
-    figure.add(torsoPivot);
-  }
+  let clothLead=0, clothReturn=0;
+  const thighCloth=clothPanels.length ? [-1,1].map(()=>({
+    hip:new THREE.Vector3(), axis:new THREE.Vector3(), inverseLength:0,
+  })) : null;
+  const clothSpace=thighCloth ? new THREE.Matrix4() : null;
+  const torsoPivot=new THREE.Group(), torso=new THREE.Group();
+  for(const part of [...figure.children]) torso.add(part);
+  torsoPivot.position.y=.91;
+  torso.position.y=-.91;
+  torsoPivot.add(torso);
+  figure.add(torsoPivot);
   const limbs = { legs: [], arms: [], elbows:[], hands:[] };
   const straps = new THREE.Group();
   straps.name="Cargo harness";
@@ -1039,35 +1080,17 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       ribbon(straps,[x,1.238,.232],[x*.83,1.337,.088],.045,strapPaint,.021);
     }
   }
-  const articulated=[];
-  const wrapTint=profile ? plain([0xaa997c,0x908679,0x797e75,0xc5ac86][variant],.95) : dyed;
+  const articulated=[], sleeveFits=[];
   for (const side of [-1, 1]) {
-    if (role==="player" || role==="helper" || role==="resident" || market) {
-      articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
-    } else {
-      const leg = new THREE.Group();
-      leg.position.set(side * .119, .68, 0);
-      figure.add(leg);
-      piece(leg, fabric([[.064,-.512],[.069,-.481],[.082,-.4],[.078,-.285],[.103,-.15],[.100,.01]], .93),
-            trousers, 0, 0, 0);
-      piece(leg, new THREE.CylinderGeometry(.078,.071,.125,16), dyed, 0, -.526, 0);
-      for (const wrap of [-.559,-.529,-.499]) {
-        piece(leg, new THREE.CylinderGeometry(.079,.079,.007,16), hem, 0, wrap, 0);
-      }
-      const shoe = piece(leg, new THREE.SphereGeometry(1, 20, 12), footwear, 0, -.627, -.046);
-      shoe.scale.set(.083,.049,.130);
-      const sole = new THREE.SphereGeometry(1, 18, 7);
-      const edge = piece(leg, sole, hem, 0, -.662, -.046);
-      edge.scale.set(.083,.015,.128);
-      limbs.legs.push(leg);
-    }
+    articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     const arm = new THREE.Group();
     arm.position.set(side*.236*shoulders,1.228,.005);
     arm.scale.set(profile?.armWidth??1,profile?.sleeve??1,profile?.armWidth??1);
     // Hang the arm slightly away from the body so the hand clears the flared robe.
     arm.rotation.z=side*.11;
     torso.add(arm);
-    const elbow=tailoredSleeve(arm,cloth,binding,garmentSections,profile?.cuff??.04);
+    const {elbow,sleeve}=tailoredSleeve(arm,cloth,binding,garmentSections,profile?.cuff??.04,detail && !profile);
+    if(sleeve.morphTargetInfluences) sleeveFits.push({sleeve,elbow});
     const hand=buildHand(elbow,skin,side,{lowDetail,scale:profile?.hand??1});
     hand.group.position.set(0,-.163,-.009);
     limbs.hands.push(hand);
@@ -1078,56 +1101,97 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       ribbon(straps,[side*.15,1.237,-.151],[side*.116,.956,-.17],.043,strapPaint,.02);
     }
   }
-  let reachWithRightHand;
-  if (role === "merchant") {
-    const up = new THREE.Vector3(0,1,0);
-    const shoulder = limbs.arms[0].position;
-    const posed = new THREE.Group();
-    posed.visible = false;
-    figure.add(posed);
-    const upper = piece(posed, fabric([[.081,0],[.101,.099],[.095,.221],[.046,.28],[0,.305]], .87),
-                        cloth,0,0,0);
-    const forearm = piece(posed, fabric([[.063,0],[.080,.087],[.084,.186],[.075,.258],[0,.27]], .85),
-                          cloth,0,0,0);
-    const cuff = piece(forearm,new THREE.CylinderGeometry(.064,.062,.030,16),binding,0,.012,0);
-    cuff.rotation.z = .06;
-    const clasp = new THREE.Group();
-    posed.add(clasp);
-    const palm = piece(clasp,new THREE.SphereGeometry(.055,14,10),skin,0,0,.017);
-    palm.scale.set(.83,1.0,.65);
-    for (let i=0; i<3; i++) {
-      const finger = piece(clasp,new THREE.CapsuleGeometry(.0105,.026,4,8),skin,.021-i*.020,.003,-.019);
-      finger.rotation.x = .93;
+  function poseSleeves() {
+    for(const {sleeve,elbow} of sleeveFits) {
+      const flex=1-Math.abs(elbow.quaternion.w);
+      sleeve.morphTargetInfluences[0]=THREE.MathUtils.smoothstep(flex,.013,.31);
     }
-    const thumb = piece(clasp,new THREE.CapsuleGeometry(.012,.020,4,8),skin,-.033,.025,.016);
-    thumb.rotation.z = .65;
-    const wrist = new THREE.Vector3(), elbow = new THREE.Vector3();
-    const straight = new THREE.Vector3(), outward = new THREE.Vector3();
-    const worldTarget = new THREE.Vector3();
+  }
+  let holdKettle;
+  if(role==="merchant") {
+    const arm=limbs.arms[0], elbow=limbs.elbows[0], hand=limbs.hands[0];
+    const handlePoint=new THREE.Vector3(.018,-.058,0);
+    const socket=new THREE.Object3D();
+    socket.name="Tea grasp contact";
+    socket.position.copy(handlePoint);
+    hand.group.add(socket);
 
-    function fit(sleeve, end, start, length) {
-      sleeve.position.copy(end);
-      straight.copy(start).sub(end);
-      sleeve.scale.y = straight.length()/length;
-      sleeve.quaternion.setFromUnitVectors(up,straight.normalize());
-    }
-
-    reachWithRightHand = (grip, reach) => {
-      limbs.arms[0].visible = reach <= .005;
-      posed.visible = reach > .005;
-      if (!posed.visible) return;
-      figure.worldToLocal(worldTarget.copy(grip));
-      wrist.set(shoulder.x,shoulder.y-.389,shoulder.z-.012).lerp(worldTarget,reach);
-      straight.copy(wrist).sub(shoulder).normalize();
-      outward.set(-1,-.61,.24).addScaledVector(straight,-straight.dot(outward)).normalize();
-      const distance = Math.min(.542,wrist.distanceTo(shoulder));
-      elbow.copy(shoulder).lerp(wrist,.50).addScaledVector(outward,Math.sqrt(.272**2-(distance*.5)**2));
-      fit(upper,elbow,shoulder,.28);
-      fit(forearm,wrist,elbow,.25);
-      clasp.position.copy(wrist);
-      clasp.rotation.set(.12,.38 + reach*.41,-.40);
+    const upper=elbow.position.length(),lower=hand.group.position.length();
+    const upperRest=elbow.position.clone().normalize(), lowerRest=hand.group.position.clone().normalize();
+    const wrist=new THREE.Vector3(), direction=new THREE.Vector3(), bend=new THREE.Vector3();
+    const joint=new THREE.Vector3(), axis=new THREE.Vector3(), offset=new THREE.Vector3();
+    const next=new THREE.Quaternion(), orientation=new THREE.Quaternion();
+    holdKettle=(grip,frame,amount) => {
+      arm.rotation.set(0,0,-.11);
+      elbow.rotation.set(0,0,0);
+      hand.group.quaternion.identity();
+      hand.setGrip(.09+.84*amount);
+      if(amount<.001) return;
+      wrist.copy(grip).sub(offset.copy(handlePoint).applyQuaternion(frame));
+      arm.parent.worldToLocal(wrist);
+      direction.copy(wrist).sub(arm.position);
+      const span=clamp(direction.length(),.070,upper+lower-.0004);
+      direction.normalize();
+      bend.set(-.65,-.55,.51).addScaledVector(direction,-direction.dot(bend)).normalize();
+      const projection=(upper*upper-lower*lower+span*span)/(2*span);
+      joint.copy(direction).multiplyScalar(projection)
+        .addScaledVector(bend,Math.sqrt(Math.max(0,upper*upper-projection*projection)));
+      arm.quaternion.slerp(next.setFromUnitVectors(upperRest,axis.copy(joint).normalize()),amount);
+      axis.copy(direction).multiplyScalar(span).sub(joint).applyQuaternion(orientation.copy(arm.quaternion).invert());
+      elbow.quaternion.slerp(next.setFromUnitVectors(lowerRest,axis.normalize()),amount);
+      elbow.getWorldQuaternion(orientation).invert().multiply(frame);
+      hand.group.quaternion.slerp(orientation,amount);
     };
   }
+  function settleRobe() {
+    if(!thighCloth) return;
+    torso.updateWorldMatrix(true,false);
+    clothSpace.copy(torso.matrixWorld).invert().multiply(figure.matrixWorld);
+    for(const [i,leg] of articulated.entries()) {
+      const thigh=thighCloth[i];
+      thigh.hip.copy(leg.hip).applyMatrix4(clothSpace);
+      thigh.axis.copy(leg.calf.position).applyQuaternion(leg.upper.quaternion)
+        .add(leg.hip).applyMatrix4(clothSpace).sub(thigh.hip);
+      thigh.inverseLength=1/thigh.axis.lengthSq();
+    }
+    for(const {geometry,rest} of clothPanels) {
+      const vertices=geometry.attributes.position;
+      let changed=false;
+      for(let i=0;i<vertices.count;i++) {
+        const at=i*3, x=rest[at], y=rest[at+1],z=rest[at+2];
+        if(y>=.93) continue;
+        const loose=1-THREE.MathUtils.smoothstep(y,.63,.93);
+        const sides=clamp(x/.217,-1,1);
+        let nextX=x+loose*(.006*clothLead-.032*z*clothLead);
+        let nextY=y+loose*.009*sides*clothReturn;
+        let nextZ=z+loose*(.025*sides*clothLead+.009*clothReturn);
+        const radial=Math.hypot(x,z);
+        if(radial>.10 && y<.81) {
+          let separation=0;
+          for(const {hip,axis,inverseLength} of thighCloth) {
+            const dx=nextX-hip.x, dy=nextY-hip.y, dz=nextZ-hip.z;
+            const t=clamp((dx*axis.x+dy*axis.y+dz*axis.z)*inverseLength,0,.81);
+            const distance=Math.hypot(dx-t*axis.x,dy-t*axis.y,dz-t*axis.z);
+            separation=Math.max(separation,.107-distance);
+          }
+          // Move the hem away from a raised thigh while keeping the waist fixed.
+          const clearance=separation*loose;
+          nextX+=x/radial*clearance;
+          nextZ+=z/radial*clearance;
+          nextY+=.24*clearance;
+        }
+        if(Math.abs(nextX-vertices.getX(i))+Math.abs(nextY-vertices.getY(i))+
+          Math.abs(nextZ-vertices.getZ(i))<.00013) continue;
+        vertices.setXYZ(i,nextX,nextY,nextZ);
+        changed=true;
+      }
+      if(changed) {
+        vertices.needsUpdate=true;
+        geometry.computeVertexNormals();
+      }
+    }
+  }
+
   let poseFeet;
   if (articulated.length) {
     const down=new THREE.Vector3(0,-1,0), up=new THREE.Vector3(0,1,0);
@@ -1176,6 +1240,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
         leg.calf.quaternion.copy(leg.upper.quaternion).invert().multiply(shinRotation);
         leg.ankle.position.copy(anklePoint);
       }
+      settleRobe();
     };
   }
   function stand(floor,x,y,z,yaw) {
@@ -1229,25 +1294,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       head.rotation.z=-.029*balance*Math.sin(phase-.21)+.54*roll;
       head.rotation.x=.013*effort*Math.sin(phase*2+.45)+.55*pitch;
     }
-    if(clothPanels.length && (balance>.002 || clothMotion>.002)) {
-      const lead=Math.sin(phase-.44)*balance;
-      const rebound=Math.sin(phase*2-.88)*balance;
-      for(const {geometry,rest} of clothPanels) {
-        const vertices=geometry.attributes.position;
-        for(let i=0;i<vertices.count;i++) {
-          const at=i*3, y=rest[at+1];
-          if(y>=.93) continue;
-          const x=rest[at],z=rest[at+2];
-          const loose=1-THREE.MathUtils.smoothstep(y,.61,.93);
-          const sides=clamp(x/.217,-1,1);
-          vertices.setXYZ(i,x+loose*(.006*lead-.032*z*lead),
-            y+loose*.010*sides*rebound,z+loose*(.040*sides*lead+.010*rebound));
-        }
-        vertices.needsUpdate=true;
-        geometry.computeVertexNormals();
-      }
-      clothMotion=balance;
-    }
+    clothLead=THREE.MathUtils.damp(clothLead,Math.sin(phase-.44)*balance,15,dt);
+    clothReturn=THREE.MathUtils.damp(clothReturn,Math.sin(phase*2-.88)*balance,12,dt);
     for(let i=0;i<limbs.arms.length;i++) {
       const swing=Math.sin(phase+(i+1)*Math.PI);
       if(reachHand) limbs.arms[i].rotation.set(0,0,i===0 ? -.11 : .11);
@@ -1261,7 +1309,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
     for(const hand of limbs.hands) hand.setGrip(.08+.12*effort+.74*carryWeight);
   }
-  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,reachHand,poseFeet,stand,walkBody,
+  return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,poseFeet,poseSleeves,stand,walkBody,
     face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value};
 }
 

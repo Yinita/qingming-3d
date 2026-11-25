@@ -72,6 +72,19 @@ function speakingJaw(x,y,z,lip) {
   return local(x*(1-.014*below*front),y-opening+rise,z-opening*.13);
 }
 
+function vowel(x,y,z,lip,rounded) {
+  const a=Math.abs(x);
+  const clench=1-smoothstep(y,6.646,6.729);
+  const lower=lip==="lower" ? 1 : lip==="upper" ? 0 : clench;
+  const lips=gaussian(a,y,.047,6.707,.285,.108)*smoothstep(z,1.32,1.50);
+  const corner=gaussian(a,y,.208,6.707,.107,.113)*smoothstep(z,1.25,1.51);
+  const jaw=gaussian(a,y,.008,6.58,.324,.208)*smoothstep(z,.95,1.48);
+  const dx=rounded ? -x*(.18*lips+.12*corner) : x*(.24*corner+.07*lips);
+  const dy=rounded ? -.052*lower*jaw+.013*(1-lower)*lips :
+    -.026*lower*jaw+.029*corner+.006*(1-lower)*lips;
+  return local(x+dx,y+dy,z+(rounded ? .097*lips-.013*corner : -.034*corner));
+}
+
 function skinProgram(material) {
   material.customProgramCacheKey=()=>"painted-anatomical-skin";
   material.onBeforeCompile=shader=>{
@@ -118,14 +131,17 @@ function makeHeadGeometry(role,animated,beard) {
     lipRegion.set(upper,"upper");
     lipRegion.set(lower,"lower");
   }
-  const positions=[],colour=[],closed=[],talk=[];
+  const positions=[],colour=[],closed=[],talk=[],round=[],wide=[];
   for(let i=0;i<source.length;i+=3) {
     const x=source[i],y=source[i+1],z=source[i+2];
     positions.push(...local(x,y,z));
     colour.push(...skinColour(x,y,z,beard ? "merchant" : role));
     if(animated) {
       closed.push(...closedLid(x,y,z));
-      talk.push(...speakingJaw(x,y,z,lipRegion.get(i/3)));
+      const lip=lipRegion.get(i/3);
+      talk.push(...speakingJaw(x,y,z,lip));
+      round.push(...vowel(x,y,z,lip,true));
+      wide.push(...vowel(x,y,z,lip,false));
     }
   }
   const geometry=new THREE.BufferGeometry();
@@ -134,7 +150,7 @@ function makeHeadGeometry(role,animated,beard) {
   geometry.setAttribute("color",new THREE.Float32BufferAttribute(colour,3));
   geometry.computeVertexNormals();
   if(!animated) return {geometry,source};
-  const morphPositions=[talk,closed].map(target=>new THREE.Float32BufferAttribute(target,3));
+  const morphPositions=[talk,closed,round,wide].map(target=>new THREE.Float32BufferAttribute(target,3));
   const deformed=new THREE.BufferGeometry();
   deformed.setIndex(geometry.index);
   geometry.morphAttributes.normal=morphPositions.map(target=>{
@@ -454,13 +470,23 @@ export function buildAnatomicalHead(head,role,tone,style) {
   if(!animated) return {};
   skin.morphTargetDictionary.speak=0;
   skin.morphTargetDictionary.blink=1;
+  skin.morphTargetDictionary.round=2;
+  skin.morphTargetDictionary.wide=3;
   const teeth=mouthInterior(head);
   teeth.visible=false;
   const aim=new THREE.Vector2();
+  const morph=skin.morphTargetInfluences;
   return {
     articulate(amount) {
-      skin.morphTargetInfluences[0]=clamp(amount,0,1);
+      morph[0]=clamp(amount,0,1);
+      morph[2]=morph[3]=0;
       teeth.visible=amount>.21;
+    },
+    speak(shape,dt) {
+      morph[0]=damp(morph[0],shape?.[0]??0,34,dt);
+      morph[2]=damp(morph[2],shape?.[1]??0,34,dt);
+      morph[3]=damp(morph[3],shape?.[2]??0,34,dt);
+      teeth.visible=morph[0]+.40*morph[2]+.40*morph[3]>.23;
     },
     blink(amount) { skin.morphTargetInfluences[1]=clamp(amount,0,1); },
     lookEyes(x,y,dt) {

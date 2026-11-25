@@ -241,8 +241,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   playerBody.figure.traverse(part => part.layers.enable(1));
   const merchant = riverWorker(root, material, "merchant");
   merchant.figure.name="Tea merchant";
-  merchant.figure.position.set(counter.x + 1.16, .09, counter.z - .78);
-  merchant.figure.rotation.y = Math.PI;
+  merchant.figure.position.set(counter.x+1.16,.09,counter.z-.62);
+  merchant.figure.rotation.y=Math.PI;
+  merchant.stand(()=>.09,merchant.figure.position.x,.09,merchant.figure.position.z,Math.PI);
   const helper = riverWorker(root, material, "helper");
   helper.figure.name="Bridge courier";
   helper.figure.position.set(pickup.x - .5, floor(pickup.x - .5, routeZ + 1.03), routeZ + 1.03);
@@ -411,11 +412,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let wading = false;
   let wetLine = 0;
   let dampness = 0;
-  const teaEye = stall.position.clone().add(new THREE.Vector3(.49, 1.57, 2.29));
-  const teaFocus = stall.position.clone().add(new THREE.Vector3(.61, 1.167, 1.16));
-  const teaGrip = new THREE.Vector3();
-  const teaRotation = new THREE.Quaternion().setFromRotationMatrix(
-    new THREE.Matrix4().lookAt(teaEye, teaFocus, camera.up));
+  const teaEye=stall.position.clone().add(new THREE.Vector3(.64,1.39,2.61));
+  const teaPortrait=stall.position.clone().add(new THREE.Vector3(1.09,1.48,.79));
+  const teaFocus=stall.position.clone().add(new THREE.Vector3(.78,1.25,1.08));
+  const teaGrip=new THREE.Vector3(), teaHandFrame=new THREE.Quaternion();
+  const shotEye=new THREE.Vector3(), shotTarget=new THREE.Vector3(), shotBasis=new THREE.Matrix4();
+  const teaRotation=new THREE.Quaternion();
   const player={...spawn};
   const workshopVisitor={radius:workerRadius,enabled:true};
   const boardCargo={radius:0,halfX:cargoWidth,halfZ:cargoDepth};
@@ -718,17 +720,22 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function stopTeaShot() {
-    teaShotStart = -Infinity;
+    teaShotStart=-Infinity;
+    document.body.classList.remove("tea-closeup");
   }
 
   function toggleTeaShot() {
     if (Number.isFinite(teaShotStart)) {
       stopTeaShot();
     } else if (view === "mission" && state.phase === "delivered" && distance(player, counter) < 2.75) {
-      teaShotStart = elapsed;
+      teaShotStart=elapsed;
+      document.body.classList.add("tea-closeup");
+      clearPlayerControl();
       tea.start(elapsed);
+      dialogue.speak("pour");
     }
     ui();
+    canvas.focus({preventScroll:true});
   }
 
   function sendCourierHome() {
@@ -814,7 +821,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
-    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open);
+    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !Number.isFinite(teaShotStart));
     touchPad.rowing(ferry.active());
     dialogue.activate(view==="mission" && intro.hidden && !restartDialog.open);
     tools.hidden=labels.hidden;
@@ -973,8 +980,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function contextAction() {
     if(view!=="mission" || awaitingStart() || restartDialog.open) return null;
+    if(Number.isFinite(teaShotStart)) return teaButton;
     const crate=state.phase==="waiting" || distance(player,counter)<deliveryReach ? interactButton : null;
-    return [ferryButton,crate,workshopButton,cakeButton,shareCakeButton,talkButton,animalButton,interactButton]
+    return [ferryButton,crate,workshopButton,cakeButton,shareCakeButton,teaButton,talkButton,animalButton,interactButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
   }
 
@@ -1052,7 +1060,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     teaButton.hidden = state.phase !== "delivered";
     byId("missionReplay").hidden = state.phase !== "delivered";
     teaButton.disabled = view !== "mission" || (!teaShot && distance(player, counter) >= 2.75);
-    teaButton.textContent = teaShot ? "返回街道" : "看掌柜斟茶";
+    teaButton.textContent = teaShot ? "返回街道 E" : "请掌柜斟茶 E";
     byId("missionCamera").disabled = view !== "mission";
     byId("missionCamera").textContent = firstPerson ? "切换第三人称" : "切换第一人称";
     switchButton.textContent = view === "missionScroll" ? "返回桥头" : "查看任务画卷";
@@ -1125,6 +1133,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     view = mode;
     if(mode!=="mission") {
       dialogue.activate(false);
+      market.speech(dialogue.speech(0),1);
+      merchant.face.speak(null,1);
+      helper.face.speak(null,1);
       rowingLens=false;
       clearStreetMotion();
     }
@@ -1171,6 +1182,25 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function clearPlayerControl() {
     clearInput();
     clearStreetMotion();
+  }
+
+  const gaze=new THREE.Vector3();
+  function settleGaze(person,yaw,pitch,dt) {
+    const {damp}=THREE.MathUtils;
+    person.head.rotation.y=damp(person.head.rotation.y,yaw,8,dt);
+    person.head.rotation.x=damp(person.head.rotation.x,pitch,7,dt);
+    person.face.lookEyes(yaw*.34,pitch*.7,dt);
+  }
+  function attend(person,x,y,z,dt,nod) {
+    const {head}=person;
+    head.parent.worldToLocal(gaze.set(x,y,z)).sub(head.position);
+    const yaw=-Math.atan2(gaze.x,-gaze.z);
+    const pitch=Math.atan2(gaze.y,Math.hypot(gaze.x,gaze.z));
+    const {clamp,damp}=THREE.MathUtils;
+    head.rotation.y=damp(head.rotation.y,clamp(yaw*.81,-.61,.61),9,dt);
+    head.rotation.x=damp(head.rotation.x,clamp(pitch*.81-nod,-.37,.26),9,dt);
+    person.face.lookEyes(clamp((yaw-head.rotation.y)*3,-1,1),
+      clamp((pitch-head.rotation.x)*3,-1,1),dt);
   }
 
   const noInput=new Set();
@@ -1313,8 +1343,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         } else {
           const focus = THREE.MathUtils.smoothstep(t, 0, .56) *
             (1 - THREE.MathUtils.smoothstep(t, tea.duration - .1, tea.duration + .42));
-          camera.position.lerp(teaEye, focus);
-          camera.quaternion.slerp(teaRotation, focus);
+          const tilt=THREE.MathUtils.smoothstep(t,.57,1.63);
+          shotTarget.copy(teaPortrait).lerp(teaFocus,tilt);
+          shotEye.copy(teaEye);
+          shotEye.z+=THREE.MathUtils.clamp((.86-camera.aspect)*2.47,0,1.08);
+          teaRotation.setFromRotationMatrix(shotBasis.lookAt(shotEye,shotTarget,camera.up));
+          camera.position.lerp(shotEye,focus);
+          camera.quaternion.slerp(teaRotation,focus);
         }
       }
       foreground.update(camera, elapsed);
@@ -1395,26 +1430,38 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     courier.y=courierGait.rootHeight(courier.x,courier.z);
     helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
     animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,state.phase==="courier",dt);
-    const nod = THREE.MathUtils.clamp((elapsed - deliveryTime) / 1.18, 0, 1);
-    const greeting = state.phase === "delivered" ? Math.sin(Math.PI * nod) : 0;
-    merchant.head.rotation.x = .028 * Math.sin(elapsed * 1.7) - .21 * greeting;
-    const pourAge = tea.age();
-    const reach = THREE.MathUtils.smoothstep(pourAge, -.02, .58) *
-      (1 - THREE.MathUtils.smoothstep(pourAge, 3.87, 4.60));
-    merchant.figure.position.z = counter.z - .78 + .29*reach;
-    merchant.figure.rotation.set(-.14*reach,
-      Math.PI*(state.phase === "delivered" ? .88 + .111*reach : 1),0,"YXZ");
-    merchant.head.rotation.x += .21*reach;
-    merchant.head.rotation.y = .18*reach;
-    merchant.limbs.arms[1].rotation.x = .64 * greeting + .26*reach;
-    merchant.reachWithRightHand(tea.grip(teaGrip), reach);
-    helper.head.rotation.y = state.phase === "waiting" ? .16 * Math.sin(elapsed * .91) : 0;
+    const speech=dialogue.speech(dt);
+    const nod=THREE.MathUtils.clamp((elapsed-deliveryTime)/1.18,0,1);
+    const greeting=state.phase==="delivered" ? Math.sin(Math.PI*nod) : 0;
+    const pourAge=tea.age();
+    const lean=THREE.MathUtils.smoothstep(pourAge,-.52,-.12)*
+      (1-THREE.MathUtils.smoothstep(pourAge,4.28,4.58));
+    const grasp=THREE.MathUtils.smoothstep(pourAge,-.44,-.025)*
+      (1-THREE.MathUtils.smoothstep(pourAge,4.27,4.58));
+    merchant.torsoPivot.position.z=-.221*lean;
+    merchant.torsoPivot.rotation.x=-.31*lean;
+    merchant.torsoPivot.rotation.y=.14*greeting*(1-lean);
+    merchant.limbs.arms[1].rotation.x=.31*greeting+.14*lean;
+    merchant.holdKettle(tea.grip(teaGrip,teaHandFrame),teaHandFrame,grasp);
+    const merchantSpeaking=speech.id==="delivery" || speech.id==="pour";
+    const sightY=floor(player.x,player.z)+1.52;
+    const lookAtKettle=lean>.26;
+    const merchantNear=Math.hypot(player.x-merchant.figure.position.x,player.z-merchant.figure.position.z)<2.95;
+    if(lookAtKettle) {
+      attend(merchant,teaGrip.x-.27,teaGrip.y+.15,teaGrip.z+.12,dt,.014*speech.emphasis);
+    } else if(merchantNear || merchantSpeaking) {
+      attend(merchant,player.x,sightY,player.z,dt,.077*greeting+.033*speech.emphasis);
+    } else settleGaze(merchant,.087*Math.sin(elapsed*.69),-.027,dt);
+    if(speech.id==="courier") attend(helper,player.x,sightY,player.z,dt,.023*speech.emphasis);
+    else settleGaze(helper,state.phase==="waiting" ? .16*Math.sin(elapsed*.91) : 0,.025,dt);
     for(const [i,person] of [playerBody,helper,merchant].entries()) {
       const blink=(elapsed+i*.87)%4.07;
       person.face?.blink(Math.max(0,1-Math.abs(blink-.15)/.11));
+      person.poseSleeves();
     }
-    helper.face?.lookEyes(.35*Math.sin(elapsed*.67),0,dt);
-    merchant.face?.lookEyes(.17,-.92*reach,dt);
+    merchant.face.speak(merchantSpeaking ? speech.shape : null,dt);
+    helper.face.speak(speech.id==="courier" ? speech.shape : null,dt);
+    market.speech(speech,dt);
     positionCrate();
     if(view==="mission") syncActors();
     if (walking) ui();
@@ -1447,6 +1494,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(effort>.003) for(let hand=0;hand<2;hand++) {
       playerBody.reachHand(hand,ferry.grip(hand,oarGrip),effort);
     }
+    playerBody.poseSleeves();
   }
 
   function toggleScroll() { setMode(view === "missionScroll" ? "mission" : "missionScroll"); }
