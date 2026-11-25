@@ -421,6 +421,13 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
     atDoor(player) {
       return Math.hypot(player.x-entrance.x,player.z-entrance.z)<1.62;
     },
+    cameraBlend(player) {
+      if(contains(player.x,player.z)) return 1;
+      const setback=player.z-entrance.z;
+      if(setback<0) return 0;
+      const across=Math.abs(player.x-entrance.x);
+      return (1-smoothstep(setback,.045,1.05))*(1-smoothstep(across,.54,.91));
+    },
     atTable(player) {
       return chair.phase==="seated" || (contains(player.x,player.z) && Math.hypot(player.x-cup.x,player.z-cup.z)<.98);
     },

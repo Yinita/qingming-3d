@@ -1948,10 +1948,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
           player.z+eyeOffset*Math.cos(yaw)-lateral*Math.sin(yaw));
         camera.quaternion.setFromEuler(new THREE.Euler(pitch,yaw,0,"YXZ"));
       } else {
-        const boom=indoors ? 1.26 : lerp(3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44),1.92,sawFraming);
+        const roomFraming=teaRoom.cameraBlend(player);
+        const streetBoom=lerp(3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44),1.92,sawFraming);
+        const boom=lerp(streetBoom,1.26,roomFraming);
         cameraPivot.set(player.x,cameraY+1.48,player.z);
-        const offset=indoors ? .24 : lerp(.62,1.30,sawFraming);
-        cameraGoal.set(player.x-fwd.x*boom+side.x*offset,cameraY+(indoors ? 1.69 : 2.18)+player.pitch*-.78,
+        const offset=lerp(lerp(.62,1.30,sawFraming),.24,roomFraming);
+        cameraGoal.set(player.x-fwd.x*boom+side.x*offset,cameraY+lerp(2.18,1.69,roomFraming)+player.pitch*-.78,
                        player.z-fwd.z*boom+side.z*offset);
         const length=cameraPivot.distanceTo(cameraGoal);
         const clearance=city.cameraDistance(cameraPivot,cameraGoal);
