@@ -15,7 +15,7 @@ export function createStreetAudio(listener) {
   let enabled=initialPreference(), sceneActive=false;
   let context, master, buffer, download, decoding, river;
   let rainBuffer,rainLoad,rainRetry=0,rainTrack;
-  const voices=new Set(), variants={}, counts={}, lastBySource={};
+  const voices=new Set(), variants={}, counts={}, lastBySource={}, workyardCues={};
 
   function load() {
     download??=fetch(bankFile,{signal:AbortSignal.timeout(15_000)}).then(response=>{
@@ -110,6 +110,50 @@ export function createStreetAudio(listener) {
     lastBySource[emitter]={surface,variant,rate,level,laden,pan};
   }
 
+  function scrape(kind,x,z,speed) {
+    if(!active() || context?.state!=="running" || voices.size>=14) return;
+    const {distance,pan}=space(x,z,false);
+    if(distance>7) return;
+    const strike=kind==="impact";
+    if(!workyardCues[kind]) {
+      const sampleRate=context.sampleRate;
+      const cue=context.createBuffer(1,Math.round(sampleRate*(strike ? .18 : .24)),sampleRate);
+      const data=cue.getChannelData(0);
+      let low=0,grit=0;
+      for(let i=0;i<data.length;i++) {
+        const t=i/sampleRate;
+        const white=Math.random()*2-1;
+        low+=(white-low)*.043;
+        grit+=(white-grit)*.31;
+        if(strike) {
+          const body=Math.sin(2*Math.PI*91*t)+.37*Math.sin(2*Math.PI*137*t);
+          data[i]=(.40*body+.28*(grit-low))*Math.exp(-36*t)*Math.min(1,t*510);
+        } else {
+          const envelope=Math.sin(Math.PI*i/(data.length-1))**.85;
+          data[i]=(grit-low*.66+.16*Math.sin(2*Math.PI*(62*t+12*t*t)))*envelope*.69;
+        }
+      }
+      workyardCues[kind]=cue;
+    }
+    const source=context.createBufferSource(),gain=context.createGain();
+    const level=(strike ? .39 : .21)*clamp(speed+.20,.20,1)/(1+(distance/2.4)**2);
+    source.buffer=workyardCues[kind];
+    source.playbackRate.value=.94+.10*Math.random();
+    gain.gain.value=level;
+    source.connect(gain);
+    const stereo=spatialPan(gain,pan);
+    voices.add(source);
+    source.onended=()=>{
+      voices.delete(source);
+      source.disconnect();
+      gain.disconnect();
+      stereo?.disconnect();
+    };
+    source.start();
+    counts[kind]=(counts[kind]??0)+1;
+    lastBySource.workyard={surface:kind,level,pan};
+  }
+
   function loop(sound,start,end) {
     const source=context.createBufferSource(), gain=context.createGain(), filter=context.createBiquadFilter();
     source.buffer=sound;
@@ -175,7 +219,7 @@ export function createStreetAudio(listener) {
   return {
     supported:!!Context,
     get enabled() { return enabled; },
-    unlock, play, ambience, weather,
+    unlock, play, scrape, ambience, weather,
     setActive(value) {
       if(sceneActive===value) return;
       sceneActive=value;

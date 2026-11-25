@@ -1333,6 +1333,22 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       sleeve.morphTargetInfluences[0]=THREE.MathUtils.smoothstep(flex,.013,.31);
     }
   }
+  let graspWorkyard;
+  if(role==="player") {
+    const contacts=limbs.arms.map((arm,i)=>{
+      const hand=limbs.hands[i],side=i===0 ? -1 : 1;
+      const palm=new THREE.Vector3(-side*.014,-.058,0);
+      const marker=new THREE.Object3D();
+      marker.name="Workyard palm contact";
+      marker.position.copy(palm);
+      hand.group.add(marker);
+      return handContact(arm,limbs.elbows[i],hand,palm,new THREE.Vector3(side*.42,-.91,.19));
+    });
+    graspWorkyard=(i,position,orientation,weight)=>{
+      contacts[i](position,orientation,weight);
+      limbs.hands[i].setGrip(.12+.72*weight);
+    };
+  }
   let holdKettle;
   if(role==="merchant" || role==="attendant") {
     const arm=limbs.arms[0], elbow=limbs.elbows[0], hand=limbs.hands[0];
@@ -1526,7 +1542,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       if(carrying) set(grip.getWorldPosition(gripPosition),grip.getWorldQuaternion(gripFrame),carryWeight);
     }
   }
-  return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,poseFeet,poseSleeves,stand,walkBody,
+  return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,graspWorkyard,poseFeet,poseSleeves,stand,walkBody,
     face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value,rainWear};
 }
 

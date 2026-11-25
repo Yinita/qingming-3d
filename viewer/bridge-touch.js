@@ -34,6 +34,10 @@ export function createMissionTouchPad() {
       });
     }
   }
+  const buttons=Array.from(panel.children);
+  const labels={walk:["向前","向左","后退","向右"],row:["划向对岸","向左","划向出发岸","向右"],
+    haul:["向前推","左转","向后拉","右转"]};
+  let mode="walk";
   return {
     move:key=>!panel.hidden && held.has(key),
     visible(on) {
@@ -42,11 +46,14 @@ export function createMissionTouchPad() {
       panel.hidden=hidden;
       if(hidden) clear();
     },
-    rowing(active) {
-      if(panel.dataset.rowing===String(active)) return;
-      panel.dataset.rowing=String(active);
-      panel.querySelector('[data-move="w"]').setAttribute("aria-label",active ? "划向对岸" : "向前");
-      panel.querySelector('[data-move="s"]').setAttribute("aria-label",active ? "划向出发岸" : "后退");
+    mode(next) {
+      if(mode===next) return;
+      mode=next;
+      panel.dataset.rowing=String(mode==="row");
+      for(const [i,button] of buttons.entries()) {
+        button.setAttribute("aria-label",labels[mode][i]);
+        button.textContent=(mode==="haul" ? ["↑","↶","↓","↷"] : ["↑","←","↓","→"])[i];
+      }
     },
     size:h=>panel.style.setProperty("--mission-hud-height",h+"px"),
   };

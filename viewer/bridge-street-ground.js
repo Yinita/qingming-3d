@@ -71,7 +71,8 @@ export function createStreetTerrain(width,depth) {
     return axis;
   }
   const apronRanges=pavedAprons.map(({x,w})=>[x-w*.5-.5,x+w*.5+.5]);
-  const xs=coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges]);
+  const west=coordinates(-width/2-9,-width/2,[[-77,-74]]);
+  const xs=[...west.slice(0,-1),...coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges])];
   const zs=coordinates(-depth,0,[[-52,-14],[-14,-11]]);
   const position=[],uv=[],index=[];
   for(const z of zs) for(const x of xs) {
