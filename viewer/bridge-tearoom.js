@@ -9,9 +9,12 @@ import { buildTea } from "./bridge-tea.js";
 const width=3.30, front=.80, back=-2.28, floorY=.132;
 const doorWidth=1.29, doorHeight=1.942, doorDepth=.085, hingeX=-.27;
 const openAngle=Math.PI*.544;
+const sillDepth=.164, stepDepth=.249, stepHeight=.071;
+const stepWidth=doorWidth+.33;
+const contactStart=.45, contactRelease=.65, pushEnd=.94;
 const {damp,smoothstep,lerp,clamp}=THREE.MathUtils;
 
-export function buildTeaRoom(stall,city,surface) {
+export function buildTeaRoom(stall,city,surface,onDoorTouch) {
   const room=new THREE.Group();
   room.name="Bridge tea room";
   room.position.x=-4.01;
@@ -73,8 +76,20 @@ export function buildTeaRoom(stall,city,surface) {
       fixed(boards[i%boards.length],width/16-.005,.047,b-a-.006,x,floorY-.0235,(a+b)*.5);
     }
   }
-  fixed(worn,doorWidth+.12,.052,.30,hingeX+doorWidth*.5,floorY-.026,front+.018);
-  fixed(footing,doorWidth+.34,.06,.21,hingeX+doorWidth*.5,.037,front+.248);
+  const entryX=hingeX+doorWidth*.5;
+  const nosing=surface("tea-wood",0xbda48b,.96,.86);
+  const tread=surface("stone-paving",0xada898,1.03,.91);
+  fixed(worn,doorWidth+.12,.052,sillDepth+.137,entryX,floorY-.026,front+(sillDepth-.137)*.5);
+  fixed(nosing,doorWidth+.105,.022,.045,entryX,floorY-.011,front+sillDepth-.026);
+  const treadBack=sillDepth-.016, treadFront=sillDepth+stepDepth;
+  const stepWidths=[.429,.708,stepWidth-.429-.708];
+  let stoneLeft=entryX-stepWidth*.5;
+  for(const [i,w] of stepWidths.entries()) {
+    const stone=detailedBox(w-.006,stepHeight+.038,treadFront-treadBack,tread,.017,i*2.38);
+    stone.translate(stoneLeft+w*.5,(stepHeight-.038)*.5,front+(treadBack+treadFront)*.5);
+    append(shell,tread,stone);
+    stoneLeft+=w;
+  }
   for(const x of [-width*.5,width*.5]) {
     fixed(plaster,.142,2.05,depth,x,1.15,middle,"Tea room side wall");
     fixed(footing,.18,.45,depth,x,.29,middle);
@@ -235,6 +250,13 @@ export function buildTeaRoom(stall,city,surface) {
   const bottom=origin.y+pivot.position.y;
   door.bottom=bottom; door.top=bottom+doorHeight;
   let angle=0, target=0, speed=0, blocked=false;
+  let push=null;
+  const contact=new THREE.Object3D();
+  contact.name="Tea room door palm target";
+  pivot.add(contact);
+  const contactPoint=new THREE.Vector3(), contactFrame=new THREE.Quaternion();
+  const palmOrientations=[-1,1].map(side=>new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(new THREE.Vector3(0,0,side),new THREE.Vector3(0,-1,0),new THREE.Vector3(side,0,0))));
   let cx=0,cz=0;
   function center(at) {
     cx=origin.x+hingeX+Math.cos(at)*doorWidth*.5;
@@ -256,6 +278,42 @@ export function buildTeaRoom(stall,city,surface) {
       return body.radius>0 ? circleTouchesBox(body.x,body.z,body.radius,cx,cz,door.halfX,door.halfZ,at) :
         rectanglesOverlap(cx,cz,door.halfX,door.halfZ,at,body.x,body.z,body.halfX,body.halfZ,body.yaw);
     });
+  }
+
+  function toggleDoor(player,freeHands) {
+    if(push) return "busy";
+    const outside=player.z>=entrance.z;
+    if(target===0 && angle<.025 && outside && freeHands) {
+      const offset=player.x-entrance.x, setback=player.z-entrance.z;
+      if(Math.abs(offset)>.50 || setback>.60) return "closer";
+      const hand=offset>.17 ? 0 : 1;
+      const side=hand===0 ? -1 : 1;
+      contact.position.set(clamp(player.x-origin.x-hingeX+side*.226,.11,doorWidth-.15),1.099,doorDepth*.5);
+      push={age:0,hand,lean:clamp(.172+(setback-.44)*.66,.156,.278)};
+    }
+    target=target>0 ? 0 : openAngle;
+    speed=0;
+    blocked=false;
+    return push ? "push" : "swing";
+  }
+
+  function pushWeight() {
+    return push ? smoothstep(push.age,.06,contactStart)*(1-smoothstep(push.age,contactRelease,pushEnd)) : 0;
+  }
+
+  function poseDoor(playerBody) {
+    if(!push) return;
+    const pressure=pushWeight();
+    playerBody.torsoPivot.position.z-=push.lean*pressure;
+    playerBody.torsoPivot.rotation.x-=.145*pressure;
+    contact.getWorldPosition(contactPoint);
+    pivot.getWorldQuaternion(contactFrame).multiply(palmOrientations[push.hand]);
+    playerBody.graspProp(push.hand,contactPoint,contactFrame,pressure,.10);
+  }
+
+  function cancelPush() {
+    if(push && push.age<contactStart) target=angle;
+    push=null;
   }
 
   const station=new THREE.Group();
@@ -356,8 +414,8 @@ export function buildTeaRoom(stall,city,surface) {
     speech(shape,dt) { server.face.speak(shape,dt); },
     support(x,z) {
       if(contains(x,z)) return origin.y+floorY;
-      if(Math.abs(x-entrance.x)<doorWidth*.5+.06 && z>=entrance.z && z<entrance.z+.166) return origin.y+floorY;
-      if(Math.abs(x-entrance.x)<doorWidth*.5+.15 && z>=entrance.z+.166 && z<entrance.z+.354) return origin.y+.065;
+      if(Math.abs(x-entrance.x)<doorWidth*.5+.06 && z>=entrance.z && z<entrance.z+sillDepth) return origin.y+floorY;
+      if(Math.abs(x-entrance.x)<stepWidth*.5 && z>=entrance.z+treadBack && z<entrance.z+treadFront) return origin.y+stepHeight;
       return -Infinity;
     },
     atDoor(player) {
@@ -366,20 +424,37 @@ export function buildTeaRoom(stall,city,surface) {
     atTable(player) {
       return chair.phase==="seated" || (contains(player.x,player.z) && Math.hypot(player.x-cup.x,player.z-cup.z)<.98);
     },
-    toggleDoor() { target=target>0 ? 0 : openAngle; speed=0;blocked=false; },
+    toggleDoor,poseDoor,cancelPush,
+    pushing:()=>push!==null,
+    pushHand:()=>push?.hand,
+    pushLook() {
+      const weight=pushWeight();
+      return weight ? {yaw:(push.hand===0 ? .23 : -.23)*weight,pitch:-.47*weight,forward:.115*weight} : null;
+    },
     doorLabel() {
+      if(push) return "正在推门";
       if(blocked) return target>0 ? "门前有阻挡 · 取消 E" : "门前有阻挡 · 打开 E";
       return target>0 ? "关茶间门 E" : "推开茶间门 E";
     },
     update(dt,time,actors,player) {
-      if(dt>0 && target!==angle) {
+      if(push) {
+        const previousAge=push.age;
+        push.age+=dt;
+        if(previousAge<contactStart && push.age>=contactStart) {
+          contact.getWorldPosition(contactPoint);
+          onDoorTouch(contactPoint.x,contactPoint.z);
+        }
+        if(push.age>=pushEnd) push=null;
+      }
+      if(dt>0 && target!==angle && (!push || push.age>=contactStart)) {
         const delta=target-angle, remaining=Math.abs(delta);
         const direction=Math.sign(delta);
         // Leave a little clearance before resuming a stopped swing. Otherwise
         // tiny restart steps chatter against the same contact point.
         if(!blocked || !hit(angle+direction*Math.min(.023,remaining),actors)) {
           blocked=false;
-          speed=damp(speed,.53+1.99*smoothstep(remaining,0,.81),13,dt);
+          const underHand=push && push.age<contactRelease;
+          speed=damp(speed,underHand ? .71 : .53+1.99*smoothstep(remaining,0,.81),13,dt);
           const amount=Math.min(remaining,speed*dt), steps=Math.ceil(amount/.035);
           for(let i=0;i<steps;i++) {
             const next=Math.abs(target-angle)<=amount/steps+.00001 ? target : angle+direction*amount/steps;
@@ -407,6 +482,7 @@ export function buildTeaRoom(stall,city,surface) {
     },
     serve(time) { served=true;tea.start(time); },
     restore(alreadyServed,time,resetDoor=false) {
+      cancelPush();
       served=alreadyServed;
       tea.reset();
       if(served) tea.start(time-tea.duration);
@@ -421,7 +497,8 @@ export function buildTeaRoom(stall,city,surface) {
     },
     inspect(player) {
       return {inside:contains(player.x,player.z),nearDoor:this.atDoor(player),atTable:this.atTable(player),
-        entrance,cup,chair:{...chair,atChair:atChair(player)},door:{angle,target,blocked,x:door.x,z:door.z},served,tea:tea.inspect()};
+        entrance,cup,chair:{...chair,atChair:atChair(player)},
+        door:{angle,target,blocked,x:door.x,z:door.z,push:push && {age:push.age,hand:push.hand}},served,tea:tea.inspect()};
     },
   };
 }

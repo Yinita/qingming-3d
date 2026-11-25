@@ -1405,9 +1405,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       hand.group.add(marker);
       return handContact(arm,limbs.elbows[i],hand,palm,new THREE.Vector3(side*.42,-.91,.19));
     });
-    graspProp=(i,position,orientation,weight)=>{
+    graspProp=(i,position,orientation,weight,grip=.84)=>{
       contacts[i](position,orientation,weight);
-      limbs.hands[i].setGrip(.12+.72*weight);
+      limbs.hands[i].setGrip(THREE.MathUtils.lerp(.12,grip,weight));
     };
   }
   let holdKettle;

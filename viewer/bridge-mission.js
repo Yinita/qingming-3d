@@ -180,7 +180,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   box(stall, ink, 4.9, .13, .17, 0, 3.255, .33);
   counterCeramics(stall);
   const tea = buildTea(stall);
-  const teaRoom=buildTeaRoom(stall,city,material);
+  const teaRoom=buildTeaRoom(stall,city,material,(x,z)=>audio.play("wood",x,z,.29,"teaRoomDoor"));
   teaRoom.show(false);
   const counterFill = new THREE.PointLight(0xffdeb0, 2.3, 4.5, 2);
   counterFill.position.set(.54, 2.25, 1.39);
@@ -475,7 +475,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let restartTrigger;
   let noticeTimer, hasRestarted=false;
   let firstPerson = false;
-  let activeLens=58, sawFraming=0;
+  let activeLens=58, sawFraming=0, entryCameraHeight=null;
   let teaShotStart = -Infinity;
   let lastPrepare = 0;
   let pullTime=-Infinity;
@@ -1211,8 +1211,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const active=canUseRoom();
     const door=teaRoom.doorLabel();
     doorButton.hidden=!active || !teaRoom.atDoor(player);
+    doorButton.disabled=teaRoom.pushing();
     if(doorButton.textContent!==door) doorButton.textContent=door;
-    seatButton.hidden=!active || backlane.busy() || state.phase!=="delivered" ||
+    seatButton.hidden=!active || backlane.busy() || teaRoom.pushing() || state.phase!=="delivered" ||
       !(teaRoom.seated() || (!teaRoom.chairActive() && teaRoom.atChair(player)));
     const seatAction=teaRoom.seated() ? "从凳上起身 E" : "坐到桌边 E";
     if(seatButton.textContent!==seatAction) seatButton.textContent=seatAction;
@@ -1220,7 +1221,18 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
   function useRoomDoor() {
     if(!canUseRoom() || !teaRoom.atDoor(player)) return;
-    teaRoom.toggleDoor();
+    const freeHands=!hasCargo() && !teaRoom.chairActive() && !backlane.busy();
+    const action=teaRoom.toggleDoor(player,freeHands);
+    if(action==="busy") return;
+    if(action==="closer") {
+      hint.textContent="走到门板前，再按 E 推门。";
+      canvas.focus({preventScroll:true});
+      return;
+    }
+    if(action==="push") {
+      clearStreetMotion();
+      hint.textContent="推开门后，可以进茶间坐下。";
+    }
     guideRoom=false;
     ui();
     canvas.focus({preventScroll:true});
@@ -1255,7 +1267,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
   function contextAction() {
-    if(view!=="mission" || awaitingStart() || restartDialog.open || !journal.panel.hidden) return null;
+    if(view!=="mission" || awaitingStart() || restartDialog.open || !journal.panel.hidden || teaRoom.pushing()) return null;
     if(Number.isFinite(teaShotStart)) return teaButton;
     if(yard.active()) return yardButton;
     if(freightTransfer || backlane.locked()) return null;
@@ -1612,6 +1624,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     light.storm(mode==="mission" ? weather.intensity : 0);
     if(mode!=="mission") {
       yard.release();
+      teaRoom.cancelPush();
+      entryCameraHeight=null;
       document.body.classList.remove("yard-hauling");
       if(teaRoom.leaveChair(player)) gait.reset();
       document.body.classList.remove("tea-room-open","tea-seated");
@@ -1747,7 +1761,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       light.storm(weather.intensity);
       updateRainStatus();
       const courtLocked=backlane.locked(), workStation=backlane.workStation();
-      const input=awaitingStart() || courtLocked ? noInput : keys;
+      const pushingDoor=teaRoom.pushing();
+      const input=awaitingStart() || courtLocked || pushingDoor ? noInput : keys;
+      if(pushingDoor) {
+        const turn=Math.atan2(-Math.sin(player.yaw),Math.cos(player.yaw));
+        player.yaw+=turn*(1-Math.exp(-9*dt));
+        player.pitch=THREE.MathUtils.damp(player.pitch,-.19,8,dt);
+      }
       if(courtLocked) heading=player.yaw=backlane.facing();
       if(backlane.sawing()) player.pitch=THREE.MathUtils.damp(player.pitch,firstPerson ? -.575 : -.13,8,dt);
       const dx = Number(input.has("d") || input.has("arrowright") || input!==noInput && touchPad.move("d")) -
@@ -1838,7 +1858,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       const oldX=player.x, oldZ=player.z;
       const previousVX=streetVelocity.x, previousVZ=streetVelocity.y;
-      if(aboard || landed || freightTransfer || chairBefore || awaitingStart() || courtLocked && !workStation) clearStreetMotion();
+      if(aboard || landed || freightTransfer || chairBefore || pushingDoor || awaitingStart() || courtLocked && !workStation) clearStreetMotion();
       else if(yard.active()) {
         yard.frame(dt,player,bodyYaw,dx,dz,weather.traction(player.x,player.z),standByYard,audio.scrape);
         streetVelocity.set((player.x-oldX)/dt,(player.z-oldZ)/dt);
@@ -1873,6 +1893,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         weightShift.forward=damp(weightShift.forward,clamp((-ax*sin-az*cos)*.010,-.095,.095),12,dt);
       }
       if(shareYaw!==null) heading=shareYaw;
+      if(pushingDoor) heading=0;
       if(aboard) bodyYaw=carrier.rider.facing;
       else if(chairBefore) bodyYaw=teaRoom.chair.yaw;
       else {
@@ -1901,6 +1922,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       cameraObstacle=null;
       cameraClose=false;
       const {clamp,damp,lerp}=THREE.MathUtils;
+      entryCameraHeight=!aboard && !chairBefore && teaRoom.atDoor(player) ?
+        damp(entryCameraHeight??y,y,18,dt) : null;
+      const cameraY=entryCameraHeight??y;
       sawFraming=damp(sawFraming,Number(backlane.frameSaw(player)),7,dt);
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
       const lens=firstPerson && yard.active() ? clamp(seatFov,70,96) :
@@ -1913,20 +1937,21 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       if (firstPerson) {
         const seat=carrier===ferry ? ferry.rider.seated : carrier===freight ? freight.rider.seat : 0;
-        const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : player.yaw;
+        const doorLook=teaRoom.pushLook();
+        const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : player.yaw+(doorLook?.yaw??0);
         const haul=yard.gripWeight();
-        const pitch=player.pitch-.048*seat-.60*haul;
-        const eyeOffset=.083*seat+.082*haul-.025*sawFraming+
+        const pitch=player.pitch-.048*seat-.60*haul+(doorLook?.pitch??0);
+        const eyeOffset=.083*seat+.082*haul-.025*sawFraming-(doorLook?.forward??0)+
           (chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
         const lateral=carrier===freight ? .28*seat : -.064*sawFraming;
-        camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),y+1.57-.020*sawFraming,
+        camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),cameraY+1.57-.020*sawFraming,
           player.z+eyeOffset*Math.cos(yaw)-lateral*Math.sin(yaw));
         camera.quaternion.setFromEuler(new THREE.Euler(pitch,yaw,0,"YXZ"));
       } else {
         const boom=indoors ? 1.26 : lerp(3.1-.68*THREE.MathUtils.smoothstep(depth,.06,.44),1.92,sawFraming);
-        cameraPivot.set(player.x,y+1.48,player.z);
+        cameraPivot.set(player.x,cameraY+1.48,player.z);
         const offset=indoors ? .24 : lerp(.62,1.30,sawFraming);
-        cameraGoal.set(player.x-fwd.x*boom+side.x*offset,y+(indoors ? 1.69 : 2.18)+player.pitch*-.78,
+        cameraGoal.set(player.x-fwd.x*boom+side.x*offset,cameraY+(indoors ? 1.69 : 2.18)+player.pitch*-.78,
                        player.z-fwd.z*boom+side.z*offset);
         const length=cameraPivot.distanceTo(cameraGoal);
         const clearance=city.cameraDistance(cameraPivot,cameraGoal);
@@ -1935,7 +1960,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         cameraClose=boomLength<(indoors ? .53 : .75);
         camera.position.copy(cameraPivot).lerp(cameraGoal,boomLength/length);
         const lookAhead=lerp(2,.83,sawFraming);
-        camera.lookAt(player.x+fwd.x*lookAhead,y+1.05+player.pitch*2.3,player.z+fwd.z*lookAhead);
+        camera.lookAt(player.x+fwd.x*lookAhead,cameraY+1.05+player.pitch*2.3,player.z+fwd.z*lookAhead);
       }
       if (Number.isFinite(teaShotStart)) {
         const t = elapsed - teaShotStart;
@@ -1970,8 +1995,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const animalGesture=livestock.gesture(livestockVisitor());
     const carrier=view==="mission" ? passengerCarrier() : view==="missionScroll" && ferry.active() ? ferry : null;
     const riding=Boolean(carrier);
+    const pushingHand=view==="mission" && firstPerson ? teaRoom.pushHand() : undefined;
+    for(let i=0;i<2;i++) playerBody.limbs.arms[i].visible=pushingHand===undefined || i===pushingHand;
     showGreetingArms(view==="mission" && firstPerson && (!!animalGesture || market.sharing() || riding ||
-      yard.active() || backlane.busy()));
+      yard.active() || backlane.busy() || teaRoom.pushing()));
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
       handsOnly || (view==="missionScroll" && (riding || state.phase==="carrying"));
     const seated=view==="mission" && teaRoom.chairActive();
@@ -2029,6 +2056,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       for(let i=0;i<2;i++) playerBody.graspProp(i,yard.grip(i,yardGrip,yardFrame),yardFrame,haulWeight);
     }
     if(view==="mission") backlane.pose(playerBody);
+    if(view==="mission") teaRoom.poseDoor(playerBody);
 
     let courierVX=0,courierVZ=0;
     if (state.phase === "courier") {
