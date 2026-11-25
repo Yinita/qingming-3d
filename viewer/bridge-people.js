@@ -476,6 +476,18 @@ const residentProfiles=[
     bun:.145,wrap:true,cheek:1.32,chin:.96,coat:0x947e63,hem:.185,skirt:.84,waist:1.02,cuff:-.16,binding:0xa7906d,cord:0xc0ab89,eyes:.88,smile:-.001,sash:.911,hairPart:-.03,trousers:0xab9878},
 ];
 
+const marketProfiles={
+  baker:{head:[.80,.87,.77],
+    colors:[0xa67462,0x626b61,0x514b3d,0xbcaa81],skin:0xca9d83,shoulders:.86,waist:.92,hem:-.104,skirt:1.21,
+    apron:0xd4c39d,hair:0x342b25,headcloth:0x796658},
+  porter:{head:[.93,.94,.87],
+    colors:[0x758176,0x746a53,0x4f4639,0xab9776],skin:0xa97f61,shoulders:1.12,waist:1.10,hem:.119,skirt:1.02,
+    coat:0x8c7559,headcloth:0x666b5f,hair:0x44352a},
+  shopper:{head:[.79,.94,.85],
+    colors:[0x99898f,0x788476,0x5c5d69,0xbeaa87],skin:0xc29e80,shoulders:.87,waist:.91,hem:.042,skirt:.95,
+    hair:0x38332d,headcloth:0x646b72,hairPart:-.21,satchel:0xb4a383},
+};
+
 function shoulderSatchel(figure,robe,cloth,edge,lowDetail) {
   // The strap follows the robe on both sides and meets the pouch at the hip.
   for(const side of [-1,1]) {
@@ -648,11 +660,12 @@ function projectedFaceDepth(skull,x,y) {
 
 export function riverWorker(parent, surface, role, residentHat=false, variant=0,lowDetail=false,animatedFace=role!=="resident") {
   const profile=role==="resident" ? residentProfiles[variant] : null;
-  const shoulders=profile?.shoulders??1;
-  const garmentWaist=profile?.waist??1;
+  const market=marketProfiles[role];
+  const shoulders=profile?.shoulders??market?.shoulders??1;
+  const garmentWaist=profile?.waist??market?.waist??1;
   const figure = new THREE.Group();
   parent.add(figure);
-  const shades = {
+  const shades = market?.colors??{
     player: [0xc1cdd0, 0x717d76, 0x647378, 0xbfb28e],
     merchant: [0xd1b398, 0x766f60, 0x7e6d52, 0xc6b58f],
     helper: [0xa9b69e, 0x788275, 0x58604a, 0xc1aa7c],
@@ -663,9 +676,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const trousers = surface("indigo-linen", profile?.trousers??shades[1], .55);
   bodyLinen.vertexColors=true;
   cloth.userData.streetCloth=bodyLinen.userData.streetCloth=role==="resident";
-  const apronColor=role==="merchant" ? 0xc7a079 : profile?.apron;
+  const apronColor=role==="merchant" ? 0xc7a079 : market?.apron??profile?.apron;
   const apronLinen=apronColor ? surface("indigo-linen",apronColor,.57) : null;
-  const coatColor=profile?.coat;
+  const coatColor=market?.coat??profile?.coat;
   const coatLinen=coatColor ? surface("indigo-linen",coatColor,.54) : null;
   for(const linen of [bodyLinen,cloth,trousers,apronLinen,coatLinen].filter(Boolean)) {
     linen.onBeforeCompile=shader=>{
@@ -682,7 +695,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const binding = plain(profile?.binding??shades[2], .78);
   const dyed = plain(profile?.cord??shades[3], .79);
   binding.side=dyed.side=THREE.DoubleSide;
-  const skin=plain(profile?.skin??{player:0xcfab8c,merchant:0xb7896b,helper:0xc09576}[role],.72);
+  const skin=plain(profile?.skin??market?.skin??{player:0xcfab8c,merchant:0xb7896b,helper:0xc09576}[role],.72);
   const facePaint=skin.clone();
   facePaint.vertexColors=true;
   const lips = plain(0x80554a, .86);
@@ -700,9 +713,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     for (const mat of [trousers,footwear,hem,dyed,cloth,bodyLinen]) waterStain(mat,moisture);
   }
   const detail=!lowDetail;
-  const hemOffset=profile?.hem??0, skirt=profile?.skirt??1;
+  const hemOffset=profile?.hem??market?.hem??0, skirt=profile?.skirt??market?.skirt??1;
   const robe=[[0,.606+hemOffset],[.263*skirt,.619+hemOffset],[.276*skirt,.66+hemOffset],
-    [.269*skirt,.722+hemOffset*.77],[.255*skirt,.807+hemOffset*.46],
+    [.269*skirt,.722+hemOffset*.73],[.255*skirt,.798+hemOffset*.42],
     [.239*garmentWaist,.88],[.225*garmentWaist,.95],[.229*garmentWaist,1.04],
     [.238*shoulders,1.13],[.254*shoulders,1.207],[.257*shoulders,1.248],
     [.224*shoulders,1.286],[.186*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
@@ -782,7 +795,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
 
   if(coatLinen) {
     coatLinen.side=THREE.DoubleSide;
-    sleevelessCoat(figure,robe,coatLinen,profile.wrap,lowDetail);
+    sleevelessCoat(figure,robe,coatLinen,role==="porter" || profile?.wrap,lowDetail);
   }
 
   if(profile && variant!==2) {
@@ -792,13 +805,13 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const head = new THREE.Group();
   head.position.set(0, 1.497, -.025);
   const leadHead=role==="merchant" ? [.91,.89,.92] : role==="helper" ? [.79,.91,.89] : [.81,.89,.84];
-  head.scale.set(...(profile?.head??leadHead));
+  head.scale.set(...(profile?.head??market?.head??leadHead));
   figure.add(head);
   const face=!lowDetail ? buildAnatomicalHead(head,profile ? "resident"+variant : role,skin.color,{
     static:!animatedFace,beard:profile?.beard,
-    hair:profile?.hair??(role==="merchant" ? 0x544838 : 0x3e342b),
-    headcloth:role==="helper" || (profile?.wrap && !residentHat) ? 0x73745d :
-      profile && variant===2 && !residentHat ? 0x545761 : undefined,
+    hair:profile?.hair??market?.hair??(role==="merchant" ? 0x544838 : 0x3e342b),
+    headcloth:market?.headcloth??(role==="helper" || (profile?.wrap && !residentHat) ? 0x73745d :
+      profile && variant===2 && !residentHat ? 0x545761 : undefined),
   }) : null;
   if(!face) {
     const skullRadius=.149, nose=profile?.nose??(role==="merchant" ? 1.18 : role==="helper" ? .93 : 1);
@@ -996,8 +1009,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
 
-  if(profile?.wrap) {
-    const satchel=surface("indigo-linen",0xad9b79,.76,.94);
+  if(profile?.wrap || market?.satchel) {
+    const satchel=surface("indigo-linen",market?.satchel??0xad9b79,.76,.94);
     shoulderSatchel(figure,robe,satchel,binding,lowDetail);
   }
   // The courier and player reuse their gait phase to drive the loose cloth.
@@ -1029,7 +1042,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const articulated=[];
   const wrapTint=profile ? plain([0xaa997c,0x908679,0x797e75,0xc5ac86][variant],.95) : dyed;
   for (const side of [-1, 1]) {
-    if (role==="player" || role==="helper" || role==="resident") {
+    if (role==="player" || role==="helper" || role==="resident" || market) {
       articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     } else {
       const leg = new THREE.Group();
@@ -1181,7 +1194,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   let effort=0;
   let carryWeight=0;
   let reachHand;
-  if(role==="player") {
+  if(role==="player" || market) {
     const target=new THREE.Vector3(), direction=new THREE.Vector3(), bend=new THREE.Vector3();
     const joint=new THREE.Vector3(), outerAxis=new THREE.Vector3(), innerAxis=new THREE.Vector3();
     const down=new THREE.Vector3(0,-1,0), next=new THREE.Quaternion(), inverse=new THREE.Quaternion();
@@ -1247,7 +1260,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
     for(const hand of limbs.hands) hand.setGrip(.08+.12*effort+.74*carryWeight);
   }
-  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,reachHand,poseFeet,stand,walkBody,face,moisture:moisture.value};
+  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,reachHand,poseFeet,stand,walkBody,
+    face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value};
 }
 
 export function counterCeramics(stall) {

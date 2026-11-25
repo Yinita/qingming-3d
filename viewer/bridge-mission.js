@@ -1,3 +1,4 @@
+import { createMissionTouchPad } from "./bridge-touch.js";
 import * as THREE from "three";
 import { bridgeDeckHeight, bridgeRailOffset, buildBridgeLook, createPlayLighting, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { buildForeground, willowSites } from "./bridge-foreground.js";
@@ -77,7 +78,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   root.visible = false;
   scene.add(root);
   const city=street.collisions;
-  const livestock=street.livestock;
+  const {livestock,market}=street;
   const workshop=street.housing.workshop;
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
@@ -216,6 +217,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   localColliders.push(looseCargo,courierSolid,merchantSolid,courierCargo,shipSolid);
   const playerBody = riverWorker(root, material, "player");
   playerBody.figure.name="Player body";
+  const wrappedCake=market.receipt(playerBody.figure);
+  wrappedCake.position.set(-.280,.93,.166);
+  wrappedCake.rotation.set(-.19,-.31,.24);
   const armMeshes=new Set();
   for(const arm of playerBody.limbs.arms) arm.traverse(part=>armMeshes.add(part));
   const bodyMeshes=[];
@@ -263,6 +267,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionHire">委托伙计</button>
       <button id="missionCamera">切换第一人称</button>
       <button id="missionTea" hidden>看掌柜斟茶</button>
+      <button id="missionMarketGuide" type="button" hidden aria-pressed="false">指路到蒸糕摊</button>
+      <button id="missionSteamer" type="button" hidden aria-keyshortcuts="I">看竹笼 I</button>
+      <button id="missionCake" type="button" hidden aria-keyshortcuts="B">买蒸糕 B</button>
+      <button id="missionShareCake" type="button" hidden aria-keyshortcuts="H">分给采买客 H</button>
       <button id="missionReplay" type="button" hidden aria-haspopup="dialog"
         aria-controls="missionRestartDialog">再玩一次</button>
       <button id="missionPebble" hidden title="朝向河面投掷小石子">投石 F</button>
@@ -286,11 +294,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       </div>
     </dialog>`;
   document.body.appendChild(labels);
+  const touchPad=createMissionTouchPad();
   const byId = id => labels.querySelector("#" + id);
   let hudHeight=0, introBottom=0;
   const panels=new ResizeObserver(entries=>{
     for(const {target} of entries) {
-      if(target===labels) hudHeight=target.offsetHeight;
+      if(target===labels) {
+        hudHeight=target.offsetHeight;
+        touchPad.size(hudHeight);
+      }
       else introBottom=target.offsetTop+target.offsetHeight;
     }
   });
@@ -324,6 +336,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <div id="missionIntroRoute"><span>1　桥头取箱</span><span aria-hidden="true">→</span><span>2　过桥交货</span></div>
     <div class="entry-actions">
       <button id="missionBegin" type="button">开始送茶</button>
+      <button id="missionContinue" type="button" hidden>继续逛街</button>
       <button id="missionIntroExit" type="button">返回画卷</button>
     </div>`;
   document.body.appendChild(intro);
@@ -352,8 +365,19 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const mooringButton=byId("missionMooring");
   const animalButton=byId("missionAnimal");
   const workshopButton=byId("missionWorkshop");
+  const marketGuideButton=byId("missionMarketGuide");
+  const cakeButton=byId("missionCake"), steamerButton=byId("missionSteamer");
+  const shareCakeButton=byId("missionShareCake");
+  const continueButton=intro.querySelector("#missionContinue");
 
   let state = loadSave();
+  let guideMarket=false;
+  const hasParcel=()=>state.cakeBought===true && state.cakeClaimed===true && state.cakeGifted!==true;
+  function restoreMarket(reset=false) {
+    market.restore(state.cakeBought===true,state.cakeClaimed===true,reset,state.cakeGifted===true);
+    wrappedCake.visible=hasParcel();
+  }
+  restoreMarket();
   let previous = null;
   let courierLeg = 0;
   let elapsed = 0;
@@ -447,18 +471,22 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let markerText="";
   function markObjective() {
     const phase=state.phase;
-    groundMarker.visible=view==="mission" && phase!=="delivered" && !restartDialog.open;
+    const atMarket=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
+      guideMarket && state.cakeClaimed!==true;
+    const shopper=view==="mission" && !showStart && !restartDialog.open && hasParcel() &&
+      !market.sharing() && distance(player,market.shopperPosition)<9;
+    groundMarker.visible=view==="mission" && !restartDialog.open && (phase!=="delivered" || atMarket);
     beacon.visible=groundMarker.visible;
     const pending=phase==="waiting" && !state.started;
     startPillar.visible=beacon.visible && pending;
-    waypoint.hidden=!groundMarker.visible;
+    waypoint.hidden=!groundMarker.visible && !shopper;
     if(waypoint.hidden) return;
-    const at=phase==="waiting" ? state.crate : counter;
-    const x=at.x, z=at.z+(phase==="waiting" ? 0 : .83);
+    const at=atMarket ? market.visitorPoint : shopper ? market.shopperPosition : phase==="waiting" ? state.crate : counter;
+    const x=at.x, z=at.z+(phase==="waiting" || atMarket || shopper ? 0 : .83);
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
-    markerGold.material.color.setHex(state.started ? 0xefd99a : 0xffc863);
-    const hover=y+(phase==="waiting" ? 1.06 : 2.1)+.085*Math.sin(elapsed*3.6);
+    markerGold.material.color.setHex(atMarket ? 0xcbd49b : state.started ? 0xefd99a : 0xffc863);
+    const hover=y+(phase==="waiting" ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
     if(startPillar.visible) {
       const bottom=y+.26, top=hover-.23;
@@ -468,6 +496,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     beacon.rotation.y=elapsed*.92;
     beacon.scale.setScalar(pending ? 1.39 : 1);
     waypoint.dataset.start=String(pending);
+    waypoint.classList.toggle("market-waypoint",atMarket || shopper);
     markerPoint.set(x,hover+.35,z);
     camera.updateMatrixWorld();
     projectedMarker.copy(markerPoint).applyMatrix4(camera.matrixWorldInverse);
@@ -492,7 +521,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=pending ? "任务起点 · 取茶叶箱" :
+    const target=atMarket ? "蒸糕摊" : shopper ? "采买客" : pending ? "任务起点 · 取茶叶箱" :
       phase==="waiting" ? metres<1.9 ? "茶叶箱 · E 拿取" : "取茶叶箱" : "茶铺 · 交货处";
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
     if(text!==markerText) {markerText=text;waypoint.textContent=text;}
@@ -549,7 +578,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     record(state,method==="self" ? "亲手交货，掌柜付货款" : "伙计交货，掌柜付货款",TEA_QUEST.economy.deliveryReward);
     state.crate = { x: counter.x - .54, z: counter.z, yaw: 0 };
     deliveryTime = elapsed;
-    hint.textContent = "掌柜递来五文钱。今晚的第一壶茶，可以煮了。";
+    hint.textContent = "掌柜付了五文。可去对街的蒸糕摊逛逛。";
     positionCrate();
     store();
     ui();
@@ -687,6 +716,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
+    guideMarket=false;
+    restoreMarket(true);
     clearInput();
     journal.toggle(state,false);
     previous=null;
@@ -711,8 +742,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function undo() {
-    if (!previous) return;
+    if(!previous || market.sharing()) return;
     state = previous;
+    restoreMarket();
     stopTeaShot();
     tea.reset();
     previous = null;
@@ -726,24 +758,31 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function updateBriefing() {
     const kind=state.phase==="delivered" ? "finished" : state.started ? "resume" : "new";
     const briefing=hasRestarted && kind==="new" ? "reset" : kind;
-    if(briefing!==introduced) {
+    const briefingKey=briefing==="finished" ? [briefing,state.cakeGifted,hasParcel(),state.cakeBought].join(":") : briefing;
+    if(briefingKey!==introduced) {
+      const afterDelivery=state.cakeGifted ? "你已把蒸糕分给采买客。可以继续逛街，或回桥头重开。" :
+        hasParcel() ? "蒸糕还在腰间。继续逛街，可把糕分给采买客。" :
+        state.cakeBought ? "你买的蒸糕还在东岸摊位。可以继续逛街去领取。" :
+        "可以继续逛街，到蒸糕摊花一文买糕，也可以从桥头重开。";
       const [status,title,detail,action]={
         new:["新任务","桥畔茶铺 · 送茶任务","到桥头的金色标记处取箱，再把茶叶送到对岸柜台。","开始送茶"],
         reset:["任务待开始","任务已重置","已回到桥头，茶叶箱归位，铜钱恢复为六文。","开始送茶"],
         resume:["已有进度","继续送茶","跟随金色目标标记，接着完成送茶。","继续任务"],
-        finished:["任务完成","茶已送到","可以重开任务，茶叶箱会回到桥头。","再玩一次"],
+        finished:["任务完成","茶已送到",afterDelivery,"再玩一次"],
       }[briefing];
       introStatus.textContent=status;
       introRoute.hidden=briefing==="finished";
+      continueButton.hidden=briefing!=="finished";
       intro.dataset.state=briefing;
       introTitle.textContent=title;
       introDetail.textContent=detail;
       begin.textContent=action;
-      introduced=briefing;
+      introduced=briefingKey;
     }
     introShade.hidden=intro.hidden=view!=="mission" || !showStart || restartDialog.open;
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
+    touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open);
     tools.hidden=labels.hidden;
     journalButton.hidden=awaitingStart();
   }
@@ -753,7 +792,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function canGreetAnimal() {
-    return view==="mission" && !awaitingStart() && !restartDialog.open && state.phase!=="carrying" && !Number.isFinite(teaShotStart);
+    return view==="mission" && !awaitingStart() && !restartDialog.open && state.phase!=="carrying" &&
+      !market.sharing() && !Number.isFinite(teaShotStart);
   }
 
   function showAnimalAction() {
@@ -796,6 +836,113 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     return true;
   }
 
+  function byCakeStall() {
+    return view==="mission" && !showStart && !restartDialog.open &&
+      market.atCounter(player);
+  }
+
+  function showCakeAction() {
+    const atStall=byCakeStall();
+    steamerButton.hidden=!atStall || state.phase==="carrying" || state.phase==="courier";
+    steamerButton.disabled=market.previewBusy();
+    cakeButton.hidden=!atStall || state.phase!=="delivered" || state.cakeClaimed===true;
+    if(cakeButton.hidden) return;
+    const ready=market.ready();
+    cakeButton.disabled=state.cakeBought ? !ready : state.coins<1 || market.previewBusy();
+    const label=!state.cakeBought ? "买蒸糕（一文）B" : ready ? "取走蒸糕 B" :
+      market.serving() ? "摊主正在开笼取糕" : "摊主正在包糕";
+    if(cakeButton.textContent!==label) cakeButton.textContent=label;
+  }
+
+  function showSteamer() {
+    if(!byCakeStall() || state.phase==="carrying" || state.phase==="courier" || !market.preview()) return;
+    hint.textContent="摊主揭开竹盖。蒸糕就在竹箅上。";
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+
+  function buyOrClaimCake() {
+    if(!byCakeStall() || state.phase!=="delivered" || state.cakeClaimed) return;
+    if(!state.cakeBought && state.coins>=1 && !market.previewBusy()) {
+      remember();
+      state.coins--;
+      state.cakeBought=true;
+      record(state,"向摊主买了一份蒸糕",-1);
+      market.buy();
+      hint.textContent="收了一文。摊主正在开笼夹糕，包好后就能拿走。";
+    } else if(market.ready()) {
+      remember();
+      state.cakeClaimed=true;
+      guideMarket=false;
+      record(state,"从摊主处取走蒸糕");
+      market.claim();
+      wrappedCake.visible=true;
+      hint.textContent="纸包已系在腰间。走近街上的采买客，可把糕分给他。";
+    } else return;
+    store();
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+
+  function canShareCake() {
+    return hasParcel() && view==="mission" && !showStart && !restartDialog.open &&
+      !Number.isFinite(teaShotStart) && market.nearShopper(player);
+  }
+
+  function showShareAction() {
+    const sharing=market.sharing();
+    shareCakeButton.hidden=!sharing && !canShareCake();
+    shareCakeButton.disabled=sharing;
+    byId("missionUndo").disabled=!previous || sharing;
+    const label=sharing ? "正在递蒸糕" : "分给采买客 H";
+    if(shareCakeButton.textContent!==label) shareCakeButton.textContent=label;
+  }
+
+  function shareCake() {
+    if(!canShareCake() || market.sharing()) return;
+    if(market.beginShare(player)) {
+      clearInput();
+      stopTeaShot();
+      hint.textContent="采买客正走过来接糕。移动可取消递送。";
+    } else {
+      hint.textContent="这里隔着东西。到采买客身边的空处再递给他。";
+    }
+    ui();
+    canvas.focus({preventScroll:true});
+  }
+
+  function cancelShare() {
+    if(!market.sharing()) return;
+    market.stopShare();
+    wrappedCake.visible=hasParcel();
+    if(hasParcel()) hint.textContent="收回了蒸糕，纸包仍在腰间。";
+    ui();
+  }
+
+  function settleShare() {
+    const event=market.shareEvent();
+    if(event==="accepted") {
+      remember();
+      state.cakeGifted=true;
+      record(state,"把蒸糕分给了采买客");
+      hint.textContent="采买客接过蒸糕，点头说「多谢，这一路正饿着。」";
+      store();
+      ui();
+    } else if(event==="blocked") {
+      hint.textContent="采买客没能走到你身边，蒸糕仍在腰间。";
+      ui();
+    }
+    wrappedCake.visible=hasParcel() && !market.liftedParcel();
+  }
+
+  function toggleMarketGuide() {
+    guideMarket=!guideMarket;
+    if(guideMarket) hint.textContent="沿茶铺前的街道往对侧走，跟着「蒸糕摊」标记。";
+    ui();
+    markObjective();
+    canvas.focus({preventScroll:true});
+  }
+
   function ui() {
     const {objective}=stageOf(state.phase);
     if(status.textContent!==objective) status.textContent=objective;
@@ -809,7 +956,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       else steps[i].removeAttribute("aria-current");
     }
     updateBriefing();
-    economy.textContent = `铜钱 ${state.coins} 文　·　茶铺库存 ${state.phase === "delivered" ? "1 箱" : "0 箱"}`;
+    economy.textContent = `铜钱 ${state.coins} 文　·　茶铺库存 ${state.phase === "delivered" ? "1 箱" : "0 箱"}`+
+      (state.cakeGifted ? "　·　蒸糕已送出" : hasParcel() ? "　·　蒸糕 1 份" : "");
+    marketGuideButton.hidden=view!=="mission" || showStart || state.phase!=="delivered" || state.cakeClaimed===true;
+    marketGuideButton.setAttribute("aria-pressed",String(guideMarket));
     interactButton.textContent = state.phase === "carrying"
       ? (distance(player, counter) < deliveryReach ? "交给掌柜 E" : "放下茶箱 E") : "拿取茶箱 E";
     interactButton.disabled = view !== "mission" || awaitingStart() || ["delivered", "courier"].includes(state.phase) ||
@@ -821,7 +971,6 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     byId("missionReplay").hidden = state.phase !== "delivered";
     teaButton.disabled = view !== "mission" || (!teaShot && distance(player, counter) >= 2.75);
     teaButton.textContent = teaShot ? "返回街道" : "看掌柜斟茶";
-    byId("missionUndo").disabled = !previous;
     byId("missionCamera").disabled = view !== "mission";
     byId("missionCamera").textContent = firstPerson ? "切换第三人称" : "切换第一人称";
     switchButton.textContent = view === "missionScroll" ? "返回桥头" : "查看任务画卷";
@@ -830,6 +979,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     mooringButton.hidden=!byMooring();
     showAnimalAction();
     showWorkshopAction();
+    showCakeAction();
+    showShareAction();
     journal.update(state);
     labels.dataset.phase = state.phase;
     labels.dataset.wading = String(wading);
@@ -883,7 +1034,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function setView(mode) {
     view = mode;
-    if(mode!=="mission") livestock.cancel();
+    if(mode!=="mission") {
+      touchPad.visible(false);
+      livestock.cancel();
+      market.stopShare();
+      wrappedCake.visible=hasParcel();
+    }
     clearNotice();
     if (mode !== "mission") stopTeaShot();
     if (!["mission","missionScroll"].includes(mode) && restartDialog.open) restartDialog.close();
@@ -923,11 +1079,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     stones.update(elapsed);
     if (view === "mission") {
       const input=awaitingStart() ? noInput : keys;
-      const dx = Number(input.has("d") || input.has("arrowright")) -
-                 Number(input.has("a") || input.has("arrowleft"));
-      const dz = Number(input.has("w") || input.has("arrowup")) -
-                 Number(input.has("s") || input.has("arrowdown"));
-      if(dx || dz) livestock.cancel();
+      const dx = Number(input.has("d") || input.has("arrowright") || touchPad.move("d")) -
+                 Number(input.has("a") || input.has("arrowleft") || touchPad.move("a"));
+      const dz = Number(input.has("w") || input.has("arrowup") || touchPad.move("w")) -
+                 Number(input.has("s") || input.has("arrowdown") || touchPad.move("s"));
+      if(dx || dz) {
+        livestock.cancel();
+        cancelShare();
+      }
+      const shareYaw=market.shareFacing(player);
+      if(shareYaw!==null) {
+        const angle=Math.atan2(Math.sin(shareYaw-player.yaw),Math.cos(shareYaw-player.yaw));
+        player.yaw+=angle*(1-Math.exp(-6*dt));
+        player.pitch=THREE.MathUtils.damp(player.pitch,firstPerson ? -.42 : -.13,6,dt);
+      }
       fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
       side.set(-fwd.z, 0, fwd.x);
       const beforeDepth=wadeDepth(player.x,player.z);
@@ -946,6 +1111,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         Object.assign(boardCargo,pose,{bottom:pose.y,top:pose.y+cargoHeight});
       }
       workshop.update(dt,elapsed,gateObstacles);
+      const driftScale=1/(Math.hypot(dx,dz)||1);
+      market.frame(dt,{x:player.x,y:feet,z:player.z,radius:workerRadius,
+        moveX:(fwd.x*dz+side.x*dx)*driftScale,moveZ:(fwd.z*dz+side.z*dx)*driftScale,
+        cargo:carrying ? boardCargo : null});
       const oldX = player.x;
       const oldZ = player.z;
       sweepHorizontal(player,(fwd.x*dz+side.x*dx)*v,(fwd.z*dz+side.z*dx)*v,
@@ -963,6 +1132,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const greeting=livestock.gesture(livestockVisitor());
         if(greeting) heading=greeting.yaw;
       }
+      if(shareYaw!==null) heading=shareYaw;
       const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
       const nextYaw=bodyYaw+turn*(1-Math.exp(-(walking ? 17 : 6)*dt));
       if(!cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
@@ -1003,9 +1173,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view==="mission") {
       showAnimalAction();
       showWorkshopAction();
+      showCakeAction();
+      showShareAction();
     }
     const animalGesture=livestock.gesture(livestockVisitor());
-    showGreetingArms(firstPerson && !!animalGesture);
+    showGreetingArms(firstPerson && (!!animalGesture || market.sharing()));
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
       handsOnly || (view === "missionScroll" && state.phase === "carrying");
     const bodyY=view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z);
@@ -1033,6 +1205,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
 
     if(animalGesture) playerBody.reachHand(1,animalGesture.target,animalGesture.strength*.97);
+    if(view==="mission") {
+      if(market.sharing()) market.poseShare(playerBody,wrappedCake,dt);
+      settleShare();
+    }
 
     let courierVX=0,courierVZ=0;
     if (state.phase === "courier") {
@@ -1114,6 +1290,15 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
   begin.onclick=beginMission;
+  continueButton.onclick=()=>{
+    showStart=false;
+    ui();
+    canvas.focus({preventScroll:true});
+  };
+  marketGuideButton.onclick=toggleMarketGuide;
+  cakeButton.onclick=buyOrClaimCake;
+  steamerButton.onclick=showSteamer;
+  shareCakeButton.onclick=shareCake;
   intro.querySelector("#missionIntroExit").onclick=()=>setMode("paint");
   byId("missionReplay").onclick=event=>requestRestart(event.currentTarget);
   interactButton.onclick = useCargo;
@@ -1137,6 +1322,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(document.pointerLockElement===canvas) document.exitPointerLock();
     introShade.hidden=intro.hidden=waypoint.hidden=true;
     groundMarker.visible=beacon.visible=startPillar.visible=false;
+    touchPad.visible(false);
     restartDialog.showModal();
   }
   const restartButton=tools.querySelector("#missionRestart");
@@ -1180,6 +1366,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       return;
     }
     if(awaitingStart()) return;
+    if(e.code==="KeyB") buyOrClaimCake();
+    if(e.code==="KeyI") showSteamer();
+    if(e.code==="KeyH") shareCake();
+    if(e.code==="Escape") cancelShare();
     if (e.code === "KeyE" && !useWorkshop()) useCargo();
     if (e.code === "KeyP") greetAnimal();
     if (e.code === "KeyV") toggleCamera();
@@ -1228,7 +1418,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,
         bodyOverlap:city.blocking(player.x,player.z,floor(player.x,player.z),workerRadius,workerHeight)?.name??null},
-      workshop:workshop.inspect(),
+      workshop:workshop.inspect(),market:market.inspect(),cake:{owned:hasParcel(),gifted:state.cakeGifted===true},
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };
 }

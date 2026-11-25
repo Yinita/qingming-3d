@@ -1,3 +1,4 @@
+import { buildLivingMarket } from "./bridge-market.js";
 import { buildStreetHouses,revisedHouseIds } from "./bridge-houses.js";
 import { buildLivestock } from "./bridge-livestock.js";
 import * as THREE from "three";
@@ -658,8 +659,10 @@ export function createStreetScene(scene,objects,anchor) {
   }
   const housing=buildStreetHouses(root,collisions,surface,objects);
   const livestock=buildLivestock(root,collisions,objects,anchor,origin,streetHeight);
+  const groundAt=(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z));
+  const market=buildLivingMarket(root,collisions,surface,groundAt,origin);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
-  const {sync:syncResidents,updateHeads}=residents(root,placed,surface,(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)));
+  const {sync:syncResidents,updateHeads}=residents(root,placed,surface,groundAt);
   function registerHouse(object) {
     const house=collisions.meshBox("existing house",object);
     for(const p of placed) {
@@ -671,7 +674,7 @@ export function createStreetScene(scene,objects,anchor) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,livestock,housing,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,livestock,housing,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
     trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};
 }
