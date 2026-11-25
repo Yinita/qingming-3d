@@ -1134,6 +1134,30 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   }
   let effort=0;
   let carryWeight=0;
+  let reachHand;
+  if(role==="player") {
+    const target=new THREE.Vector3(), direction=new THREE.Vector3(), bend=new THREE.Vector3();
+    const joint=new THREE.Vector3(), outerAxis=new THREE.Vector3(), innerAxis=new THREE.Vector3();
+    const down=new THREE.Vector3(0,-1,0), next=new THREE.Quaternion(), inverse=new THREE.Quaternion();
+    reachHand=(i,world,weight)=>{
+      const arm=limbs.arms[i], elbow=limbs.elbows[i];
+      arm.parent.worldToLocal(target.copy(world));
+      direction.copy(target).sub(arm.position);
+      const upper=.212, forearm=.223;
+      const reach=clamp(direction.length(),.071,upper+forearm-.002);
+      direction.normalize();
+      bend.set(i===0 ? -.42 : .42,-.81,.39)
+        .addScaledVector(direction,-direction.dot(bend)).normalize();
+      const pivot=(upper**2-forearm**2+reach**2)/(2*reach);
+      joint.copy(direction).multiplyScalar(pivot)
+        .addScaledVector(bend,Math.sqrt(Math.max(0,upper**2-pivot**2)));
+      arm.quaternion.slerp(next.setFromUnitVectors(down,outerAxis.copy(joint).normalize()),weight);
+      inverse.copy(arm.quaternion).invert();
+      innerAxis.copy(direction).multiplyScalar(reach).sub(joint).applyQuaternion(inverse).normalize();
+      elbow.quaternion.slerp(next.setFromUnitVectors(down,innerAxis),weight);
+      limbs.hands[i].setGrip(.17+.56*weight);
+    };
+  }
   function walkBody(phase,walking,carrying,dt) {
     effort=THREE.MathUtils.damp(effort,Number(walking),10,dt);
     carryWeight=THREE.MathUtils.damp(carryWeight,Number(carrying),15,dt);
@@ -1166,16 +1190,18 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
     for(let i=0;i<limbs.arms.length;i++) {
       const swing=Math.sin(phase+(i+1)*Math.PI);
+      if(reachHand) limbs.arms[i].rotation.set(0,0,i===0 ? -.11 : .11);
       limbs.arms[i].rotation.x=THREE.MathUtils.lerp(.25*balance*swing,.88,carryWeight);
     }
     for(let i=0;i<limbs.elbows.length;i++) {
       const forward=Math.max(0,Math.sin(phase+(i+1)*Math.PI));
+      if(reachHand) limbs.elbows[i].rotation.set(0,0,0);
       limbs.elbows[i].rotation.x=-THREE.MathUtils.lerp(.12+.35*forward,.25,carryWeight)*effort;
     }
     // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
     for(const hand of limbs.hands) hand.setGrip(.08+.12*effort+.74*carryWeight);
   }
-  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,poseFeet,stand,walkBody,face,moisture:moisture.value};
+  return {figure,limbs,straps,head,torsoPivot,reachWithRightHand,reachHand,poseFeet,stand,walkBody,face,moisture:moisture.value};
 }
 
 export function counterCeramics(stall) {

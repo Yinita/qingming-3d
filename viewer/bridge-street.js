@@ -1,3 +1,4 @@
+import { buildLivestock } from "./bridge-livestock.js";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riverWorker } from "./bridge-people.js";
@@ -457,11 +458,9 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
   const wood=surface("tea-wood",0xb4a082,.68,.84);
   const shade=surface("indigo-linen",0xc0af83,.31,.95);
   const iron=new THREE.MeshStandardMaterial({color:0x5e574c,roughness:.76,metalness:.32});
-  const hide=new THREE.MeshStandardMaterial({color:0x837052,roughness:.77});
-  const mane=new THREE.MeshStandardMaterial({color:0x45382d,roughness:.88});
   const buckets=new Map();
   const placement=new THREE.Object3D(), local=new THREE.Object3D();
-  const closedNames=new Set(["cart","horse","donkey","ox","sedan chair","umbrella"]);
+  const closedNames=new Set(["cart","sedan chair","umbrella"]);
   let count=0;
   for(const o of entries) {
     if(!closedNames.has(o.label)) continue;
@@ -478,7 +477,6 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
       envelope.union(g.boundingBox);
       parts.push([mat,g]);
     }
-    const sphere=()=>new THREE.SphereGeometry(1,14,10);
     function plank(w,h,d,x,y,z,mat=wood) { set(detailedBox(w,h,d,mat),mat,x,y,z); }
     if(o.label==="cart") {
       plank(1.12,.16,1.55,0,.57,0);
@@ -504,22 +502,6 @@ function marketProps(root,entries,surface,solids,anchor,origin) {
       for(const x of [-.62,.62]) for(const z of [-.42,.42])
         plank(.06,1.29,.06,x,.77,z);
       for(const z of [-.42,.42]) plank(3.1,.09,.068,0,.69,z);
-    } else {
-      set(sphere(),hide,0,.88,.03,.35,.37,.68);
-      set(sphere(),hide,0,1.17,-.47,.23,.46,.29,-.32);
-      set(sphere(),hide,0,1.45,-.70,.18,.253,.24,-.48);
-      set(sphere(),hide,0,1.28,-.91,.159,.15,.25,-.32);
-      set(sphere(),mane,0,1.26,-.32,.133,.39,.18,-.42);
-      set(sphere(),mane,0,.73,.72,.102,.39,.103,-.25);
-      for(const side of [-1,1]) {
-        set(sphere(),hide,side*.119,1.66,-.64,.050,.13,.041,.23);
-        set(sphere(),mane,side*.143,1.46,-.833,.045,.047,.054);
-        for(const z of [-.44,.47]){
-          set(sphere(),hide,side*.19,.54,z,.13,.31,.10,.05);
-          set(new THREE.CylinderGeometry(.057,.072,.45,10),hide,side*.217,.266,z-.028);
-          set(sphere(),mane,side*.217,.053,z-.055,.088,.058,.13);
-        }
-      }
     }
     const extents=envelope.getSize(new THREE.Vector3()).multiplyScalar(size*.5);
     const offset=envelope.getCenter(new THREE.Vector3()).multiplyScalar(size)
@@ -618,6 +600,7 @@ export function createStreetScene(scene,objects,anchor) {
     const [x,z,width,depth]=spec;
     flagstones(root,x,z+depth*.5+.57,width*.79,.94,surface,4379+i*37,.27);
   }
+  const livestock=buildLivestock(root,collisions,objects,anchor,origin,streetHeight);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
   const syncResidents=residents(root,placed,surface,(x,z)=>Math.max(walkwayHeight(anchor,x,z),streetHeight(x,z)));
   function registerHouse(object) {
@@ -631,7 +614,7 @@ export function createStreetScene(scene,objects,anchor) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,livestock,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
-    trees:treeObjects.length,houses:buildings.length,props,colliders:collisions.inspect()})};
+    trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};
 }

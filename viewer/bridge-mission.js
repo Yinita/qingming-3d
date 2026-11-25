@@ -77,6 +77,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   root.visible = false;
   scene.add(root);
   const city=street.collisions;
+  const livestock=street.livestock;
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
   const material = createSurfaceLibrary();
@@ -214,6 +215,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   localColliders.push(looseCargo,courierSolid,merchantSolid,courierCargo,shipSolid);
   const playerBody = riverWorker(root, material, "player");
   playerBody.figure.name="Player body";
+  const armMeshes=new Set();
+  for(const arm of playerBody.limbs.arms) arm.traverse(part=>armMeshes.add(part));
+  const bodyMeshes=[];
+  playerBody.figure.traverse(part=>{if(part.isMesh && !armMeshes.has(part)) bodyMeshes.push([part,part.visible]);});
+  let handsOnly=false;
+  function showGreetingArms(show) {
+    if(show===handsOnly) return;
+    handsOnly=show;
+    for(const [part,wasVisible] of bodyMeshes) part.visible=!show && wasVisible;
+  }
   playerBody.figure.traverse(part => part.layers.enable(1));
   const merchant = riverWorker(root, material, "merchant");
   merchant.figure.name="Tea merchant";
@@ -255,6 +266,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         aria-controls="missionRestartDialog">再玩一次</button>
       <button id="missionPebble" hidden title="朝向河面投掷小石子">投石 F</button>
       <button id="missionMooring" hidden>拉缆绳 R</button>
+      <button id="missionAnimal" hidden type="button" aria-keyshortcuts="P">伸手 P</button>
     </div>
     <div class="mission-actions">
       <button id="missionScroll">查看任务画卷</button>
@@ -340,6 +352,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const teaButton = byId("missionTea");
   const pebbleButton = byId("missionPebble");
   const mooringButton=byId("missionMooring");
+  const animalButton=byId("missionAnimal");
 
   let state = loadSave();
   let previous = null;
@@ -654,6 +667,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function restart() {
+    livestock.cancel();
     Object.assign(player,spawn);
     bodyYaw=heading=spawn.yaw;
     state=newMission();
@@ -719,6 +733,33 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     journalButton.disabled=awaitingStart();
   }
 
+  function livestockVisitor() {
+    return view==="mission" ? {x:player.x,y:floor(player.x,player.z),z:player.z} : null;
+  }
+
+  function canGreetAnimal() {
+    return view==="mission" && !awaitingStart() && !restartDialog.open && state.phase!=="carrying" && !Number.isFinite(teaShotStart);
+  }
+
+  function showAnimalAction() {
+    const animal=canGreetAnimal() ? livestock.invitation(livestockVisitor()) : null;
+    animalButton.hidden=!animal;
+    if(animal) {
+      const label=`伸手让${animal}闻 P`;
+      if(animalButton.textContent!==label) animalButton.textContent=label;
+    }
+  }
+
+  function greetAnimal() {
+    if(!canGreetAnimal()) return;
+    const animal=livestock.greet(livestockVisitor());
+    if(!animal) return;
+    clearInput();
+    hint.textContent=`${animal}低下头来闻你的手。`;
+    animalButton.hidden=true;
+    canvas.focus({preventScroll:true});
+  }
+
   function ui() {
     const {objective}=stageOf(state.phase);
     if(status.textContent!==objective) status.textContent=objective;
@@ -751,6 +792,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     pebbleButton.hidden = !canAimStone();
     pebbleButton.disabled = !aimStone();
     mooringButton.hidden=!byMooring();
+    showAnimalAction();
     journal.update(state);
     labels.dataset.phase = state.phase;
     labels.dataset.wading = String(wading);
@@ -804,6 +846,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function setView(mode) {
     view = mode;
+    if(mode!=="mission") livestock.cancel();
     clearNotice();
     if (mode !== "mission") stopTeaShot();
     if (!["mission","missionScroll"].includes(mode) && restartDialog.open) restartDialog.close();
@@ -847,6 +890,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
                  Number(input.has("a") || input.has("arrowleft"));
       const dz = Number(input.has("w") || input.has("arrowup")) -
                  Number(input.has("s") || input.has("arrowdown"));
+      if(dx || dz) livestock.cancel();
       fwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
       side.set(-fwd.z, 0, fwd.x);
       const beforeDepth=wadeDepth(player.x,player.z);
@@ -870,6 +914,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const vx=(player.x-oldX)/dt, vz=(player.z-oldZ)/dt;
       // Keep looking forward when backing away, and keep the last heading on release.
       if (walking) heading=backpedaling ? player.yaw : Math.atan2(-vx,-vz);
+      else {
+        const greeting=livestock.gesture(livestockVisitor());
+        if(greeting) heading=greeting.yaw;
+      }
       const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
       const nextYaw=bodyYaw+turn*(1-Math.exp(-(walking ? 17 : 6)*dt));
       if(!cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
@@ -907,8 +955,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       foreground.update(camera, elapsed);
     }
+    if(view==="mission") showAnimalAction();
+    const animalGesture=livestock.gesture(livestockVisitor());
+    showGreetingArms(firstPerson && !!animalGesture);
     playerBody.figure.visible = (view === "mission" && !firstPerson && !cameraClose) ||
-      (view === "missionScroll" && state.phase === "carrying");
+      handsOnly || (view === "missionScroll" && state.phase === "carrying");
     const bodyY=view==="mission" ? gait.rootHeight(player.x,player.z) : floor(player.x,player.z);
     playerBody.figure.position.set(player.x,bodyY,player.z);
     playerBody.figure.rotation.y=bodyYaw;
@@ -932,6 +983,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       playerBody.limbs.arms[0].rotation.x-=gesture*1.08;
       playerBody.limbs.arms[0].rotation.z=gesture*.32;
     }
+
+    if(animalGesture) playerBody.reachHand(1,animalGesture.target,animalGesture.strength*.97);
 
     let courierVX=0,courierVZ=0;
     if (state.phase === "courier") {
@@ -1020,6 +1073,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   teaButton.onclick = toggleTeaShot;
   pebbleButton.onclick=tossStone;
   mooringButton.onclick=pullMooring;
+  animalButton.onclick=greetAnimal;
   switchButton.onclick = toggleScroll;
   byId("missionUndo").onclick = undo;
   function requestRestart(trigger) {
@@ -1077,6 +1131,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     }
     if(awaitingStart()) return;
     if (e.code === "KeyE") useCargo();
+    if (e.code === "KeyP") greetAnimal();
     if (e.code === "KeyV") toggleCamera();
     if (e.code === "KeyJ") journal.toggle(state);
     if (e.code === "KeyF") tossStone();
@@ -1096,6 +1151,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(!intro.hidden) begin.focus({preventScroll:true});
     },
     get restartOpen() { return restartDialog.open; },
+    livestockVisitor,
     prepare() {
       if (view !== "mission") return;
       bridgeLook.frame(elapsed,Math.min(.07,elapsed-lastPrepare));

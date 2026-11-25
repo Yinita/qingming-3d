@@ -39,10 +39,10 @@
     color:#422a1d; font-weight:700; }
   #missionSteps [data-complete="true"] { color:#385443; border-color:#94a38b; background:#e1e7d5; }
   #missionSteps [data-complete="true"]::before { content:"✓ "; }
-  #missionInteract:not(:disabled) { color:#fff4dc; background:#793b30; border-color:#793b30;
+  #missionInteract:not(:disabled), #missionAnimal { color:#fff4dc; background:#793b30; border-color:#793b30;
     font-weight:700; }
   @media (pointer:coarse) {
-    #missionInteract, #missionJournal { min-height:44px; }
+    #missionInteract, #missionJournal, #missionAnimal { min-height:44px; }
   }
   #missionProgress::-webkit-progress-bar { background:#d8c7ab; border-radius:3px; }
   #missionProgress::-webkit-progress-value { background:#843b30; border-radius:3px; }
@@ -183,13 +183,15 @@
   "three/addons/": "./vendor/three/examples/jsm/",
   "./bridge-look.js": "./bridge-look.js?v=118",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
-  "./bridge-mission.js": "./bridge-mission.js?v=118",
+  "./bridge-mission.js": "./bridge-mission.js?v=119",
+  "./bridge-livestock.js": "./bridge-livestock.js?v=119",
+  "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=119",
   "./bridge-quests.js": "./bridge-quests.js?v=113",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=118",
+  "./bridge-people.js": "./bridge-people.js?v=119",
   "./bridge-head.js": "./bridge-head.js?v=117",
   "./bridge-head-data.js": "./bridge-head-data.js?v=117",
-  "./bridge-street.js": "./bridge-street.js?v=117",
+  "./bridge-street.js": "./bridge-street.js?v=119",
   "./bridge-street-ground.js": "./bridge-street-ground.js?v=118"
 } }
 </script>
@@ -231,7 +233,7 @@
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
-<div id="seal">入卷 v1.18</div>
+<div id="seal">入卷 v1.19</div>
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -651,6 +653,11 @@ renderer.setAnimationLoop(now => {
     applyWalk();
   }
   const camPos = cam.position;
+  if(street.root.visible && !mission?.restartOpen) {
+    const {x,y,z}=walk.pos;
+    const observer=mode==="walk" ? {x,y:y-1.54,z} : mission?.livestockVisitor();
+    street.livestock.update(dt,now*.001,camPos,observer);
+  }
   if (mode === "walk" || mode === "fly") {
     const texel=34/sun.shadow.mapSize.x;
     const ahead=sun.target.position;
@@ -676,6 +683,7 @@ document.getElementById("status").textContent =
   `${L.objects.length} 个物体 · ` + Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(" · ") +
   ` · 段 x=${L.x0}–${L.x1}px · 仰角 ${L.camera.elev_deg}°`;
 window.__scene = { L, setMode, startFly, setModels, models, renderer, scene, persp, orbit, walk,
+  livestock: street.livestock.inspect,
   mission: () => mission?.inspect(),
   waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect, streetHeight:street.streetHeight };
 </script>
