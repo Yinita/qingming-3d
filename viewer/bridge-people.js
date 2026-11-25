@@ -95,6 +95,67 @@ function surfacePoint(profile,theta,y,standOff) {
   return [radius*Math.sin(theta),y+.012*Math.cos(theta),radius*.70*Math.cos(theta)];
 }
 
+function splitRobeSkirt(parent,profile,cloth,binding,lowDetail) {
+  const hem=profile[1][1], waist=profile[6][1];
+  const rows=lowDetail ? 7 : 20, columns=lowDetail ? 8 : 32;
+  const circumference=2*Math.PI*Math.max(...profile.map(([radius])=>radius));
+  const shell={vertices:[],colors:[],uv:[],index:[]};
+  const edges={vertices:[],uv:[],index:[]};
+  const hemBand=.077;
+  const seamWidth=v=>.021*(1-THREE.MathUtils.smoothstep(v,.49,1));
+  const betweenSeams=(u,v)=>THREE.MathUtils.lerp(seamWidth(v),1-seamWidth(v),u);
+  const hemRoll=v=>.0035*Math.sin(Math.PI*v/hemBand);
+  for(const front of [true,false]) {
+    function addPatch(out,width,height,coordinates) {
+      const start=out.vertices.length/3;
+      for(let row=0;row<=height;row++) for(let col=0;col<=width;col++) {
+        const [u,v,standOff]=coordinates(col/width,row/height);
+        const y=THREE.MathUtils.lerp(hem,waist,v)+(front ? -.003 : .008)*Math.sin(Math.PI*u)*(1-v);
+        const opening=1-THREE.MathUtils.smoothstep(y,hem,hem+.183);
+        // The two woven panels meet at the waist and leave vents at the sides.
+        const notch=(front ? .145-.034*u : .095+.062*u)*(1-2*u)*opening;
+        const theta=(front ? .5 : -.5)*Math.PI+Math.PI*u+notch;
+        out.vertices.push(...surfacePoint(profile,theta,y,standOff));
+        out.uv.push(theta*circumference/(2*Math.PI),y);
+        if(out.colors) {
+          const worn=(1-THREE.MathUtils.smoothstep(v,.02,.48))*(.54+.46*Math.cos(theta*13+y*16)**2);
+          const seam=Math.max(0,1-22*Math.min(u,1-u))*(1-.65*v);
+          const pigment=1+.38*robePleats(theta,y)+.026*Math.sin(theta*8+y*37)+.026*Math.cos(theta*3-y*18)-.074*seam;
+          out.colors.push(pigment+.081*worn,pigment+.045*worn,pigment-.031*worn);
+        }
+        if(!row || !col) continue;
+        const a=start+row*(width+1)+col,b=a-width-1;
+        out.index.push(b-1,b,a-1,b,a,a-1);
+      }
+    }
+    addPatch(shell,columns,rows,(u,v)=>{
+      const height=THREE.MathUtils.lerp(hemBand,1,v);
+      return [betweenSeams(u,height),height,0];
+    });
+    addPatch(edges,columns,2,(u,v)=>[betweenSeams(u,v*hemBand),v*hemBand,hemRoll(v*hemBand)]);
+    addPatch(edges,columns,1,(u,v)=>[betweenSeams(u,0),0,-.006*(1-v)]);
+    for(const side of [0,1]) {
+      const bindingU=(u,v)=>side+(1-2*side)*u*seamWidth(v);
+      addPatch(edges,1,2,(u,v)=>[bindingU(u,v*hemBand),v*hemBand,hemRoll(v*hemBand)]);
+      addPatch(edges,2,rows,(u,v)=>{
+        const height=THREE.MathUtils.lerp(hemBand,1,v);
+        return [bindingU(u,height),height,.0026*Math.sin(Math.PI*u)*Math.sin(Math.PI*v)];
+      });
+    }
+  }
+  function mount({vertices,colors,uv,index},material,name) {
+    const mesh=new THREE.BufferGeometry();
+    mesh.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));
+    mesh.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+    if(colors) mesh.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+    mesh.setIndex(index);
+    mesh.computeVertexNormals();
+    piece(parent,mesh,material,0,0,0).name=name;
+  }
+  mount(shell,cloth,"Split robe panels");
+  mount(edges,binding,"Folded robe edges");
+}
+
 function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
   const course=new THREE.CatmullRomCurve3(points.map(([theta,y])=>new THREE.Vector3(theta,y,0)));
   const vertices=[],uv=[],indices=[];
@@ -122,6 +183,44 @@ function robeSeam(parent,profile,points,material,width,detail,standOff=.008) {
   shape.setIndex(indices);
   shape.computeVertexNormals();
   piece(parent,shape,material,0,0,0).name="Fitted robe binding";
+}
+
+function sashKnot(parent,point,angle,linen,hem,detail) {
+  const knot=new THREE.Group();
+  knot.name="Folded cloth sash knot";
+  knot.position.set(...point);
+  knot.rotation.y=angle;
+  parent.add(knot);
+  const bands=[
+    {material:linen,path:[[-.040,.009,-.010],[-.027,.017,.004],[-.011,.012,.021],
+      [.013,-.002,.022],[.029,-.011,.010],[.039,-.005,-.004]]},
+    {material:hem,path:[[-.010,-.020,-.006],[-.015,-.013,.014],[-.008,-.004,.028],
+      [.010,.009,.026],[.016,.018,.009],[.010,.024,-.008]]},
+  ];
+  for(const {material,path} of bands) {
+    const curve=new THREE.CatmullRomCurve3(path.map(p=>new THREE.Vector3(...p)));
+    const steps=detail ? 18 : 8, sides=detail ? 8 : 5;
+    const geometry=new THREE.TubeGeometry(curve,steps,1,sides,false);
+    const vertices=geometry.attributes.position;
+    const pointOnBand=new THREE.Vector3(), tangent=new THREE.Vector3();
+    const across=new THREE.Vector3(), thickness=new THREE.Vector3();
+    for(let i=0;i<=steps;i++) {
+      const t=i/steps;
+      curve.getPointAt(t,pointOnBand);
+      curve.getTangentAt(t,tangent);
+      across.crossVectors(thickness.set(0,0,1),tangent).normalize();
+      thickness.crossVectors(tangent,across).normalize();
+      const width=.010+.006*Math.sin(Math.PI*t)**.6;
+      for(let side=0;side<=sides;side++) {
+        const az=2*Math.PI*side/sides;
+        const u=-Math.sin(az)*width, v=-Math.cos(az)*.0037;
+        vertices.setXYZ(i*(sides+1)+side,pointOnBand.x+u*across.x+v*thickness.x,
+          pointOnBand.y+u*across.y+v*thickness.y,pointOnBand.z+u*across.z+v*thickness.z);
+      }
+    }
+    geometry.computeVertexNormals();
+    piece(knot,geometry,material,0,0,0);
+  }
 }
 
 function wrapSkirt(figure,robe,cloth,binding,hem,sash,lowDetail) {
@@ -422,12 +521,13 @@ function articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail
 
 function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   const joint=-.212;
+  const cuffRow=3;
   const profile=[
     [0,-.381],[.055,-.382],[.062,-.373],[.065,-.351],[.071,-.332],
     [.075,-.305],[.079,-.265],[.080,-.221],[.082,-.181],
     [.087,-.130],[.085,-.067],[.078,-.024],[.063,.012],[.040,.039],[0,.051],
   ];
-  const contour=fabric(profile,.88,0,sections,0,(angle,y)=>{
+  function drape(angle,y) {
     const elbow=Math.exp(-(((y-joint)/.092)**2));
     const fullness=Math.sin(Math.PI*clamp((y+.376)/.426,0,1));
     const fall=Math.max(0,Math.cos(angle-.4))*fullness;
@@ -435,7 +535,8 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
     const shoulder=THREE.MathUtils.smoothstep(y,-.125,.037);
     return 1+cut*fullness+.13*cut*fall+.063*Math.cos(angle*4+y*14)*(1-.61*shoulder)+
       elbow*(.092*Math.sin(crease)-.061*Math.cos(crease*2));
-  });
+  }
+  const contour=fabric(profile.slice(cuffRow),.88,0,sections,0,drape);
   const positions=contour.attributes.position;
   const indices=new Uint16Array(positions.count*4);
   const weights=new Float32Array(positions.count*4);
@@ -450,9 +551,10 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   if(corrective) {
     // Restore circumference lost to linear blending near a folded elbow.
     const expanded=positions.clone();
+    const cuffHeight=profile[cuffRow][1];
     for(let i=0;i<positions.count;i++) {
       const y=positions.getY(i),x=positions.getX(i),z=positions.getZ(i);
-      const band=Math.exp(-(((y-joint)/.063)**2));
+      const band=Math.exp(-(((y-joint)/.063)**2))*THREE.MathUtils.smoothstep(y,cuffHeight,cuffHeight+.035);
       const width=1+band*(.36+.058*Math.cos(y*109));
       expanded.setXYZ(i,x*width,y,z*width);
     }
@@ -473,7 +575,8 @@ function tailoredSleeve(arm, cloth, binding, sections, cut, corrective) {
   shoulder.add(elbow);
   arm.updateWorldMatrix(true,true);
   sleeve.bind(new THREE.Skeleton([shoulder,elbow]));
-  const edge=fabric([[.056,-.172],[.063,-.167],[.065,-.150],[.063,-.145]],.88,0,sections);
+  // Below the elbow blend the sleeve and its folded cuff use the same bone and contour.
+  const edge=fabric(profile.slice(0,cuffRow+1).map(([radius,y])=>[radius,y-joint]),.88,0,sections,joint,drape);
   piece(elbow,edge,binding,0,0,.005).name="Bound sleeve cuff";
   return {elbow,sleeve};
 }
@@ -502,6 +605,31 @@ function waterStain(material, moisture) {
         "#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.32,wet*.72);");
   };
   material.customProgramCacheKey=()=>key+"-wet-cloth";
+}
+
+function handContact(arm,elbow,hand,point,pole) {
+  const upper=elbow.position.length(),lower=hand.group.position.length();
+  const upperRest=elbow.position.clone().normalize(),lowerRest=hand.group.position.clone().normalize();
+  const wrist=new THREE.Vector3(),direction=new THREE.Vector3(),bend=new THREE.Vector3();
+  const joint=new THREE.Vector3(),axis=new THREE.Vector3(),offset=new THREE.Vector3();
+  const next=new THREE.Quaternion(),orientation=new THREE.Quaternion();
+  return (grip,frame,amount)=>{
+    if(amount<.001) return;
+    wrist.copy(grip).sub(offset.copy(point).applyQuaternion(frame));
+    arm.parent.worldToLocal(wrist);
+    direction.copy(wrist).sub(arm.position);
+    const span=clamp(direction.length(),.070,upper+lower-.0004);
+    direction.normalize();
+    bend.copy(pole).addScaledVector(direction,-direction.dot(pole)).normalize();
+    const projection=(upper*upper-lower*lower+span*span)/(2*span);
+    joint.copy(direction).multiplyScalar(projection)
+      .addScaledVector(bend,Math.sqrt(Math.max(0,upper*upper-projection*projection)));
+    arm.quaternion.slerp(next.setFromUnitVectors(upperRest,axis.copy(joint).normalize()),amount);
+    axis.copy(direction).multiplyScalar(span).sub(joint).applyQuaternion(orientation.copy(arm.quaternion).invert());
+    elbow.quaternion.slerp(next.setFromUnitVectors(lowerRest,axis.normalize()),amount);
+    elbow.getWorldQuaternion(orientation).invert().multiply(frame);
+    hand.group.quaternion.slerp(orientation,amount);
+  };
 }
 
 const residentProfiles=[
@@ -720,6 +848,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
   const bodyLinen = surface("indigo-linen", shades[0], .39);
   const trousers = surface("indigo-linen", profile?.trousers??shades[1], .55);
   bodyLinen.vertexColors=true;
+  bodyLinen.side=THREE.DoubleSide;
   cloth.userData.streetCloth=bodyLinen.userData.streetCloth=role==="resident";
   const apronColor=role==="merchant" ? 0xc7a079 : market?.apron??profile?.apron;
   const apronLinen=apronColor ? surface("indigo-linen",apronColor,.57) : null;
@@ -765,9 +894,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     [.238*shoulders,1.13],[.254*shoulders,1.207],[.257*shoulders,1.248],
     [.224*shoulders,1.286],[.186*shoulders,1.318],[.133,1.343],[.101,1.361],[0,1.364]];
   const garmentSections=lowDetail ? 14 : 32;
-  const robeSegments=lowDetail ? garmentSections : 64;
-  piece(figure,robeClothGeometry(robe.slice(2),robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
-  piece(figure,fabric(robe.slice(0,3),.70,.012,robeSegments,0,robeVolume),binding,0,0,0).name="Bound robe hem";
+  const robeSegments=lowDetail ? 16 : 64;
+  piece(figure,robeClothGeometry(robe.slice(6),robeSegments),bodyLinen,0,0,0).name="Outer robe shell";
+  splitRobeSkirt(figure,robe,bodyLinen,binding,lowDetail);
   if(lowDetail) {
     piece(figure,fabric([[.084,1.327],[.077,1.356],[.067,1.389],[.068,1.421],
       [.085,1.447],[.087,1.462]],.86,.006,garmentSections,0,()=>1),skin,0,0,0).name="Tapered neck";
@@ -818,10 +947,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     robeSeam(figure,robe,[[tailSide,knotHeight],[tailSide-.10,knotHeight-tail*.37],
       [tailSide-.19,knotHeight-tail*.72],[tailSide-.25,knotHeight-tail]],
       profile?.wrap ? binding : dyed,.031,detail,.019);
-    const knotPoint=surfacePoint(robe,tailSide,knotHeight,.023);
-    const knot=piece(figure,new THREE.SphereGeometry(1,12,8),dyed,...knotPoint);
-    knot.scale.set(.043,.019,.022);
-    knot.rotation.z=-.24;
+    sashKnot(figure,surfacePoint(robe,tailSide,knotHeight,.020),tailSide,dyed,binding,detail);
   }
   if(profile?.beard) {
     const edge=2.38;
@@ -1059,8 +1185,8 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     shoulderSatchel(figure,robe,satchel,binding,lowDetail);
   }
   // The courier and player use their gait and the posed thighs to move the robe.
-  const clothPanels=role==="player" || role==="helper"
-    ? figure.children.filter(part=>["Outer robe shell","Bound robe hem","Fitted robe binding","Overlapping skirt panel"].includes(part.name))
+  const clothPanels=["player","helper","porter","shopper","carter"].includes(role)
+    ? figure.children.filter(part=>["Split robe panels","Folded robe edges","Fitted robe binding","Overlapping skirt panel"].includes(part.name))
         .map(({geometry})=>({geometry,rest:geometry.attributes.position.array.slice()}))
     : [];
   let clothLead=0, clothReturn=0;
@@ -1086,7 +1212,7 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       ribbon(straps,[x,1.238,.232],[x*.83,1.337,.088],.045,strapPaint,.021);
     }
   }
-  const articulated=[], sleeveFits=[];
+  const articulated=[], sleeveFits=[], harnessGrips=[];
   for (const side of [-1, 1]) {
     articulated.push(articulatedLeg(figure,side,trousers,binding,dyed,hem,footwear,lowDetail,profile ? trouserCuts[variant] : 1));
     const arm = new THREE.Group();
@@ -1103,10 +1229,24 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     limbs.arms.push(arm);
     limbs.elbows.push(elbow);
     if(role==="helper" || role==="player"){
-      ribbon(straps,[side*.10,1.340,.085],[side*.15,1.237,-.151],.049,strapPaint,.025);
-      ribbon(straps,[side*.15,1.237,-.151],[side*.116,.956,-.17],.043,strapPaint,.02);
+      const chest=[side*.15,1.237,-.158], end=[side*.116,.956,-.17];
+      ribbon(straps,[side*.10,1.340,.085],chest,.049,strapPaint,.025);
+      ribbon(straps,chest,end,.043,strapPaint,.02);
+      const point=new THREE.Vector3(-side*.018,-.058,0);
+      const grip=new THREE.Object3D();
+      grip.name="Shoulder strap grip";
+      grip.position.set(...chest).lerp(new THREE.Vector3(...end),.40);
+      grip.rotation.set(Math.PI*.5,side*Math.PI*.5,0,"YXZ");
+      straps.add(grip);
+      const contact=new THREE.Object3D();
+      contact.name="Shoulder strap palm contact";
+      contact.position.copy(point);
+      hand.group.add(contact);
+      const set=handContact(arm,elbow,hand,point,new THREE.Vector3(side*.71,-.77,-.26));
+      harnessGrips.push({hand,grip,set});
     }
   }
+  const gripPosition=new THREE.Vector3(),gripFrame=new THREE.Quaternion();
   function poseSleeves() {
     for(const {sleeve,elbow} of sleeveFits) {
       const flex=1-Math.abs(elbow.quaternion.w);
@@ -1121,32 +1261,13 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     socket.name="Tea grasp contact";
     socket.position.copy(handlePoint);
     hand.group.add(socket);
-
-    const upper=elbow.position.length(),lower=hand.group.position.length();
-    const upperRest=elbow.position.clone().normalize(), lowerRest=hand.group.position.clone().normalize();
-    const wrist=new THREE.Vector3(), direction=new THREE.Vector3(), bend=new THREE.Vector3();
-    const joint=new THREE.Vector3(), axis=new THREE.Vector3(), offset=new THREE.Vector3();
-    const next=new THREE.Quaternion(), orientation=new THREE.Quaternion();
+    const set=handContact(arm,elbow,hand,handlePoint,new THREE.Vector3(-.65,-.55,.51));
     holdKettle=(grip,frame,amount) => {
       arm.rotation.set(0,0,-.11);
       elbow.rotation.set(0,0,0);
       hand.group.quaternion.identity();
       hand.setGrip(.09+.84*amount);
-      if(amount<.001) return;
-      wrist.copy(grip).sub(offset.copy(handlePoint).applyQuaternion(frame));
-      arm.parent.worldToLocal(wrist);
-      direction.copy(wrist).sub(arm.position);
-      const span=clamp(direction.length(),.070,upper+lower-.0004);
-      direction.normalize();
-      bend.set(-.65,-.55,.51).addScaledVector(direction,-direction.dot(bend)).normalize();
-      const projection=(upper*upper-lower*lower+span*span)/(2*span);
-      joint.copy(direction).multiplyScalar(projection)
-        .addScaledVector(bend,Math.sqrt(Math.max(0,upper*upper-projection*projection)));
-      arm.quaternion.slerp(next.setFromUnitVectors(upperRest,axis.copy(joint).normalize()),amount);
-      axis.copy(direction).multiplyScalar(span).sub(joint).applyQuaternion(orientation.copy(arm.quaternion).invert());
-      elbow.quaternion.slerp(next.setFromUnitVectors(lowerRest,axis.normalize()),amount);
-      elbow.getWorldQuaternion(orientation).invert().multiply(frame);
-      hand.group.quaternion.slerp(orientation,amount);
+      set(grip,frame,amount);
     };
   }
   function settleRobe() {
@@ -1168,23 +1289,28 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
         if(y>=.93) continue;
         const loose=1-THREE.MathUtils.smoothstep(y,.63,.93);
         const sides=clamp(x/.217,-1,1);
-        let nextX=x+loose*(.006*clothLead-.032*z*clothLead);
-        let nextY=y+loose*.009*sides*clothReturn;
-        let nextZ=z+loose*(.025*sides*clothLead+.009*clothReturn);
+        let nextX=x+loose*(.010*clothLead-.032*z*clothLead);
+        let nextY=y+loose*.012*sides*clothReturn;
+        let nextZ=z+loose*(.030*sides*clothLead+.015*clothReturn);
         const radial=Math.hypot(x,z);
-        if(radial>.10 && y<.81) {
-          let separation=0;
+        if(radial>.10 && y<.84) {
+          const nx=x/radial,nz=z/radial;
+          let clearance=0;
           for(const {hip,axis,inverseLength} of thighCloth) {
             const dx=nextX-hip.x, dy=nextY-hip.y, dz=nextZ-hip.z;
-            const t=clamp((dx*axis.x+dy*axis.y+dz*axis.z)*inverseLength,0,.81);
-            const distance=Math.hypot(dx-t*axis.x,dy-t*axis.y,dz-t*axis.z);
-            separation=Math.max(separation,.107-distance);
+            const t=clamp((dx*axis.x+dy*axis.y+dz*axis.z)*inverseLength,0,1);
+            const px=dx-t*axis.x,py=dy-t*axis.y,pz=dz-t*axis.z;
+            const overlap=.103**2-px*px-py*py-pz*pz;
+            if(overlap<=0) continue;
+            // Follow the line through the garment, preserving the panel's overlap and seams.
+            const along=nx*axis.x+nz*axis.z;
+            const scale=1-(t>0 && t<1 ? along*along*inverseLength : 0);
+            const outward=px*nx+pz*nz;
+            const release=(Math.sqrt(outward*outward+scale*overlap)-outward)/Math.max(.12,scale);
+            clearance=Math.max(clearance,Math.min(release,.116));
           }
-          // Move the hem away from a raised thigh while keeping the waist fixed.
-          const clearance=separation*loose;
-          nextX+=x/radial*clearance;
-          nextZ+=z/radial*clearance;
-          nextY+=.24*clearance;
+          nextX+=nx*clearance;
+          nextZ+=nz*clearance;
         }
         if(Math.abs(nextX-vertices.getX(i))+Math.abs(nextY-vertices.getY(i))+
           Math.abs(nextZ-vertices.getZ(i))<.00013) continue;
@@ -1300,8 +1426,9 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
       head.rotation.z=-.029*balance*Math.sin(phase-.21)+.54*roll;
       head.rotation.x=.013*effort*Math.sin(phase*2+.45)+.55*pitch;
     }
-    clothLead=THREE.MathUtils.damp(clothLead,Math.sin(phase-.44)*balance,15,dt);
-    clothReturn=THREE.MathUtils.damp(clothReturn,Math.sin(phase*2-.88)*balance,12,dt);
+    const drape=effort*(1-.43*carryWeight);
+    clothLead=THREE.MathUtils.damp(clothLead,Math.sin(phase-.44)*drape+2*(shift?.side??0),13,dt);
+    clothReturn=THREE.MathUtils.damp(clothReturn,Math.sin(phase*2-.88)*drape+2.4*(shift?.forward??0),10,dt);
     for(let i=0;i<limbs.arms.length;i++) {
       const swing=Math.sin(phase+(i+1)*Math.PI);
       if(reachHand) limbs.arms[i].rotation.set(0,0,i===0 ? -.11 : .11);
@@ -1314,6 +1441,10 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
     // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
     for(const hand of limbs.hands) hand.setGrip(.08+.12*effort+.74*carryWeight);
+    for(const {hand,grip,set} of harnessGrips) {
+      hand.group.quaternion.identity();
+      if(carrying) set(grip.getWorldPosition(gripPosition),grip.getWorldQuaternion(gripFrame),carryWeight);
+    }
   }
   return {figure,limbs,straps,head,torsoPivot,holdKettle,reachHand,poseFeet,poseSleeves,stand,walkBody,
     face,blink:face?.blink,articulate:face?.articulate,lookEyes:face?.lookEyes,moisture:moisture.value};

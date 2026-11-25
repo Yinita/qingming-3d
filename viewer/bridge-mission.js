@@ -1717,9 +1717,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
     footShadow.visible = playerBody.figure.visible && !wading && !riding;
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
-    animate(playerBody,gait.phase()-Math.PI*.5,walking,hasCargo() && !riding && !freightTransfer,dt,weightShift);
+    const carrying=hasCargo() && !riding && !freightTransfer;
+    animate(playerBody,gait.phase()-Math.PI*.5,walking,carrying,dt,weightShift);
     if(view==="mission" && !riding) {
-      playerBody.poseFeet(seated ? teaRoom.chairFeet : gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
       if(seated) {
         const weight=teaRoom.chair.weight;
         playerBody.torsoPivot.rotation.x-=.11*weight;
@@ -1728,6 +1728,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
           playerBody.limbs.elbows[i].rotation.x=.32*weight;
         }
       }
+      playerBody.poseFeet(seated ? teaRoom.chairFeet : gait.feet,floor,player.x,bodyY,player.z,bodyYaw);
     }
     if(view==="missionScroll" && carrier===ferry) poseFerryRider();
     if(view==="mission" && carrier===freight) {
@@ -1735,16 +1736,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       for(let hand=0;hand<2;hand++) playerBody.reachHand(hand,freight.grip(hand),.86*freight.rider.seat);
     }
     const throwAge=stones.age();
-    playerBody.limbs.arms[0].rotation.z=0;
+    if(!carrying) playerBody.limbs.arms[0].rotation.z=0;
     const pullAge=elapsed-pullTime;
-    if (pullAge<.88 && byMooring()) {
+    if (!carrying && pullAge<.88 && byMooring()) {
       const motion=THREE.MathUtils.smoothstep(pullAge,0,.26)*
         (1-THREE.MathUtils.smoothstep(pullAge,.52,.88));
       playerBody.limbs.arms[0].rotation.x=-1.0*motion;
       playerBody.limbs.arms[1].rotation.x=-.86*motion;
       playerBody.limbs.arms[0].rotation.z=.36*motion;
     }
-    if (throwAge<.48) {
+    if (!carrying && throwAge<.48) {
       const gesture=Math.sin(Math.PI*throwAge/.48);
       playerBody.limbs.arms[0].rotation.x-=gesture*1.08;
       playerBody.limbs.arms[0].rotation.z=gesture*.32;
@@ -1787,8 +1788,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const courier=helper.figure.position, courierYaw=helper.figure.rotation.y;
     courierGait.update(dt,elapsed,courier.x,courier.z,courierYaw,courierVX,courierVZ,0);
     courier.y=courierGait.rootHeight(courier.x,courier.z);
-    helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
     animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,state.phase==="courier",dt);
+    helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
     const speech=dialogue.speech(dt);
     const nod=THREE.MathUtils.clamp((elapsed-deliveryTime)/1.18,0,1);
     const greeting=state.phase==="delivered" ? Math.sin(Math.PI*nod) : 0;
