@@ -2331,6 +2331,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   byId("missionReplay").onclick=event=>requestRestart(event.currentTarget);
   interactButton.onclick = useCargo;
   inspectChestButton.onclick=useChest;
+  const chestPrompt=document.getElementById("missionContext");
+  let chestTap=null;
+  chestPrompt.addEventListener("touchstart",event=>{
+    chestTap=inspectingChest && event.touches.length===1 ? event.changedTouches[0] : null;
+  },{passive:true});
+  chestPrompt.addEventListener("touchcancel",()=>{chestTap=null;});
+  chestPrompt.addEventListener("touchend",event=>{
+    const start=chestTap, end=event.changedTouches[0];
+    chestTap=null;
+    if(!inspectingChest || !start || !end || start.identifier!==end.identifier ||
+      Math.hypot(start.clientX-end.clientX,start.clientY-end.clientY)>14) return;
+    event.preventDefault();
+    useChest();
+  },{passive:false});
   hireButton.onclick = hire;
   talkButton.onclick=askCourier;
   byId("missionCamera").onclick = toggleCamera;
