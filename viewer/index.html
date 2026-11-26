@@ -216,6 +216,7 @@
   body.tea-closeup #missionHud,
   body.chest-inspection :is(#missionHud, #missionTouchPad:not([hidden]), #missionNotice) { display:none; }
   body.chest-inspection #missionContext { touch-action:manipulation; }
+  body.chest-moving #missionHud .mission-actions button:not(#missionCamera) { display:none; }
   body.tea-room-open #missionProgress, body.tea-room-open #missionSteps,
   body.tea-room-open #missionObjective, body.tea-room-open .mission-controls { display:none; }
   @media(max-width:600px) {
@@ -238,8 +239,9 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=146",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=1582",
-  "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=158",
+  "./bridge-mission.js": "./bridge-mission.js?v=159",
+  "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=159",
+  "./bridge-chest-transfer.js": "./bridge-chest-transfer.js?v=159",
   "./bridge-audio.js": "./bridge-audio.js?v=144",
   "./bridge-weather.js": "./bridge-weather.js?v=154",
   "./bridge-puddles.js": "./bridge-puddles.js?v=154",

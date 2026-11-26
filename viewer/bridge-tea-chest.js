@@ -3,6 +3,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { detailedBox } from "./bridge-look.js";
 
 export const teaChestSize={halfX:.385*.75,halfZ:.351*.75,height:.616*.75};
+export const teaChestGrip={x:.286,y:.404,z:.202};
 
 function paperLabel(width,height,text,seal) {
   const canvas=document.createElement("canvas");
@@ -97,6 +98,13 @@ export function buildTeaChest(surface) {
     const liftRing=mesh(chest,handle,pin,sign*(sideX+.011),.249,0);
     liftRing.rotation.y=Math.PI*.5;
     mesh(chest,nail,pin,sign*(sideX+.013),.286,0).scale.x=.48;
+    for(const end of [-1,1]) {
+      const {x,y,z}=teaChestGrip;
+      const gripRing=mesh(chest,new THREE.TorusGeometry(.023,.0032,7,20),pin,sign*x,y,end*z);
+      gripRing.rotation.y=Math.PI*.5;
+      gripRing.scale.y=.70;
+      block(chest,iron,.010,.036,.046,sign*(sideX+.005),y-.018,end*z,.003);
+    }
   }
   const stamp=mesh(chest,sideLabel,label,.104,.235,endZ+.0007);
   stamp.rotation.z=-.044;
