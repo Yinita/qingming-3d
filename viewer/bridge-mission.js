@@ -158,7 +158,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   stall.name="Tea stall";
   stall.position.set(counter.x, .01, counter.z - 1.04);
   root.add(stall);
-  const stonePlatform=box(stall,stone,4.55,.1,2.6,0,.03,.34);
+  const stallPaving=street.streetHeight.layFlagstones(root,{name:"Tea stall flagstones",x:counter.x,z:stall.position.z+.34,
+    width:4.55,depth:2.6,level:.09,seed:1738});
   function stallSolid(name,mat,w,h,d,x,y,z) {
     const part=box(stall,mat,w,h,d,x,y,z);
     localColliders.push(city.meshBox(name,part));
@@ -222,21 +223,18 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     audio.play("wood",x,z,support==="ramp" ? .29 : .23,"ferryStep",.85,hasCargo()));
   const passengerCarrier=()=>ferry.active() ? ferry : freight.active() ? freight : null;
   const cargoAttitude=new THREE.Quaternion(),oarGrip=new THREE.Vector3();
-  const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
-  const onStall=(x,z)=>x>=stallFloor.min.x && x<=stallFloor.max.x && z>=stallFloor.min.z && z<=stallFloor.max.z;
   let backlane, timberPorter;
   function floor(x,z) {
     if (onBridge(x,z)) return deck(x);
-    if(onStall(x,z)) return stallFloor.max.y;
     const depth=depthAt(x,z);
     const ground=Math.max(teaRoom.support(x,z),ferryDeckHeight(x,z),workshop.support(x,z),
-      backlane?.support(x,z)??-Infinity,
+      backlane?.support(x,z)??-Infinity,stallPaving(x,z),
       depth===0 ? street.streetHeight(x,z) : 0);
     return ground>0 || depth===0 ? ground : waterHeight-depth;
   }
   const weather=createBridgeWeather({root,street:street.root,ground,surface:floor,depthAt,onBridge,
     water:bridgeLook.field.height});
-  const consignment=buildConsignment(root,city,material,freight);
+  const consignment=buildConsignment(root,city,material,freight,floor);
   const yard=createWorkyard(root,city,material,floor,(x,z)=>walkable(x,z) && depthAt(x,z)===0);
   const joinery=createJoinery(root,city,material,floor,workshop.worktop,yard.timberReady,audio.scrape);
   backlane=createBacklane(root,city,material,joinery,audio.scrape,street.streetHeight.registerPavedSurface,
@@ -286,10 +284,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   playerBody.figure.traverse(part => part.layers.enable(1));
   const merchant = riverWorker(root, material, "merchant");
   merchant.figure.name="Tea merchant";
-  const merchantHome=new THREE.Vector3(counter.x+1.16,.09,counter.z-.62);
+  const merchantHome=new THREE.Vector3(counter.x+1.16,floor(counter.x+1.16,counter.z-.62),counter.z-.62);
   merchant.figure.position.copy(merchantHome);
   merchant.figure.rotation.y=Math.PI;
-  merchant.stand(()=>.09,merchant.figure.position.x,.09,merchant.figure.position.z,Math.PI);
+  merchant.stand(floor,merchantHome.x,merchantHome.y,merchantHome.z,Math.PI);
   const helper = riverWorker(root, material, "helper");
   helper.figure.name="Bridge courier";
   helper.figure.position.set(pickup.x - .5, floor(pickup.x - .5, routeZ + 1.03), routeZ + 1.03);
@@ -634,7 +632,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
   function footSurface(x,y,z) {
     if(onBridge(x,z)) return "wood";
-    if(onStall(x,z)) return "stone";
+    if(Number.isFinite(stallPaving(x,z))) return "stone";
     const roomHeight=teaRoom.support(x,z);
     if(roomHeight>=y-.009) return roomHeight>.12 ? "wood" : "stone";
     return backlane.materialAt(x,y,z)??ferryLandingMaterial(x,z,y)??workshop.materialAt(x,z,y)??street.streetHeight.materialAt(x,z);
@@ -701,7 +699,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     footfall(x,y,z,vx,vz,"courier",false,undefined,foot);
     return false;
   });
-  const merchantGait=createGroundedGait(()=>merchantHome.y,()=>true,(x,y,z,t,vx,vz)=>{
+  const merchantGait=createGroundedGait(floor,()=>true,(x,y,z,t,vx,vz)=>{
     footfall(x,y,z,vx,vz,"merchant",false,false);
     return false;
   });
@@ -3383,7 +3381,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     npcFootSupport("courier",courierGait.feet);
     const mp=merchant.figure.position;
     animate(merchant,merchantGait.phase()-Math.PI*.5,Math.abs(merchantVelocity)>.01,false,dt);
-    merchant.poseFeet(merchantGait.feet,()=>merchantHome.y,mp.x,mp.y,mp.z,Math.PI);
+    merchant.poseFeet(merchantGait.feet,floor,mp.x,mp.y,mp.z,Math.PI);
     const speech=dialogue.speech(dt);
     if(view==="mission") joinery.frame(dt,player,speech,attend);
     if(view==="mission" && gardenTrade.frame(dt,elapsed,player,speech,attend,footfall,npcFootSupport)==="sold") {
@@ -3845,6 +3843,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       ui();
     },
     sampleWater:bridgeLook.probe,
+    probeSupport:(x,z)=>({y:floor(x,z),medium:footSurface(x,floor(x,z),z)}),
     inspect: () => ({ phase: state.phase, coins: state.coins, method: state.method, view, firstPerson,
       player: { ...player, y: ferry.active() ? ferry.rider.y : teaRoom.chairActive() ? teaRoom.chair.y : floor(player.x,player.z) }, crate: [crateMesh.position.x, crateMesh.position.y, crateMesh.position.z],
       teaChest:{...chest.inspect(),active:inspectingChest,framing:chestFraming,lidSolid:looseLid.enabled},

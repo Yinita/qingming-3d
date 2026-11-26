@@ -4,6 +4,7 @@ import { canalDepth, waterHeight } from "./bridge-canal-bed.js";
 import { backlaneRelief } from "./bridge-backlane.js";
 import { wellSite } from "./bridge-well.js";
 import { gardenGate,westBankRelief } from "./bridge-west-bank.js";
+import { buildFlagstoneApron } from "./bridge-flagstones.js";
 
 // Shallow stonework set into the dirt at the market and bridge approaches.
 const lanes=[
@@ -502,6 +503,13 @@ export function buildStreetGround(root,origin,surface,anchor,terrain) {
     }
     return y;
   }
+  function layFlagstones(parent,spec) {
+    const cells=parent===root ? pavingCells : new Map();
+    buildFlagstoneApron(parent,surface,terrain,(p,a,b,c)=>addSurface(p,a,b,c,cells),spec);
+    return (x,z)=>surfaceHeight(cells,x,z);
+  }
+  layFlagstones(root,{name:"Warehouse loading flagstones",x:-44.42,z:-36.64,width:1.82,depth:1.12,seed:3841,rise:.028});
+  layFlagstones(root,{name:"North lane receiving flagstones",x:-42.36,z:-32.49,width:2.27,depth:.92,seed:9373,rise:.030});
   const pavedHeight=(x,z)=>surfaceHeight(pavingCells,x,z);
   const rootHeight=(x,z)=>surfaceHeight(rootCells,x,z);
   const height=(x,z)=>Math.max(terrain(x,z),pavedHeight(x,z),rootHeight(x,z));
@@ -513,6 +521,7 @@ export function buildStreetGround(root,origin,surface,anchor,terrain) {
   height.addThreshold=(x,z,length,width,seed)=>addPaving({x,z,length,width,seed,angle:Math.PI/2,
     coursed:true,name:"Stone threshold"});
   height.registerPavedSurface=addSurface;
+  height.layFlagstones=layFlagstones;
   height.addRootSurface=(position,a,b,c)=>addSurface(position,a,b,c,rootCells);
   height.rootHeight=rootHeight;
   height.frontages=streetworks;

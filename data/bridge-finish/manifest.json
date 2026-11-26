@@ -27,6 +27,17 @@
     "license": "CC0-1.0",
     "source_resolution": 4096
   },
+  "sandstone-flagstone-4k": {
+    "metres": 2.0,
+    "albedo_size": 4096,
+    "normal_size": 4096,
+    "surface_map_size": 1024,
+    "provenance": "Sandstone Cracks by Rob Tuytel, color-graded for the flagstone aprons",
+    "source": "https://polyhaven.com/a/sandstone_cracks",
+    "license": "CC0-1.0",
+    "source_resolution": 4096,
+    "build": "tools/build_sandstone_textures.py --4k"
+  },
   "gray-roof-tile": {
     "metres": 2.4,
     "albedo_size": 2048,

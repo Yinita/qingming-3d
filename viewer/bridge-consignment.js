@@ -3,7 +3,7 @@ import { detailedBox } from "./bridge-look.js";
 
 export const parcelSize={halfX:.232,halfZ:.172,height:.333};
 
-export function buildConsignment(parent,city,surface,freight) {
+export function buildConsignment(parent,city,surface,freight,floor) {
   const wood=surface("tea-wood",0xc8af8c,.82,.89);
   const frame=surface("rail-wood",0xa68c6f,.88,.88);
   const rope=new THREE.MeshStandardMaterial({color:0x86694a,roughness:.94});
@@ -96,7 +96,8 @@ export function buildConsignment(parent,city,surface,freight) {
     root.add(depot);
     board(depot,wood,.63,.083,.45,0,.287,0);
     for(const x of [-.263,.263]) for(const z of [-.171,.171]) {
-      board(depot,frame,.071,.272,.076,x,.135,z);
+      const bottom=floor(at.x+x,at.z+z)-at.y-.006;
+      board(depot,frame,.071,.271-bottom,.076,x,(.271+bottom)*.5,z);
     }
     for(const x of [-.263,.263]) board(depot,frame,.066,.064,.415,x,.122,0);
     const side=index===0 ? 1 : -1, postX=side*.278, plaqueZ=.13;

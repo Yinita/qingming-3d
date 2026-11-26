@@ -148,7 +148,8 @@ function weatherMaterial(material,coat,kind) {
 
 const groundNames=new Set(["West bridge approach","East bridge approach","Stone threshold","Sediment at paving joints",
   "Inset street paving and gravel","Kitchen garden stone path","Grain-store flagstone landing",
-  "Grain-store threshold step"]);
+  "Grain-store threshold step","Tea stall flagstones","Warehouse loading flagstones","North lane receiving flagstones",
+  "Pointed flagstone bedding"]);
 
 export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge,water}) {
   const group=new THREE.Group();

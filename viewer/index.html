@@ -257,7 +257,7 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=170",
+  "./bridge-look.js": "./bridge-look.js?v=174",
   "./bridge-earth.js": "./bridge-earth.js?v=171",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
   "./bridge-joinery.js": "./bridge-joinery.js?v=143",
@@ -266,7 +266,7 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=170",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=173",
+  "./bridge-mission.js": "./bridge-mission.js?v=174",
   "./bridge-parcel-motion.js": "./bridge-parcel-motion.js?v=173",
   "./bridge-street-route.js": "./bridge-street-route.js?v=1721",
   "./bridge-street-camera.js": "./bridge-street-camera.js?v=161",
@@ -274,7 +274,7 @@
   "./bridge-chest-transfer.js": "./bridge-chest-transfer.js?v=159",
   "./bridge-counter-delivery.js": "./bridge-counter-delivery.js?v=160",
   "./bridge-audio.js": "./bridge-audio.js?v=144",
-  "./bridge-weather.js": "./bridge-weather.js?v=171",
+  "./bridge-weather.js": "./bridge-weather.js?v=174",
   "./bridge-ground-tracks.js": "./bridge-ground-tracks.js?v=170",
   "./bridge-wheel-tracks.js": "./bridge-wheel-tracks.js?v=171",
   "./bridge-puddles.js": "./bridge-puddles.js?v=154",
@@ -290,10 +290,11 @@
   "./bridge-head.js": "./bridge-head.js?v=1711",
   "./bridge-head-data.js": "./bridge-head-data.js?v=1612",
   "./bridge-street.js": "./bridge-street.js?v=168",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=168",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=174",
+  "./bridge-flagstones.js": "./bridge-flagstones.js?v=174",
   "./bridge-foreground.js": "./bridge-foreground.js?v=131",
   "./bridge-boat.js": "./bridge-boat.js?v=156",
-  "./bridge-consignment.js": "./bridge-consignment.js?v=173",
+  "./bridge-consignment.js": "./bridge-consignment.js?v=174",
   "./bridge-freight.js": "./bridge-freight.js?v=173",
   "./bridge-freight-model.js": "./bridge-freight-model.js?v=173",
   "./bridge-ferry.js": "./bridge-ferry.js?v=156",
@@ -369,7 +370,7 @@
   },true);
 })();
 </script>
-<script id="sceneMeter" type="module" src="./scene-loading.js?v=136"></script>
+<script id="sceneMeter" type="module" src="./scene-loading.js?v=174"></script>
 <div id="hud">
   <h1>入卷 · 清院本清明上河图（一段）</h1>
   <div class="row">
@@ -390,7 +391,7 @@
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
-<div id="seal">入卷 v1.73</div>
+<div id="seal">入卷 v1.74</div>
 <script id="sceneEntry" type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -404,7 +405,7 @@ import { cutDrainApron } from "./bridge-backlane.js";
 import { wellSite } from "./bridge-well.js";
 import { createEarthMaterial } from "./bridge-earth.js";
 import { createSurfaceLibrary, setSurfaceTextureLoader } from "./bridge-look.js";
-import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js?v=136";
+import { loadSceneSizes, sceneAsset, sceneImage, prepareFirstFrame, showFirstFrame, failScene } from "./scene-loading.js?v=174";
 import { sweepHorizontal } from "./bridge-collision.js";
 
 const params = new URLSearchParams(location.search);
@@ -866,7 +867,8 @@ window.__scene = { L, setMode, startFly, setModels,
   housing:street.housing.inspect, foliage:street.foliage, frontages:street.streetHeight.frontages,
   livestock: street.livestock.inspect, market:street.market.inspect,
   mission: () => mission?.inspect(),
-  waterSample: (x,z) => mission?.sampleWater(x,z), street:street.inspect, streetHeight:street.streetHeight };
+  waterSample: (x,z) => mission?.sampleWater(x,z), missionSupport:(x,z)=>mission?.probeSupport(x,z),
+  street:street.inspect, streetHeight:street.streetHeight };
 </script>
 </body>
 </html>

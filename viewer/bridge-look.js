@@ -20,7 +20,7 @@ const materialScale = {
   "tea-wood": 1.4, "rail-wood": 2.0, "stone-paving": 3.8,
   "gray-roof-tile": 2.4, "lime-plaster": 2.5, "indigo-linen": 1.0,
   "worn-stone": 1.25, "willow-bark": 1.7, "packed-earth": 2.4,
-  "sandstone-approach": 2.0,
+  "sandstone-approach": 2.0, "sandstone-flagstone-4k": 2.0,
   "rough-linen": .30,
 };
 
@@ -37,19 +37,19 @@ export function createSurfaceLibrary() {
 
   function maps(id) {
     if (!finishSets.has(id)) {
-      const format=["sandstone-approach","rough-linen"].includes(id) ? "webp" : "png";
+      const format=id.startsWith("sandstone-") || id==="rough-linen" ? "webp" : "png";
       finishSets.set(id, Promise.all([load(id, "basecolor.webp", true), load(id, "normal."+format), load(id, "orm."+format)]));
     }
     return finishSets.get(id);
   }
 
-  function surface(id, color = 0xffffff, normalStrength = 1, roughnessFactor = 1) {
+  function surface(id, color = 0xffffff, normalStrength = 1, roughnessFactor = 1, detail = null) {
     const mat = id.endsWith("linen") ? new THREE.MeshPhysicalMaterial({
       color, roughness:.85, sheen:.27, sheenColor:0xcabc9e, sheenRoughness:.81,
     }) : new THREE.MeshStandardMaterial({ color, roughness: .78, metalness: 0 });
     mat.userData.tileMetres = materialScale[id];
     mat.userData.grain = id.endsWith("wood");
-    maps(id).then(([colorMap, normal, orm]) => {
+    function install([colorMap, normal, orm]) {
       mat.map = colorMap;
       mat.normalMap = normal;
       mat.normalScale.setScalar(normalStrength);
@@ -59,7 +59,10 @@ export function createSurfaceLibrary() {
       mat.aoMapIntensity = .65;
       mat.needsUpdate = true;
       mat.userData.surfaceReady = true;
-    }, err => console.warn("Bridge material could not be loaded", id, err.message));
+    }
+    const baseReady=maps(id).then(install,err=>console.warn("Bridge material could not be loaded",id,err.message));
+    if(detail) Promise.all([baseReady,maps(detail)]).then(([,textures])=>install(textures),
+      err=>console.warn("Bridge detail could not be loaded",detail,err.message));
     return mat;
   }
 
