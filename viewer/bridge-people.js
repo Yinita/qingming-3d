@@ -1409,13 +1409,13 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
   let graspProp;
-  if(role==="player" || role==="joiner" || role==="timberPorter") {
+  if(["player","joiner","timberPorter","helper","merchant"].includes(role)) {
     const contacts=limbs.arms.map((arm,i)=>{
       const hand=limbs.hands[i],side=i===0 ? -1 : 1;
       const palm=new THREE.Vector3(-side*.014,-.058,0);
       const marker=new THREE.Object3D();
-      marker.name=role==="player" ? "Workyard palm contact" :
-        role==="joiner" ? "Joiner's palm contact" : "Timber porter's palm contact";
+      marker.name={player:"Workyard palm contact",joiner:"Joiner's palm contact",
+        timberPorter:"Timber porter's palm contact",helper:"Courier palm contact",merchant:"Merchant palm contact"}[role];
       marker.position.copy(palm);
       hand.group.add(marker);
       return handContact(arm,limbs.elbows[i],hand,palm,new THREE.Vector3(side*.42,-.91,.19));
@@ -1603,12 +1603,12 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     clothReturn=THREE.MathUtils.damp(clothReturn,Math.sin(phase*2-.88)*drape+2.4*(shift?.forward??0),10,dt);
     for(let i=0;i<limbs.arms.length;i++) {
       const swing=Math.sin(phase+(i+1)*Math.PI);
-      if(reachHand) limbs.arms[i].rotation.set(0,0,i===0 ? -.11 : .11);
+      if(reachHand || role==="helper" || role==="merchant") limbs.arms[i].rotation.set(0,0,i===0 ? -.11 : .11);
       limbs.arms[i].rotation.x=THREE.MathUtils.lerp(.36*balance*swing,.88,carryWeight);
     }
     for(let i=0;i<limbs.elbows.length;i++) {
       const forward=Math.max(0,Math.sin(phase+(i+1)*Math.PI));
-      if(reachHand) limbs.elbows[i].rotation.set(0,0,0);
+      if(reachHand || role==="helper" || role==="merchant") limbs.elbows[i].rotation.set(0,0,0);
       limbs.elbows[i].rotation.x=-(restElbow+THREE.MathUtils.lerp(.12+.35*forward,.25,carryWeight)*effort);
     }
     // Relaxed fingers while walking; a closed grip on the harness straps when carrying.
