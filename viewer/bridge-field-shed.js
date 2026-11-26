@@ -6,7 +6,7 @@ import { detailedBox } from "./bridge-look.js";
 import { fieldShed } from "./bridge-field-layout.js";
 
 const {damp,smoothstep}=THREE.MathUtils;
-const stepWidth=1.58, doorway=1.54;
+const doorway=1.54, frontInset=.043;
 export const fieldDoor={x:fieldShed.x,z:fieldShed.z-fieldShed.depth*.5};
 
 export function buildFieldShed(parent,city,surface,height) {
@@ -45,10 +45,10 @@ export function buildFieldShed(parent,city,surface,height) {
     }
     areas.clear();
   }
-  function rectangle(ax,az,bx,bz,y) {
+  function rectangle(ax,az,bx,bz,y,register=height.registerPavedSurface) {
     const positions=[x+ax,y,z+az,x+bx,y,z+az,x+ax,y,z+bz,x+bx,y,z+bz];
-    height.registerPavedSurface(positions,0,3,6);
-    height.registerPavedSurface(positions,3,9,6);
+    register(positions,0,3,6);
+    register(positions,3,9,6);
   }
   function support(ax,az,bx,bz,y,material,name) {
     const coords=[x+ax,z+az,x+bx,z+bz];
@@ -59,14 +59,15 @@ export function buildFieldShed(parent,city,surface,height) {
     rectangle(ax,az,bx,bz,y);
   }
   support(-hx-.09,-hz-.10,hx+.09,hz+.10,platform,stone,"Squared fieldstone foundation");
-  const approach=height(x,z-hz-.53);
-  for(const [i,offset] of [[0,.38],[1,.22]]) {
-    support(-stepWidth*.5,-hz-offset,stepWidth*.5,-hz-offset+.20,
-      Math.max(approach+.013,platform-.122+i*.061),stone,"Set approach step");
-  }
+  const approach=height(x,z-hz-.69);
+  // The lower landing receives the lane from both bridges and keeps the doorway clear.
+  support(-1.71,-hz-.68,1.70,-hz-.23,Math.max(approach+.018,platform-.121),
+    stone,"Grain-store flagstone landing");
+  support(-.88,-hz-.24,.87,-hz-.064,Math.max(approach+.031,platform-.057),
+    stone,"Grain-store threshold step");
   for(let j=0;j<19;j++)
     timber(boards,.249,.034,depth-.13,-hx+.398+j*.249,.017,0,.006);
-  rectangle(-hx+.18,-hz+.06,hx-.18,hz-.06,platform+.034);
+  rectangle(-hx+.18,-hz+.06,hx-.18,hz-.06,platform+.034,height.addRootSurface);
   const postTop=2.22, sill=.30, beam=.192;
   for(const side of [-1,1]) {
     for(const zz of [-hz+.09,0,hz-.09]) timber(fir,.183,postTop,.193,side*(hx-.10),postTop*.5,zz,.023);
@@ -80,17 +81,17 @@ export function buildFieldShed(parent,city,surface,height) {
   for(const side of [-1,1]) {
     const sideWidth=hx-doorway*.5;
     const cx=side*(doorway*.5+sideWidth*.5);
-    timber(stone,sideWidth,.29,.205,cx,.145,-hz+.035,.020);
-    timber(chalk,sideWidth,.58,.134,cx,1.82,-hz+.065,.010);
-    timber(chalk,sideWidth,.49,.134,cx,.565,-hz+.06,.012);
+    timber(stone,sideWidth,.29,.205,cx,.145,-hz+.035+frontInset,.020);
+    timber(chalk,sideWidth,.58,.134,cx,1.82,-hz+.065+frontInset,.010);
+    timber(chalk,sideWidth,.49,.134,cx,.565,-hz+.060+frontInset,.012);
     for(const xx of [side*(doorway*.5+.02),cx-.40,cx+.40])
-      timber(fir,.126,2.17,.143,xx,1.085,-hz+.019,.014);
-    timber(fir,sideWidth,.099,.164,cx,.822,-hz+.005,.012);
-    timber(fir,sideWidth,.103,.155,cx,1.537,-hz+.005,.012);
-    timber(boards,sideWidth-.084,.705,.045,cx,1.18,-hz+.110,.007);
+      timber(fir,.126,2.17,.143,xx,1.085,-hz+.046+frontInset,.014);
+    timber(fir,sideWidth,.099,.164,cx,.822,-hz+.038+frontInset,.012);
+    timber(fir,sideWidth,.103,.155,cx,1.537,-hz+.038+frontInset,.012);
+    timber(boards,sideWidth-.084,.705,.045,cx,1.18,-hz+.110+frontInset,.007);
     for(let i=0;i<7;i++) {
       const px=cx+(i-3)*.211;
-      timber(fir,.050,.698,.089,px,1.179,-hz+.007,.007);
+      timber(fir,.050,.698,.089,px,1.179,-hz+.049+frontInset,.007);
     }
     const steep=new THREE.Vector3(0,.74,1.94);
     geometry(fir,detailedBox(.116,steep.length(),.121,fir,.012,phase+=.37)
@@ -196,7 +197,7 @@ export function buildFieldShed(parent,city,surface,height) {
     const px=x+side*(hx-.082);
     city.box("Grain-store side wall",px-.10,px+.10,z-hz,z+hz,platform-.015,platform+2.26);
     const ax=side<0 ? x-hx : x+doorway*.5,bx=side<0 ? x-doorway*.5 : x+hx;
-    city.box("Grain-store entrance wall",ax,bx,z-hz-.074,z-hz+.155,platform-.013,platform+2.24);
+    city.box("Grain-store entrance wall",ax,bx,z-hz-.023,z-hz+.199,platform-.013,platform+2.24);
   }
   city.box("Grain-store rear wall",x-hx,x+hx,z+hz-.176,z+hz+.025,platform-.05,platform+2.27);
 

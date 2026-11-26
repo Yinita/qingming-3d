@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { detailedBox } from "./bridge-look.js";
 import { buildFieldShed } from "./bridge-field-shed.js";
-import { channelFade,channelX,drainage,fieldBounds,fieldBridges,fieldOpening,fieldPlots,fieldRoadZ } from "./bridge-field-layout.js";
+import { channelFade,channelX,drainage,fieldBounds,fieldBridges,fieldOpening,fieldPlots,fieldRoadZ,fieldShed } from "./bridge-field-layout.js";
 
 const {lerp,smoothstep}=THREE.MathUtils;
 const tau=Math.PI*2;
@@ -219,7 +219,8 @@ export function buildWestFields(parent,city,surface,height) {
   }
   // A line of rounded verge stones makes the bend to the grain store legible.
   for(let i=0;i<17;i++) {
-    const x=-105.13+i*.186,z=-33.07+.073*Math.sin(i*.55);
+    const x=-106.95+i*.382,z=-33.72+.092*Math.sin(i*.55);
+    if(Math.abs(x-fieldShed.x)<1.84) continue;
     block(stone,.18+random()*.06,.059+random()*.05,.125+random()*.054,x,height(x,z)+.021,z,.020,random()*.44);
   }
   for(const [x,z,size] of [[-94.04,-39.05,.82],[-95.42,-40.02,.72],[-100.31,-39.76,.76]]) {
