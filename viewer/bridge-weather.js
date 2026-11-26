@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { createGroundPuddles } from "./bridge-puddles.js";
+import { roadsideHollows } from "./bridge-street-ground.js";
 
 const {clamp,damp,smoothstep}=THREE.MathUtils;
 const area={x:-78,z:-55,width:44,depth:30};
@@ -134,17 +136,17 @@ function weatherMaterial(material,coat,kind) {
           film=rainFilm*(${blend})*inDistrict;
           pooled=${puddles}*smoothstep(.17,.74,film);
           diffuseColor.rgb*=mix(vec3(1.),vec3(.49,.55,.55),film*.80);
-          diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.16,.19,.18),pooled*.54);
+          diffuseColor.rgb*=mix(vec3(1.),vec3(.69,.73,.70),pooled*.38);
         }`)
       .replace("#include <metalnessmap_fragment>",`#include <metalnessmap_fragment>
-        roughnessFactor=mix(roughnessFactor,.29,film*.83);
-        roughnessFactor=mix(roughnessFactor,.115,pooled*.91);`);
+        roughnessFactor=mix(roughnessFactor,.35,film*.81);
+        roughnessFactor=mix(roughnessFactor,.28,pooled*.45);`);
   };
   material.customProgramCacheKey=()=>cache+"-district-rain-"+kind;
   material.needsUpdate=true;
 }
 
-const groundNames=new Set(["West bridge approach","East bridge approach","Stone threshold",
+const groundNames=new Set(["West bridge approach","East bridge approach","Stone threshold","Sediment at paving joints",
   "Inset street paving and gravel"]);
 
 export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge,water}) {
@@ -161,8 +163,10 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
   const field=new Uint8Array(columns*rows*4);
   const top=new Float32Array(columns*rows).fill(-Infinity);
   const land=new Float32Array(columns*rows), canalCells=new Uint8Array(columns*rows);
-  const depressions=[[-72.97,-42.75,.88,.31],[-72.15,-43.11,.74,.41],[-44.62,-40.87,.91,.43],
+  const depressions=[...roadsideHollows,[-72.15,-43.11,.74,.41],[-44.62,-40.87,.91,.43],
     [-45.31,-40.50,.62,.35],[-41.73,-39.42,.77,.48],[-70.24,-44.73,.70,.32]];
+  const puddles=createGroundPuddles(group,depressions,surface,(x,z)=>
+    !Number.isFinite(roofAt(x,z)) && !onBridge(x,z) && depthAt(x,z)<=.013);
   for(let j=0;j<rows;j++) for(let i=0;i<columns;i++) {
     const x=area.x+(i+.5)*cell,z=area.z+(j+.5)*cell,index=j*columns+i;
     const roof=roofAt(x,z);
@@ -198,7 +202,7 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
     [["impact",3],["rippleShape",2]]);
   const drops=[],impacts=[];
   const freeDrops=[],freeImpacts=[];
-  const counts={roof:0,river:0,ground:0,puddle:0,eaves:0,eaveLandings:0,shelteredGround:0,wetSteps:0};
+  const counts={roof:0,river:0,ground:0,puddle:0,eaves:0,eaveLandings:0,shelteredGround:0,wetSteps:0,npcWetSteps:0};
   const dripPosition=new THREE.Vector3();
   let seed=764819,carry=0,intensity=0,film=0,dampClothes=0,storm=false,sheltered=false;
   function random() {
@@ -209,17 +213,16 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
     const i=Math.floor((x-area.x)/cell),j=Math.floor((z-area.z)/cell);
     return i>=0 && i<columns && j>=0 && j<rows ? j*columns+i : -1;
   }
-  function poolAt(x,z) { return (field[fieldIndex(x,z)*4]??0)/255; }
   function spawn(x,y,z,vy,drip) {
     if(drops.length>=capacity) return;
     const drop=freeDrops.pop()??{};
     Object.assign(drop,{x,y,z,vx:drip ? .08 : .87,vy,vz:drip ? .09 : .36,drip,variation:random()});
     drops.push(drop);
   }
-  function splash(x,z,surfaceY,time,river) {
+  function splash(x,z,time,river) {
     if(impacts.length>=ripples) return;
     const event=freeImpacts.pop()??{};
-    Object.assign(event,{x,z,surfaceY,time,river,scale:.6+.66*random()});
+    Object.assign(event,{x,z,time,river,scale:.6+.66*random()});
     impacts.push(event);
   }
   function advance(dt,time,player) {
@@ -232,7 +235,8 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
     const level=intensity;
     carry+=dt*1620*level;
     for(let n=Math.floor(carry);n>0;n--,carry--) {
-      const x=player.x+(random()-.5)*32,z=player.z+(random()-.5)*24;
+      const near=random()<.46;
+      const x=player.x+(random()-.5)*(near ? 13 : 32),z=player.z+(random()-.5)*(near ? 11 : 24);
       spawn(x,8.9+random()*2.7,z,-7.8-random()*4.9,false);
     }
     for(const roof of roofs) {
@@ -261,20 +265,22 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
       const covered=!drip && y<=roof;
       if(!outside && !covered && y>(land[index]??0)+.20) continue;
       const canal=!covered && !outside && depthAt(x,z)>.013 && !onBridge(x,z);
-      const bottom=outside || covered ? 0 : canal ? water(x,z,time) : surface(x,z);
+      const ground=outside || covered || canal ? 0 : surface(x,z);
+      const pool=outside || covered || canal ? -Infinity : puddles.heightAt(x,z,ground);
+      const bottom=canal ? water(x,z,time) : Math.max(ground,pool);
       if(!covered && y>bottom && !outside) continue;
       if(covered) counts.roof++;
       else if(!outside) {
         if(drip) counts.eaveLandings++;
         if(canal) {
           counts.river++;
-          if(random()<.28) splash(x,z,bottom,time,true);
+          if(random()<.28) splash(x,z,time,true);
         } else {
           counts.ground++;
           if(!drip && Number.isFinite(roof)) counts.shelteredGround++;
-          if(film>.24 && poolAt(x,z)>.21) {
+          if(Number.isFinite(pool)) {
             counts.puddle++;
-            splash(x,z,bottom,time,false);
+            splash(x,z,time,false);
           }
         }
       }
@@ -297,13 +303,15 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
     }
     rain.draw(drops.length);
     const [contact,ring]=rings.attributes;
-    for(const [i,event] of impacts.entries()) {
+    let count=0;
+    for(const event of impacts) {
+      if(!event.river) continue;
       const t=clamp((time-event.time)/.52,0,1);
-      const y=event.river ? water(event.x,event.z,time) : event.surfaceY;
-      contact.setXYZ(i,event.x,y+.008,event.z);
-      ring.setXY(i,Math.max(.014,(.032+t*.26)*event.scale),(.26+.12*event.scale)*(1-t)**1.6);
+      const y=water(event.x,event.z,time);
+      contact.setXYZ(count,event.x,y+.008,event.z);
+      ring.setXY(count++,Math.max(.014,(.032+t*.26)*event.scale),(.26+.12*event.scale)*(1-t)**1.6);
     }
-    rings.draw(impacts.length);
+    rings.draw(count);
   }
   return {
     get active() { return storm; },
@@ -313,19 +321,23 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
     toggle() { storm=!storm; },
     traction(x,z) {
       if(film<.001) return 1;
-      return 1-film*(Number.isFinite(roofAt(x,z)) ? .02 : .09+.09*poolAt(x,z));
+      if(Number.isFinite(roofAt(x,z))) return 1-film*.02;
+      return 1-film*(Number.isFinite(puddles.heightAt(x,z,surface(x,z))) ? .18 : .09);
     },
-    footstep(x,y,z,time) {
-      if(film*poolAt(x,z)<.33 || Number.isFinite(roofAt(x,z))) return false;
-      splash(x,z,y,time,false);
-      counts.wetSteps++;
+    footstep(x,y,z,time,source) {
+      const pool=puddles.heightAt(x,z,y);
+      if(!Number.isFinite(pool)) return false;
+      splash(x,z,time,false);
+      counts[source==="player" ? "wetSteps" : "npcWetSteps"]++;
       return true;
     },
     frame(dt,time,player) {
       if(!storm && intensity<.001 && film<.001 && !drops.length && !impacts.length) return;
       advance(dt,time,player);
+      puddles.frame(film,time,impacts,player);
       draw(time);
     },
+    prepare:puddles.prepare,
     show(active) {
       group.visible=active;
       coat.rainFilm.value=active ? film : 0;
@@ -337,9 +349,10 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
       freeImpacts.push(...impacts.splice(0));
       for(const key of Object.keys(counts)) counts[key]=0;
       for(const roof of roofs) roof.remaining=0;
+      puddles.reset();
       draw(0);
     },
     inspect:()=>({storm,intensity,film,dampClothes,sheltered,roofs:roofs.length,
-      droplets:drops.length,ripples:impacts.length,counts:{...counts}}),
+      droplets:drops.length,ripples:impacts.length,counts:{...counts},puddles:puddles.inspect()}),
   };
 }

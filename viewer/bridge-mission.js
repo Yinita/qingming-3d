@@ -537,7 +537,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function footfall(x,y,z,vx,vz,emitter,wet=false,loaded) {
     const speed=Math.hypot(vx,vz);
     if(speed<.20) return;
-    const family=wet ? "water" : footSurface(x,y,z);
+    const wetPaving=!wet && speed>.24 && weather.footstep(x,y,z,elapsed,emitter);
+    const family=wet || wetPaving ? "water" : footSurface(x,y,z);
     const laden=loaded??(emitter==="player" ? hasCargo() : emitter==="courier" || emitter==="porter");
     const force=THREE.MathUtils.smoothstep(speed,.2,3.1);
     const volume=(emitter==="player" ? .22+.17*force : .20+.12*force)*(laden ? 1.18 : 1);
@@ -552,7 +553,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
       bridgeLook.hit(x,z,time,strength,"step",vx,vz);
     }
-    footfall(x,y,z,vx,vz,"player",wet || (Math.hypot(vx,vz)>.24 && weather.footstep(x,y,z,time)));
+    footfall(x,y,z,vx,vz,"player",wet);
     return wet;
   });
   const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),(x,y,z,t,vx,vz)=>{
@@ -2395,6 +2396,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       lastPrepare=elapsed;
       if(ferry.active()) renderPassenger();
       bridgeLook.prepare(renderer,scene,camera);
+      weather.prepare(renderer,scene,camera);
     },
     turn(dx, dy) {
       if (view !== "mission" || restartDialog.open || awaitingStart() || backlane.locked()) return;

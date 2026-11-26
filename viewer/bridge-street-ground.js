@@ -28,6 +28,11 @@ const {smoothstep}=THREE.MathUtils;
 const marketStreet=lanes.find(lane=>lane.market);
 const drainSide=(side,along)=>side*(2.78+.11*Math.sin(along*.82)+.14*Math.cos(along*.37));
 
+export const roadsideHollows=[
+  [-72.82,-42.86,1.02,.38],
+  [-44.40,-39.93,1.13,.36],
+];
+
 export function streetSurfaceHeight(x,z) {
   let height=0;
   for(const street of streets) {
@@ -56,6 +61,14 @@ export function streetSurfaceHeight(x,z) {
   if(Math.abs(along)<8.8) {
     const ditch=Math.abs(across-drainSide(Math.sign(across)||1,along));
     height-=.034*(1-smoothstep(ditch,.065,.28))*(1-smoothstep(Math.abs(along),7.1,8.8));
+  }
+  for(const [cx,cz,rx,rz] of roadsideHollows) {
+    const u=(x-cx)/rx;
+    if(Math.abs(u)>=1.35 || Math.abs(z-cz)>=rz*1.45) continue;
+    const across=(z-cz-.091*Math.sin(u*2.3))/rz;
+    const distance=Math.hypot(u,across);
+    height-=.049*(1-smoothstep(distance,.20,1.35));
+    height+=.006*Math.exp(-(((distance-1.03)/.17)**2));
   }
   return height+streetworksRelief(x,z)+backlaneRelief(x,z);
 }
@@ -135,7 +148,7 @@ function paving(lane,origin,material,terrain,addSurface) {
   function stone(u,v,width,length,height,gravel=false,gutter=false) {
     const [x,z]=point(u,v);
     if(canalDepth(origin,x,z)>waterHeight+.015) return;
-    const cuts=Array.from({length:4},()=>.045+random()*.22);
+    const cuts=Array.from({length:4},()=>.045+random()*(lane.coursed && !gravel ? .147 : .22));
     const [sw,se,ne,nw]=cuts;
     const turn=(random()-.5)*(gravel ? 1.6 : lane.coursed ? .17 : .30);
     const ca=Math.cos(turn),sa=Math.sin(turn);
@@ -238,16 +251,18 @@ function paving(lane,origin,material,terrain,addSurface) {
       grit.push([u+du*spread,v+dv*spread,size,size*.74,size*.23]);
     }
     const start=joints.length/3;
-    for(const spread of [0,.034,.092]) for(const [du,dv,chip] of rim) {
+    const bands=lane.coursed ? [[0,.76],[.031,.61],[.073,.26],[.119,0]] : [[0,.59],[.034,.25],[.092,0]];
+    for(const [spread,opacity] of bands) for(const [du,dv,chip] of rim) {
       const radius=Math.max(.01,Math.hypot(du,dv));
       const r=1+spread*(.72+chip*.67)/radius;
       const [px,pz]=point(u+du*r,v+dv*r);
       joints.push(px,terrain(px,pz)+.005,pz);
-      jointColor.push(seam.r,seam.g,seam.b,spread===0 ? .60 : spread<.04 ? .12+.13*chip : 0);
+      const variation=.88+.22*chip;
+      jointColor.push(seam.r*variation,seam.g*variation,seam.b*variation,opacity*(.79+.21*chip));
     }
-    for(let i=0;i<n;i++) {
-      const a=start+i,b=start+(i+1)%n;
-      jointIndices.push(a,b,a+n,b,b+n,a+n,a+n,b+n,a+2*n,b+n,b+2*n,a+2*n);
+    for(let band=0;band<bands.length-1;band++) for(let i=0;i<n;i++) {
+      const a=start+band*n+i,b=start+band*n+(i+1)%n;
+      jointIndices.push(a,b,a+n,b,b+n,a+n);
     }
   }
 
@@ -340,9 +355,12 @@ function paving(lane,origin,material,terrain,addSurface) {
   contact.setAttribute("position",new THREE.Float32BufferAttribute(joints,3));
   contact.setAttribute("color",new THREE.Float32BufferAttribute(jointColor,4));
   contact.setIndex(jointIndices);
-  const seams=new THREE.Mesh(contact,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,
-    depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}));
+  contact.computeVertexNormals();
+  const seams=new THREE.Mesh(contact,new THREE.MeshStandardMaterial({vertexColors:true,transparent:true,
+    depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,roughness:.99}));
   seams.name="Sediment at paving joints";
+  seams.receiveShadow=true;
+  seams.renderOrder=1;
   return [mesh,seams];
 }
 
