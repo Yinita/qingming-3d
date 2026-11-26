@@ -11,6 +11,7 @@ import { buildTea } from "./bridge-tea.js";
 import { buildTeaChest, teaChestSize, teaChestGrip } from "./bridge-tea-chest.js";
 import { createChestTransfer } from "./bridge-chest-transfer.js";
 import { createCounterDelivery } from "./bridge-counter-delivery.js";
+import { createStreetCamera } from "./bridge-street-camera.js";
 import { buildTeaRoom } from "./bridge-tearoom.js";
 import { buildConsignment, parcelSize } from "./bridge-consignment.js";
 import { createWorkyard, workyardEntry } from "./bridge-workyard.js";
@@ -20,7 +21,7 @@ import { createTimberPorter } from "./bridge-timber-porter.js";
 import { canalDepth, canalHalfLength, canalOrigin, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
-import { circleTouchesBox, sweepHorizontal, workerHeight, workerRadius } from "./bridge-collision.js";
+import { circleTouchesBox, sweepHorizontal, sweepYaw, workerHeight, workerRadius } from "./bridge-collision.js";
 import { tileRoof } from "./bridge-architecture.js";
 import { TEA_QUEST, createQuestJournal, maxCoins, record, stageOf } from "./bridge-quests.js";
 
@@ -478,7 +479,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let restartTrigger;
   let noticeTimer, hasRestarted=false;
   let firstPerson = false;
-  let activeLens=58, sawFraming=0, entryCameraHeight=null;
+  let activeLens=58, sawFraming=0;
   let teaShotStart = -Infinity;
   let inspectingChest=false, chestFraming=0, chestOrbit=.29, chestTilt=1.08;
   const chestEye=new THREE.Vector3(), chestLook=new THREE.Vector3();
@@ -584,6 +585,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const streetVelocity=new THREE.Vector2();
   const weightShift={side:0,forward:0,plant:0,twist:0};
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
+  const cameraSide=new THREE.Vector3(),cameraForward=new THREE.Vector3();
+  const streetCamera=createStreetCamera(city.cameraDistance);
   let boomLength=3.2, cameraObstacle=null, cameraClose=false;
   const peekTarget=new THREE.Vector2();
   const groundMarker=new THREE.Group();
@@ -1039,6 +1042,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     pullTime=-Infinity;
     wading=false;
     wetLine=dampness=0;
+    streetCamera.reset();
     boomLength=3.2;
     gait.reset();
     weather.reset();
@@ -1893,7 +1897,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       yard.release();
       teaRoom.cancelPush();
       teaRoom.cancelDrink();
-      entryCameraHeight=null;
+      streetCamera.reset();
       document.body.classList.remove("yard-hauling");
       if(teaRoom.leaveChair(player)) gait.reset();
       document.body.classList.remove("tea-room-open","tea-seated");
@@ -2204,11 +2208,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       wading=depth>.036;
       wetLine=Math.max(depth,wetLine-dt*.013);
       dampness=wading ? Math.min(1,dampness+dt*3.0) : Math.max(0,dampness-dt*.041);
-      // In a brake the body holds its heading while the feet finish the step.
+      // Keep steering when an intended step is blocked so the pack can turn clear.
       if(yard.active()) heading=yard.yaw();
-      else if(walking && (dx || dz)) {
+      else if(dx || dz) {
         if(backpedaling) heading=player.yaw;
         else if(vx*targetX+vz*targetZ>0) heading=Math.atan2(-vx,-vz);
+        else if(!walking) heading=Math.atan2(-targetX,-targetZ);
       } else if(!walking) {
         const greeting=livestock.gesture(livestockVisitor());
         if(greeting) heading=greeting.yaw;
@@ -2229,11 +2234,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       else {
         const {clamp,damp}=THREE.MathUtils;
         const turn=Math.atan2(Math.sin(heading-bodyYaw),Math.cos(heading-bodyYaw));
-        const target=transfer || delivery || !carrying ||
-          !cargoCollision(player.x,player.z,bodyYaw+clamp(turn,-.14,.14)) ? heading : bodyYaw;
         const previousYaw=bodyYaw;
-        const nextYaw=gait.steer(dt,bodyYaw,target,Math.hypot(vx,vz),carrying);
-        if(transfer || delivery || !carrying || !cargoCollision(player.x,player.z,nextYaw)) bodyYaw=nextYaw;
+        const nextYaw=gait.steer(dt,bodyYaw,heading,Math.hypot(vx,vz),carrying);
+        bodyYaw=carrying && !transfer && !delivery ?
+          sweepYaw(bodyYaw,nextYaw,yaw=>!cargoCollision(player.x,player.z,yaw)) : nextYaw;
+        const target=Math.abs(nextYaw-bodyYaw)>.003 ? bodyYaw : heading;
         if(transfer?.stage!=="lifting") gait.update(dt,elapsed,player.x,player.z,bodyYaw,vx,vz,depth,target);
         weightShift.plant=damp(weightShift.plant,gait.pivotLean(),16,dt);
         const lead=clamp(turn*.11,-.17,.17);
@@ -2253,9 +2258,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       cameraObstacle=null;
       cameraClose=false;
       const {clamp,damp,lerp}=THREE.MathUtils;
-      entryCameraHeight=!aboard && !chairBefore && teaRoom.atDoor(player) ?
-        damp(entryCameraHeight??y,y,18,dt) : null;
-      const cameraY=(entryCameraHeight??y)-(transfer ? .83*chestTransfer.pose.crouch : 0);
+      const cameraY=streetCamera.followHeight(y,dt,aboard || chairBefore)-
+        (transfer ? .83*chestTransfer.pose.crouch : 0);
+      const cameraYaw=streetCamera.followYaw(player.yaw,dt,firstPerson || aboard || chairBefore);
       sawFraming=damp(sawFraming,Number(backlane.frameSaw(player)),7,dt);
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
       const lens=firstPerson && yard.active() ? clamp(seatFov,70,96) :
@@ -2285,8 +2290,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const boom=lerp(streetBoom,1.26,roomFraming);
         cameraPivot.set(player.x,cameraY+1.48,player.z);
         const offset=lerp(lerp(.62,1.30,sawFraming),.24,roomFraming);
-        cameraGoal.set(player.x-fwd.x*boom+side.x*offset,cameraY+lerp(2.18,1.69,roomFraming)+player.pitch*-.78,
-                       player.z-fwd.z*boom+side.z*offset);
+        cameraForward.set(-Math.sin(cameraYaw),0,-Math.cos(cameraYaw));
+        cameraSide.set(-cameraForward.z,0,cameraForward.x);
+        cameraGoal.set(player.x-cameraForward.x*boom,cameraY+lerp(2.18,1.69,roomFraming)+player.pitch*-.78,
+                       player.z-cameraForward.z*boom);
         const seatFraming=chairBefore ? teaRoom.chair.weight : 0;
         if(seatFraming>0) {
           // Orbit from the open side of the seat, away from the close right wall.
@@ -2298,16 +2305,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
           cameraGoal.y=lerp(cameraGoal.y,cameraY+1.66-player.pitch*.39,seatFraming);
           cameraGoal.z=lerp(cameraGoal.z,z,seatFraming);
         }
-        const length=cameraPivot.distanceTo(cameraGoal);
-        const clearance=city.cameraDistance(cameraPivot,cameraGoal);
-        cameraObstacle=clearance.obstacle;
-        boomLength=Math.min(clearance.distance,THREE.MathUtils.damp(boomLength,clearance.distance,12,dt));
+        const allowShoulder=!chairBefore && !aboard && !yard.active() && sawFraming<.12 && !pushingDoor;
+        const rig=streetCamera.place(camera.position,dt,cameraPivot,cameraGoal,cameraSide,offset*(1-seatFraming),
+          vx,vz,allowShoulder);
+        cameraObstacle=rig.obstacle;
+        boomLength=rig.distance;
         cameraClose=boomLength<(indoors ? .53 : .75);
-        camera.position.copy(cameraPivot).lerp(cameraGoal,boomLength/length);
         const lookAhead=lerp(2,.83,sawFraming);
-        camera.lookAt(lerp(player.x+fwd.x*lookAhead,player.x-.23,seatFraming),
+        camera.lookAt(lerp(player.x+cameraForward.x*lookAhead,player.x-.23,seatFraming),
           cameraY+lerp(1.05+player.pitch*2.3,1.19,seatFraming),
-          lerp(player.z+fwd.z*lookAhead,player.z-.16,seatFraming));
+          lerp(player.z+cameraForward.z*lookAhead,player.z-.16,seatFraming));
       }
       if (Number.isFinite(teaShotStart)) {
         const t = elapsed - teaShotStart;
@@ -2527,6 +2534,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function toggleCamera() {
     if (view !== "mission") return;
     stopTeaShot();
+    streetCamera.reset();
     firstPerson = !firstPerson;
     ui();
   }
@@ -2836,6 +2844,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       teaChest:{...chest.inspect(),active:inspectingChest,framing:chestFraming,lidSolid:looseLid.enabled},
       chestTransfer:chestTransfer.action ? {kind:chestTransfer.action.kind,
         stage:chestTransfer.action.stage,...chestTransfer.pose} : null,
+      cameraRig:firstPerson ? null : streetCamera.inspect(),
       counterDelivery:counterDelivery.action ? {method:counterDelivery.action.method,
         stage:counterDelivery.action.stage,...counterDelivery.pose} : null,
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),

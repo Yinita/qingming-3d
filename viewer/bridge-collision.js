@@ -12,6 +12,29 @@ export function sweepHorizontal(position,dx,dz,allows) {
   }
 }
 
+export function sweepYaw(from,to,allows) {
+  const delta=Math.atan2(Math.sin(to-from),Math.cos(to-from));
+  if(Math.abs(delta)<1e-5) return from;
+  const steps=Math.ceil(Math.abs(delta)/.035);
+  let yaw=from;
+  for(let i=1;i<=steps;i++) {
+    const next=from+delta*i/steps;
+    if(allows(next)) {
+      yaw=next;
+      continue;
+    }
+    // Reaching a jamb can leave part of the frame's turn available.
+    let low=yaw,high=next;
+    for(let i=0;i<4;i++) {
+      const mid=(low+high)*.5;
+      if(allows(mid)) low=mid;
+      else high=mid;
+    }
+    return low;
+  }
+  return yaw;
+}
+
 export function circleTouchesBox(x,z,radius,boxX,boxZ,halfX,halfZ,yaw) {
   const dx=x-boxX, dz=z-boxZ, cos=Math.cos(yaw), sin=Math.sin(yaw);
   const side=Math.max(Math.abs(dx*cos-dz*sin)-halfX,0);
