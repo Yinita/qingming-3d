@@ -9,7 +9,7 @@ export const TEA_QUEST = {
   id: "tea-shop-opening",
   title: "桥畔茶铺",
   premise: "对岸茶铺今晚要开张，可新到的一箱茶叶还搁在桥头。掌柜等着它下锅。",
-  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1, freightReward: 2 },
+  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1, freightReward: 2, gardenSaleReward: 1 },
   stages: {
     waiting:   { title: "桥头取箱",   objective: "任务起点 · 取茶叶箱，再送到对岸茶铺。" },
     carrying:  { title: "送往茶铺",   objective: "已拿到茶叶。过桥，到茶铺柜台交货。" },
@@ -44,9 +44,9 @@ export function stageOf(phase) {
   return TEA_QUEST.stages[phase] ?? TEA_QUEST.stages.waiting;
 }
 
-export function maxCoins() {
-  const { startCoins, deliveryReward, freightReward } = TEA_QUEST.economy;
-  return startCoins + deliveryReward + freightReward;
+export function maxCoins(gardenSales=0) {
+  const { startCoins, deliveryReward, freightReward, gardenSaleReward } = TEA_QUEST.economy;
+  return startCoins + deliveryReward + freightReward + gardenSales*gardenSaleReward;
 }
 
 // Append one ledger line to the mission state. The state is what gets saved,
@@ -122,12 +122,15 @@ export function createQuestJournal() {
       delivered:"已在北巷交付，收到两文。"};
     const sideQuest=state.phase==="delivered" ? `<h3>市集支线 · 瓷器货运</h3>
       <p>${freight[state.freightStage]??freight.ready}</p>` : "";
+    const sold=state.gardenHarvest?.sold?.length??0;
+    const garden=state.gardenVisited ? `<h3>西岸菜园</h3><p>把青菜或葱放入竹筐，菜农按两株一文收下。
+      ${sold ? `已售 ${sold} 株。` : ""}</p>` : "";
     return `<button class="close" type="button" data-close>收起 J</button>
       <h2>任务簿 · ${TEA_QUEST.title}</h2>
       <p>${TEA_QUEST.premise}</p>
       <h3>当前</h3><p><strong>${stage.title}</strong> · ${stage.objective}</p>
       <h3>可选路线</h3>${routes}
-      ${sideQuest}<h3>账目 · 现有 ${state.coins} 文</h3><ul class="ledger">${log}</ul>
+      ${sideQuest}${garden}<h3>账目 · 现有 ${state.coins} 文</h3><ul class="ledger">${log}</ul>
       <h3>规则</h3><ul>${TEA_QUEST.rules.map(rule => `<li>${rule}</li>`).join("")}</ul>`;
   }
 

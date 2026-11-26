@@ -186,6 +186,7 @@
   body.stock-leading #missionHud > .mission-actions button:not(#missionCamera):not(#missionStockRelease) { display:none; }
   body.pail-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionPail):not(#missionPailSetDown):not(#missionGarden):not(#missionGardenGuide) { display:none; }
   body.crop-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionHarvest):not(#missionGarden):not(#missionGardenGuide):not(#missionUndo) { display:none; }
+  body.garden-trading #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather) { display:none; }
   body.stock-leading #missionHud :is(.mission-title, #missionProgress, #missionSteps, #missionObjective,
     .mission-metrics:not(#missionStockStatus), #missionEconomy, #missionSpeech, .mission-controls) { display:none; }
   @media (max-width:760px), (max-height:525px) {
@@ -265,7 +266,7 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=146",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=166",
+  "./bridge-mission.js": "./bridge-mission.js?v=167",
   "./bridge-street-camera.js": "./bridge-street-camera.js?v=161",
   "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=159",
   "./bridge-chest-transfer.js": "./bridge-chest-transfer.js?v=159",
@@ -279,9 +280,9 @@
   "./bridge-architecture.js": "./bridge-architecture.js?v=120",
   "./bridge-collision.js": "./bridge-collision.js?v=161",
   "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=163",
-  "./bridge-quests.js": "./bridge-quests.js?v=128",
+  "./bridge-quests.js": "./bridge-quests.js?v=167",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
-  "./bridge-people.js": "./bridge-people.js?v=160",
+  "./bridge-people.js": "./bridge-people.js?v=167",
   "./bridge-head.js": "./bridge-head.js?v=1643",
   "./bridge-head-data.js": "./bridge-head-data.js?v=1612",
   "./bridge-street.js": "./bridge-street.js?v=164",
@@ -294,7 +295,7 @@
   "./bridge-ferry.js": "./bridge-ferry.js?v=156",
   "./bridge-tearoom.js": "./bridge-tearoom.js?v=152",
   "./bridge-tea.js": "./bridge-tea.js?v=152",
-  "./bridge-dialogue.js": "./bridge-dialogue.js?v=146",
+  "./bridge-dialogue.js": "./bridge-dialogue.js?v=167",
   "./bridge-ferry-oars.js": "./bridge-ferry-oars.js?v=124",
   "./bridge-streetworks.js": "./bridge-streetworks.js?v=144",
   "./bridge-market.js": "./bridge-market.js?v=126",
@@ -302,9 +303,10 @@
   "./bridge-steamer.js": "./bridge-steamer.js?v=122",
   "./bridge-touch.js": "./bridge-touch.js?v=162",
   "./bridge-stock-lead.js": "./bridge-stock-lead.js?v=163",
-  "./bridge-garden.js": "./bridge-garden.js?v=166",
-  "./bridge-crops.js": "./bridge-crops.js?v=166",
-  "./bridge-harvest.js": "./bridge-harvest.js?v=166",
+  "./bridge-garden.js": "./bridge-garden.js?v=167",
+  "./bridge-crops.js": "./bridge-crops.js?v=167",
+  "./bridge-harvest.js": "./bridge-harvest.js?v=167",
+  "./bridge-garden-trade.js": "./bridge-garden-trade.js?v=167",
   "./bridge-irrigation.js": "./bridge-irrigation.js?v=165",
   "./bridge-west-bank.js": "./bridge-west-bank.js?v=165",
   "./bridge-well.js": "./bridge-well.js?v=165",
@@ -380,7 +382,7 @@
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
-<div id="seal">入卷 v1.66</div>
+<div id="seal">入卷 v1.67</div>
 <script id="sceneEntry" type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";

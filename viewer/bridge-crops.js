@@ -4,6 +4,23 @@ import { cropBeds,gardenBounds,vergeEdge } from "./bridge-west-bank.js";
 const {lerp,smoothstep}=THREE.MathUtils;
 const {west,east,south,north}=gardenBounds;
 const tau=Math.PI*2, spiral=2.399963;
+export const vegetablesPerSale=2;
+const columns=bed=>bed.wide ? 2 : 3;
+const rowCount=bed=>Math.floor(bed.length/(bed.wide ? .31 : .24));
+
+function plantExists(id) {
+  if(!Number.isInteger(id) || id<0) return false;
+  const bed=cropBeds[Math.floor(id/100)];
+  return Boolean(bed && Math.floor(id%100/10)<rowCount(bed) && id%10<columns(bed));
+}
+
+export function readGardenInventory(saved) {
+  const picked=[...new Set(Array.isArray(saved?.picked) ? saved.picked.filter(plantExists) : [])];
+  const known=new Set(picked);
+  const carried=known.has(saved?.carried) ? saved.carried : null;
+  const sold=[...new Set(Array.isArray(saved?.sold) ? saved.sold.filter(id=>known.has(id) && id!==carried) : [])];
+  return {picked,carried,sold:sold.slice(0,sold.length-sold.length%vegetablesPerSale)};
+}
 
 function seeded(seed) {
   return ()=>{
@@ -142,7 +159,7 @@ export function createKitchenCrops(parent,height) {
   const distantGeometry=[leafMesh(0,false),leafMesh(1,false)];
   const plants=[],batches=[[],[],[]],byId=new Map();
   for(const [bedIndex,bed] of cropBeds.entries()) {
-    const across=bed.wide ? 2 : 3, rows=Math.floor(bed.length/(bed.wide ? .31 : .24));
+    const across=columns(bed), rows=rowCount(bed);
     for(let row=0;row<rows;row++) for(let column=0;column<across;column++) {
       const random=seeded(39484+bedIndex*27177+row*843+column*311);
       // Stable plant identities keep saved harvests tied to the planted positions.
@@ -239,7 +256,7 @@ export function createKitchenCrops(parent,height) {
         const plant=byId.get(id);
         if(!plant) continue;
         const mesh=display[plant.kind];
-        const theta=i*spiral, edge=basket ? .052*Math.sqrt(i) : 0;
+        const theta=i*spiral, edge=basket ? .052*Math.sqrt(i) : i*.041;
         for(const leaf of plant.leaves) {
           const index=mesh.count++;
           const scale=basket ? .64+.07*(i%4) : .86;
@@ -257,6 +274,7 @@ export function createKitchenCrops(parent,height) {
   let detail=true;
   return {plants,byId,restore,adjust,
     item:holder=>createDisplay(holder,1), basket:holder=>createDisplay(holder,trayLimit),
+    bundle:holder=>createDisplay(holder,vegetablesPerSale),
     breeze(seconds,observer) {
       time.value=seconds;
       const distance=Math.hypot(observer.x-(west+east)*.5,observer.z-(south+north)*.5);

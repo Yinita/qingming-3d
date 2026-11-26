@@ -786,6 +786,9 @@ const marketProfiles={
   joiner:{headModel:"porter",head:[.89,.91,.84],
     colors:[0x8b9071,0x6b7569,0x504c39,0xb9a07c],skin:0xb08363,shoulders:1.04,waist:1.03,hem:.091,skirt:.94,
     apron:0xb09773,hair:0x55443c,headcloth:0x6c5950},
+  gardenKeeper:{headModel:"resident1",head:[.91,.88,.86],
+    colors:[0x777d61,0x6a6453,0x5f4f3c,0xb99d72],skin:0xba8b68,shoulders:.91,waist:.97,hem:-.071,skirt:.94,
+    apron:0xc2ac82,hair:0x575045,headcloth:0x63574b},
   shopper:{head:[.79,.94,.85],
     colors:[0x99898f,0x788476,0x5c5d69,0xbeaa87],skin:0xc29e80,shoulders:.87,waist:.91,hem:.042,skirt:.95,
     hair:0x38332d,headcloth:0x646b72,hairPart:-.21,satchel:0xb4a383},
@@ -1409,13 +1412,14 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     }
   }
   let graspProp;
-  if(["player","joiner","timberPorter","helper","merchant"].includes(role)) {
+  if(["player","joiner","timberPorter","gardenKeeper","helper","merchant"].includes(role)) {
     const contacts=limbs.arms.map((arm,i)=>{
       const hand=limbs.hands[i],side=i===0 ? -1 : 1;
       const palm=new THREE.Vector3(-side*.014,-.058,0);
       const marker=new THREE.Object3D();
       marker.name={player:"Workyard palm contact",joiner:"Joiner's palm contact",
-        timberPorter:"Timber porter's palm contact",helper:"Courier palm contact",merchant:"Merchant palm contact"}[role];
+        timberPorter:"Timber porter's palm contact",gardenKeeper:"Garden keeper palm contact",
+        helper:"Courier palm contact",merchant:"Merchant palm contact"}[role];
       marker.position.copy(palm);
       hand.group.add(marker);
       return handContact(arm,limbs.elbows[i],hand,palm,new THREE.Vector3(side*.42,-.91,.19));

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { detailedBox } from "./bridge-look.js";
 import { gardenBounds } from "./bridge-west-bank.js";
+import { readGardenInventory,vegetablesPerSale } from "./bridge-crops.js";
 
 const {lerp,smoothstep}=THREE.MathUtils;
 const tray={x:-80.89,z:-32.05};
@@ -103,11 +104,15 @@ export function createGardenHarvest(parent,city,surface,floor,crops) {
   const target=new THREE.Vector3(), upright=new THREE.Vector3(), startPoint=new THREE.Vector3(),
     actual=new THREE.Vector3(), offset=new THREE.Vector3(), contact=new THREE.Vector3();
   const wrist=new THREE.Euler(0,0,0,"YXZ"),orientation=new THREE.Quaternion();
-  let taken=new Set(), carried=null, job=null, age=0;
-  function fillBasket() {putInBasket([...taken].filter(id=>id!==carried),true);}
+  let taken=new Set(), sold=new Set(), transfer=null, carried=null, job=null, age=0;
+  const stock=()=>[...taken].filter(id=>id!==carried && !sold.has(id));
+  function fillBasket() {putInBasket(stock().filter(id=>!transfer?.includes(id)),true);}
   function load(saved) {
-    taken=new Set(Array.isArray(saved?.picked) ? saved.picked.filter(id=>crops.byId.has(id)) : []);
-    carried=taken.has(saved?.carried) ? saved.carried : null;
+    const inventory=readGardenInventory(saved);
+    taken=new Set(inventory.picked);
+    sold=new Set(inventory.sold);
+    carried=inventory.carried;
+    transfer=null;
     job=null;age=0;
     prop.visible=false;
     if(carried!==null) rack(carried);
@@ -125,7 +130,7 @@ export function createGardenHarvest(parent,city,surface,floor,crops) {
       job?.type==="leave" ? .39*smoothstep(t,.06,.40)*(1-smoothstep(t,.72,1)) : 0;
   }
   function option(player,yaw) {
-    if(job) return null;
+    if(job || transfer) return null;
     if(carried!==null) {
       const d=dist(player,tray);
       return d>.53 && d<.70 && player.z<tray.z-.37 && Math.abs(player.x-tray.x)<.43
@@ -223,10 +228,26 @@ export function createGardenHarvest(parent,city,surface,floor,crops) {
   }
   load();
   return {load,cancel,option,start,frame,pose,crouch,progress,tray,
-    count:()=>taken.size-Number(carried!==null),held:()=>carried!==null,locked:()=>job!==null,stage:()=>job?.type,
+    basketBase:basket.y,
+    count:()=>taken.size-sold.size-Number(carried!==null),held:()=>carried!==null,locked:()=>job!==null,stage:()=>job?.type,
     turn:()=>job?.yaw,heading:()=>job?.heading,
-    snapshot:()=>({picked:[...taken],carried}),
+    saleLot() {
+      if(job || transfer || carried!==null || taken.size-sold.size<vegetablesPerSale) return null;
+      return stock().slice(-vegetablesPerSale);
+    },
+    stageSale(ids) {transfer=ids;fillBasket();},
+    cancelSale() {transfer=null;fillBasket();},
+    commitSale() {
+      const count=transfer?.length??0;
+      if(count!==vegetablesPerSale) return false;
+      for(const id of transfer) sold.add(id);
+      transfer=null;fillBasket();
+      return true;
+    },
+    sold:()=>[...sold],
+    snapshot:()=>({picked:[...taken],carried,sold:[...sold]}),
     inspect:()=>({picked:[...taken],carried,stage:job?.type??(carried===null ? "idle" : "carry"),progress:progress(),
+      sold:[...sold],inBasket:taken.size-sold.size-Number(carried!==null),
       target:job ? {id:job.id,x:job.point.x,y:job.point.y??basket.y,z:job.point.z} : null,
       position:prop.position.toArray(),visible:prop.visible,basket:{...tray,y:basket.y},total:crops.plants.length}),
   };

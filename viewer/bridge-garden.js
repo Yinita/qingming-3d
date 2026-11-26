@@ -3,6 +3,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { circleTouchesBox,sweepYaw,workerRadius } from "./bridge-collision.js";
 import { createKitchenCrops } from "./bridge-crops.js";
 import { createGardenHarvest } from "./bridge-harvest.js";
+import { createGardenTrade } from "./bridge-garden-trade.js";
 import { detailedBox } from "./bridge-look.js";
 import { cropBeds,gardenBounds,gardenGate,vergeEdge } from "./bridge-west-bank.js";
 
@@ -31,6 +32,7 @@ export function buildKitchenGarden(root,city,surface,height) {
   root.add(group);
   const crops=createKitchenCrops(group,height);
   const harvest=createGardenHarvest(group,city,surface,height,crops);
+  const trade=createGardenTrade(group,city,surface,height,crops,harvest);
   const timber=surface("rail-wood",0xb59b74,.83,.91);
   const reed=surface("tea-wood",0xab9069,.66,.88);
   const stone=surface("worn-stone",0xc0b69c,.91,.96);
@@ -198,7 +200,7 @@ export function buildKitchenGarden(root,city,surface,height) {
     wrist.set(.11,angle+.22,.14,"YXZ");
     person.graspProp(hand,grip,turnFrame.setFromEuler(wrist),amount,.60);
   }
-  return {near,use,frame,pose,reach,breeze:crops.breeze,harvest,
+  return {near,use,frame,pose,reach,breeze:crops.breeze,harvest,trade,
     restore(open=false){target=open ? opens : 0;blocked=false;sync(target);},
     opened:()=>angle===opens,
     name:()=>target===0 ? "推开菜园门" : "合上菜园门",
