@@ -473,8 +473,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   garden.restore(state.gardenOpen===true);
   let guideGarden=false, gardenStep=0;
   const gardenRoad=[
-    {x:-73.17,z:-38.75},{x:-74.47,z:-38.75},{x:-74.44,z:-35.24},
-    {x:-73.65,z:-35.24},{x:-73.65,z:-31.99},{x:-75.47,z:-31.99},
+    {x:-73.17,z:-38.75,reach:.068},{x:-74.47,z:-38.75,reach:.12},{x:-74.44,z:-35.24,reach:.098},
+    {x:-73.49,z:-35.24,reach:.108},{x:-73.49,z:-31.99,reach:.16},{x:-75.47,z:-31.99,reach:.16},
     {x:gardenGate.x+.68,z:gardenGate.z+.28},
   ];
   let guideWell=false, guideStock=false, wellFraming=0, wellPourLook=0;
@@ -665,9 +665,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(guideStock && (!canLeadStock() || stock.reachable(player))) guideStock=false;
     const toStockBank=stock.held() && !stock.locked() && well.canWater() && !stock.hydrated() && !stock.canDrink(player);
     const toStock=guideStock || toStockBank;
-    if(guideGarden && (!canUseGarden() || garden.near(player))) guideGarden=false;
+    if(guideGarden && (!canUseGarden() || player.x<gardenGate.x+.78 && garden.near(player))) guideGarden=false;
     const toGarden=guideGarden;
-    if(toGarden && gardenStep<gardenRoad.length-1 && distance(player,gardenRoad[gardenStep])<.39) gardenStep++;
+    const gardenTurn=gardenRoad[gardenStep];
+    if(toGarden && gardenStep<gardenRoad.length-1 && distance(player,gardenTurn)<gardenTurn.reach) gardenStep++;
     if(guideWell && !toWell) guideWell=false;
     const toYard=view==="mission" && !showStart && !restartDialog.open && guideYard && !hasCargo();
     const atMarket=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
@@ -2970,9 +2971,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     guideGarden=!guideGarden;
     if(guideGarden) {
       guideMarket=guideRoom=guideFreight=guideYard=guideWell=guideStock=guideCourt=false;
+      const donkey=stock.inspect();
+      const lane=distance(donkey,stock.dock)<.85 ? -34.24 : -35.24;
+      gardenRoad[2].z=gardenRoad[3].z=lane;
       gardenStep=player.x<-75.13 && player.z>-33.10 ? 6 : player.z>-32.21 ? 5 :
-        player.z>-35.4 && player.x>-73.94 ? 4 : player.z>-35.52 ? 3 :
-        player.z>-38.87 && player.x<-74.23 ? 2 : player.z>-38.98 ? 1 : 0;
+        player.z>lane-.09 && player.x>-73.62 ? 4 : player.z>lane-.09 ? 3 :
+        player.z>-38.84 && player.x<-74.30 ? 2 : player.z>-38.82 ? 1 : 0;
       hint.textContent="从西岸井棚旁边往北走，绕过拴驴桩，再到菜园门口。";
     }
     ui();
