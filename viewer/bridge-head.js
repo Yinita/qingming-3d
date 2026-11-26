@@ -28,13 +28,13 @@ function skinColour(x,y,z,role,mouth) {
   const ears=.64*gaussian(a,y,.814,7.09,.132,.332);
   const jaw=smoothstep(6.88-y,0,.74);
   const brow=gaussian(a,y,.352,7.393,.184,.130)*front;
-  const lipU=a/mouth.width;
+  const lipU=Math.abs(x-mouth.center.x)/mouth.width;
   const lipMid=mouth.mid(x);
   const vermilion=Math.max(0,1-lipU**2);
-  const top=lipMid+(.040+.018*Math.exp(-((lipU-.28)**2)/.018))*vermilion;
-  const bottom=lipMid-.057*vermilion;
-  const lip=(1-smoothstep(lipU,.74,1.16))*smoothstep(y,bottom-.013,bottom+.019)*
-    (1-smoothstep(y,top-.014,top+.021))*smoothstep(z,1.375,1.52);
+  const top=lipMid+(.068+.020*Math.exp(-((lipU-.26)**2)/.032))*vermilion;
+  const bottom=lipMid-.064*vermilion;
+  const lip=(1-smoothstep(lipU,.73,1.04))*smoothstep(y,bottom-.017,bottom+.010)*
+    (1-smoothstep(y,top-.015,top+.025))*smoothstep(z,1.40,1.54);
   const upperLip=lip*smoothstep(y,lipMid-.014,lipMid+.014);
   const flush=.10*cheek+.11*nose+.16*ears+.046*lids;
   const underEye=.096*lids;
@@ -42,12 +42,12 @@ function skinColour(x,y,z,role,mouth) {
   const lashU=a-.31;
   const lash=Math.exp(-(((y-7.346+.38*lashU*lashU)/.015)**2))*(1-smoothstep(Math.abs(lashU),.115,.155))*smoothstep(z,1.30,1.40);
   const beard=role==="merchant" ? .24*gaussian(a,y,.149,6.45,.358,.32)*front : 0;
-  const parting=Math.exp(-(((y-lipMid)/.009)**2))*(1-smoothstep(lipU,.80,1.03))*smoothstep(z,1.44,1.53);
-  const tone=1+mottle-.078*jaw-.071*brow-beard-.42*lash-.067*parting-.042*upperLip;
+  const parting=Math.exp(-(((y-lipMid)/.007)**2))*(1-smoothstep(lipU,.82,1.04))*smoothstep(z,1.46,1.54);
+  const tone=1+mottle-.078*jaw-.071*brow-beard-.42*lash-.051*parting-.033*upperLip;
   return [
-    tone+flush+.021*lip,
-    tone-.43*flush-.185*lip-underEye,
-    tone-.66*flush-.16*lip-underEye*.67,
+    tone+flush+.023*lip,
+    tone-.43*flush-.157*lip-underEye,
+    tone-.66*flush-.123*lip-underEye*.67,
   ];
 }
 
@@ -67,15 +67,15 @@ function closedLid(x,y,z) {
 }
 
 const mouthPoses=[
-  {jaw:.064,lift:.014,width:-.022,purse:.013,smile:0},
-  {jaw:.043,lift:.012,width:-.255,purse:.072,smile:0},
-  {jaw:.037,lift:.015,width:.12,purse:-.010,smile:.025},
+  {jaw:.059,lift:.007,width:-.023,purse:.007,smile:0},
+  {jaw:.048,lift:.003,width:-.20,purse:.051,smile:0},
+  {jaw:.037,lift:.007,width:.090,purse:-.011,smile:.016},
 ];
 
 function mouthPosition(x,y,z,lip,mouth,pose) {
-  const u=Math.abs(x)/mouth.width, vertical=y-mouth.mid(x);
+  const u=Math.abs(x-mouth.center.x)/mouth.width, vertical=y-mouth.mid(x);
   const front=smoothstep(z,.98,1.48);
-  const seam=Math.max(0,1-u*u)**1.33;
+  const seam=lip==="corner" ? 0 : Math.max(0,1-u*u)**1.45;
   const lips=front*Math.exp(-((vertical/.132)**2))*(1-smoothstep(u,.94,1.58));
   const lower=lip==="lower" ? 1 : lip==="upper" ? 0 : 1-smoothstep(vertical,-.009,.015);
   // Ease the corner constraint into a wider jaw rotation below the lower lip.
@@ -88,45 +88,53 @@ function mouthPosition(x,y,z,lip,mouth,pose) {
   const jawZ=hingeZ+armZ*cos+armY*sin;
   const lift=pose.lift*(1-lower)*seam*lips;
   const corner=pose.smile*smoothstep(u,.27,.92)*lips;
-  return local(x*(1+pose.width*lips),jawY+lift+corner,jawZ+pose.purse*lips);
+  return local(x+(x-mouth.center.x)*pose.width*lips,jawY+lift+corner,jawZ+pose.purse*lips);
 }
 
 function fitMouthSeam(source) {
   const pairs=headData.mouth.map(([upper,lower])=>{
     const a=upper*3,b=lower*3;
-    return {upper,lower,x:(source[a]+source[b])*.5,y:(source[a+1]+source[b+1])*.5,z:(source[a+2]+source[b+2])*.5};
+    return {upper,lower,x:(source[a]+source[b])*.5,upperY:source[a+1],lowerY:source[b+1],
+      y:(source[a+1]+source[b+1])*.5,z:(source[a+2]+source[b+2])*.5};
   }).sort((a,b)=>a.x-b.x);
   const center=pairs[(pairs.length-1)/2];
-  const width=Math.max(-pairs[0].x,pairs.at(-1).x);
+  const width=Math.max(center.x-pairs[0].x,pairs.at(-1).x-center.x);
+  const span=x=>Math.abs(x-center.x)/width;
   const mid=x=>{
-    const u=clamp(Math.abs(x-center.x)/width,0,1);
-    return center.y+.006*Math.sin(Math.PI*u)**2-.030*u**4;
+    const u=Math.min(1,span(x));
+    return center.y+.006*Math.sin(Math.PI*u)**2-.022*u**4;
   };
-  // Relax the lip skin around the new seam, including the rows next to the cut.
+  const depth=x=>lerp(center.z,x<center.x ? pairs[0].z : pairs.at(-1).z,Math.min(1,span(x))**1.83);
+  // Move the skin above and below the cut with its own edge to keep the lip rows from folding.
   for(let i=0;i<source.length;i+=3) {
     const x=source[i],y=source[i+1],z=source[i+2];
-    if(Math.abs(x)>width+.085 || z<1.37 || Math.abs(y-center.y)>.17) continue;
+    const u=span(x);
+    if(u>1.42 || z<1.37 || Math.abs(y-center.y)>.23) continue;
     const above=pairs.findIndex(pair=>pair.x>=x);
     const b=pairs[above<0 ? pairs.length-1 : above],a=pairs[Math.max(0,(above<0 ? pairs.length-1 : above)-1)];
     const t=a===b ? 0 : clamp((x-a.x)/(b.x-a.x),0,1);
-    const correction=lerp(mid(a.x)-a.y,mid(b.x)-b.y,t);
-    const around=(1-smoothstep(Math.abs(y-center.y),.025,.17))*(1-smoothstep(Math.abs(x),width,width+.085));
-    source[i+1]+=correction*around*smoothstep(z,1.37,1.51);
-    // Blend the lip into the chin with a shallower fold.
+    const aboveLip=y>=lerp(a.y,b.y,t);
+    const edgeY=aboveLip ? lerp(a.upperY,b.upperY,t) : lerp(a.lowerY,b.lowerY,t);
+    const front=smoothstep(z,1.37,1.49);
+    const around=(1-smoothstep(Math.abs(y-edgeY),.012,.148))*(1-smoothstep(u,.94,1.42));
+    source[i+1]+=(mid(x)-edgeY)*around*front;
     const vertical=source[i+1]-mid(x);
-    const span=1-smoothstep(Math.abs(x-center.x)/width,.40,1.05);
-    const roll=Math.exp(-(((vertical+.040)/.041)**2));
-    const fold=Math.exp(-(((vertical+.101)/.038)**2));
-    source[i+2]+=span*(.026*fold-.023*roll)*smoothstep(z,1.48,1.56);
+    const inset=(vertical>=0 ? .036 : .049)*smoothstep(Math.abs(vertical),.025,.15);
+    const roll=vertical>=0 ? .023*Math.exp(-(((vertical-.031)/.033)**2)) :
+      .014*Math.exp(-(((vertical+.033)/.030)**2));
+    const profile=depth(x)-inset+roll*(1-smoothstep(u,.38,1))*smoothstep(Math.abs(vertical),0,.023);
+    const blend=front*(1-smoothstep(u,.73,1.13))*(1-smoothstep(Math.abs(vertical),.047,.123));
+    source[i+2]=lerp(z,profile,blend);
   }
   const region=new Map();
-  for(const {upper,lower,x,z} of pairs) {
+  for(const [i,{upper,lower,x}] of pairs.entries()) {
     const a=upper*3,b=lower*3;
     source[a]=source[b]=x;
     source[a+1]=source[b+1]=mid(x);
-    source[a+2]=source[b+2]=z;
-    region.set(upper,"upper");
-    region.set(lower,"lower");
+    source[a+2]=source[b+2]=depth(x);
+    const corner=i===0 || i===pairs.length-1;
+    region.set(upper,corner ? "corner" : "upper");
+    region.set(lower,corner ? "corner" : "lower");
   }
   return {pairs,region,center,width,mid};
 }
@@ -509,7 +517,7 @@ function eyebrows(head,skin,color,role) {
 function mouthLining(head,face,mouth) {
   const upper=mouth.pairs.map(pair=>pair.upper);
   const lower=mouth.pairs.map(pair=>pair.lower).reverse();
-  const boundary=[...upper,...lower], count=boundary.length;
+  const boundary=[...upper,...lower.slice(1,-1)], count=boundary.length;
   function liningPositions(source) {
     const positions=[];
     const midY=(source.getY(mouth.center.upper)+source.getY(mouth.center.lower))*.5;
@@ -521,11 +529,11 @@ function mouthLining(head,face,mouth) {
         positions.push(x*width[ring],lerp(midY,y,height[ring]),z+depth[ring]);
       }
     }
-    positions.push(0,midY,midZ+.036);
+    positions.push(source.getX(mouth.center.upper),midY,midZ+.036);
     return new THREE.Float32BufferAttribute(positions,3);
   }
   const indices=[],colors=[];
-  const shades=[[.112,.042,.036],[.066,.020,.016],[.033,.009,.010]];
+  const shades=[[.124,.053,.049],[.077,.026,.024],[.042,.012,.015]];
   for(let band=0;band<3;band++) for(let i=0;i<count;i++) {
     const p=band*count+i,q=band*count+(i+1)%count;
     colors.push(...shades[band]);
@@ -546,18 +554,18 @@ function mouthLining(head,face,mouth) {
 
 function dentalRow(head,mouth,lower,material) {
   const [centerX,centerY,centerZ]=local(mouth.center.x,mouth.center.y,mouth.center.z);
-  const halfWidth=mouth.width*Math.abs(sourceScale[0])*(lower ? .64 : .77);
+  const halfWidth=mouth.width*Math.abs(sourceScale[0])*(lower ? .59 : .69);
   const vertices=[],colors=[],index=[];
   const sections=64;
   // Four rows form the rounded enamel face and return under the cut edge.
   for(let i=0;i<=sections;i++) {
     const t=2*i/sections-1, curve=Math.abs(t);
     const grooves=Math.pow(.5+.5*Math.cos((t+1)*Math.PI*8),13);
-    const arch=.0011*curve**2, groove=.00030*grooves;
-    const cut=centerY+(lower ? -.0094+arch-groove : -.0031+arch+groove);
-    const root=cut+(lower ? -.0069 : .0084)*(1-.28*curve);
-    const depth=centerZ+.0084+.018*curve**2+.00068*grooves+(lower ? .0058 : 0);
-    const tone=.98-.13*curve-.105*grooves;
+    const arch=.0012*curve**2, groove=.00017*grooves;
+    const cut=centerY+(lower ? -.0102+arch-groove : -.0025+arch+groove);
+    const root=cut+(lower ? -.0065 : .0076)*(1-.31*curve);
+    const depth=centerZ+.0108+.018*curve**2+.00038*grooves+(lower ? .0053 : 0);
+    const tone=.96-.16*curve-.082*grooves;
     for(const [y,z,shade] of [[root,depth+.0017,.87],[lerp(root,cut,.49),depth,tone],
       [cut,depth+.00086,.94*tone],[cut,depth+.0037,.67*tone]]) {
       vertices.push(centerX+t*halfWidth,y,z);
@@ -581,24 +589,35 @@ function dentalRow(head,mouth,lower,material) {
 
 function mouthInterior(head,face,mouth) {
   const lining=mouthLining(head,face,mouth);
-  const enamel=new THREE.MeshStandardMaterial({color:0xd8c9b7,roughness:.68,
+  const enamel=new THREE.MeshStandardMaterial({color:0xc8b8a2,roughness:.76,
     vertexColors:true,side:THREE.DoubleSide});
   const upper=dentalRow(head,mouth,false,enamel),lower=dentalRow(head,mouth,true,enamel);
-  const baseY=face.attributes.position.getY(mouth.center.lower);
-  const jawDeltas=[0,2,3].map(i=>face.morphAttributes.position[i].getY(mouth.center.lower)-baseY);
+  const base=face.attributes.position, center=mouth.center.lower;
+  const baseY=base.getY(center),baseZ=base.getZ(center);
+  const jawDeltas=[0,2,3].map(i=>{
+    const target=face.morphAttributes.position[i];
+    return [target.getY(center)-baseY,target.getZ(center)-baseZ,
+      target.getY(mouth.center.upper)-target.getY(center)];
+  });
   const tongue=attach(lower,new THREE.SphereGeometry(1,16,8),
     new THREE.MeshBasicMaterial({color:0x4a2222}),"Tongue behind the dental arch");
-  tongue.position.set(face.attributes.position.getX(mouth.center.lower),baseY-.0069,
-    face.attributes.position.getZ(mouth.center.lower)+.031);
+  tongue.position.set(base.getX(center),baseY-.0092,baseZ+.030);
   tongue.scale.set(.020,.004,.013);
   tongue.castShadow=tongue.receiveShadow=false;
   return morph=>{
     const amount=morph[0]+morph[2]+morph[3];
-    lining.visible=upper.visible=lower.visible=amount>.018;
-    for(let i=0;i<3;i++) lining.morphTargetInfluences[i]=morph[i===0 ? 0 : i+1];
+    lining.visible=amount>.001;
+    let jawY=0,jawZ=0,opening=0;
+    for(const [i,[dy,dz,gap]] of jawDeltas.entries()) {
+      const weight=morph[i===0 ? 0 : i+1];
+      lining.morphTargetInfluences[i]=weight;
+      jawY+=dy*weight;
+      jawZ+=dz*weight;
+      opening+=gap*weight;
+    }
+    upper.visible=lower.visible=opening>.0012;
     // Move the lower dental arch and tongue with the jaw. The upper arch stays on the skull.
-    lower.position.y=jawDeltas[0]*morph[0]+jawDeltas[1]*morph[2]+jawDeltas[2]*morph[3];
-    lower.position.z=-.26*lower.position.y;
+    lower.position.set(0,jawY,jawZ);
   };
 }
 

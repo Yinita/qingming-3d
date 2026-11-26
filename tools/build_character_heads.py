@@ -5,6 +5,7 @@ import base64
 import json
 import sys
 from array import array
+from collections import defaultdict, deque
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -84,23 +85,58 @@ def clipped_head(vertices, faces):
 
 
 def mouth_seam(vertices, faces):
-    # The source neutral mesh has a thin bridge of quads between the lip rows.
-    # Follow that strip from the middle, leaving both corners attached.
-    by_edge = {}
-    for face_index, face in enumerate(faces):
-        for a, b in zip(face, face[1:] + face[:1]):
-            by_edge.setdefault(tuple(sorted((a, b))), []).append(face_index)
-    removed, pairs = set(), [(362, 455)]
-    for side in (-1, 1):
-        a, b = pairs[0]
-        for _ in range(7):
-            adjacent = by_edge[tuple(sorted((a, b)))]
-            face_index = max(adjacent, key=lambda i: sum(side * vertices[v][0] for v in faces[i]))
-            removed.add(face_index)
-            a, b = sorted((v for v in faces[face_index] if v not in (a, b)),
-                          key=lambda v: -vertices[v][1])
-            pairs.append((a, b))
-    return [face for i, face in enumerate(faces) if i not in removed], pairs
+    # The pinned base already has a cavity between these original lip rims.
+    # Keep the outer skin and use the rims as the boundary for the runtime lining.
+    upper = [431, 3732, 433, 418, 419, 469, 5362, 470, 471, 472, 473, 474,
+             7229, 7228, 7227, 7226, 11964, 7225, 7179, 7178, 7193, 10400, 7191]
+    lower = [431, 432, 3707, 444, 437, 475, 481, 487, 493,
+             7242, 7236, 7230, 7197, 7204, 10375, 7192, 7191]
+    def edges(path):
+        return zip(path, path[1:] + path[:1])
+
+    by_edge = defaultdict(list)
+    for i, face in enumerate(faces):
+        for a, b in edges(face):
+            by_edge[frozenset((a, b))].append(i)
+    rim = {frozenset((a, b)) for a, b in edges(upper + lower[-2:0:-1])}
+    inside = set(by_edge[frozenset((474, 520))])
+    pending = deque(inside)
+    while pending:
+        for a, b in edges(faces[pending.popleft()]):
+            edge = frozenset((a, b))
+            if edge not in rim:
+                for i in by_edge[edge]:
+                    if i not in inside:
+                        inside.add(i)
+                        pending.append(i)
+    if not inside or any(len(by_edge[edge]) != 2 or
+                         sum(i in inside for i in by_edge[edge]) != 1 for edge in rim):
+        raise ValueError("Mouth rims do not enclose the source cavity")
+
+    # Split the three wide lower-rim intervals on each side to pair the samples.
+    # Keep the subdivision in both the skin and the exported character morphs.
+    split_edges = {5: .66, 6: .58, 7: .58, 8: .42, 9: .42, 10: .34}
+    exterior = {i: face for i, face in enumerate(faces) if i not in inside}
+    new_lower, added = [], {}
+    for i, (a, b) in enumerate(zip(lower, lower[1:])):
+        new_lower.append(a)
+        if i not in split_edges:
+            continue
+        weight = split_edges[i]
+        v = len(vertices)
+        vertices.append(tuple(x + (y - x) * weight for x, y in zip(vertices[a], vertices[b])))
+        added[v] = (a, b, weight)
+        new_lower.append(v)
+        (face_index,) = (k for k in by_edge[frozenset((a, b))] if k in exterior)
+        face = exterior[face_index]
+        start = next(j for j, vertex in enumerate(face) if vertex not in (a, b))
+        face = face[start:] + face[:start]
+        insert = next(j for j, edge in enumerate(edges(face)) if set(edge) == {a, b}) + 1
+        exterior[face_index] = face[:insert] + [v] + face[insert:]
+    new_lower.append(lower[-1])
+    pairs = list(zip(upper, new_lower, strict=True))
+    center = len(pairs) // 2
+    return list(exterior.values()), [pairs[center], *pairs[:center], *pairs[center + 1:]], added
 
 def read_target(text):
     target = {}
@@ -134,11 +170,15 @@ def main():
     parser.add_argument("--out", type=Path, default=Path("viewer/bridge-head-data.js"))
     args = parser.parse_args()
     vertices, faces, eye_centres = read_base(source("3dobjs/base.obj", args.cache))
-    faces, seam = mouth_seam(vertices, faces)
+    faces, seam, added = mouth_seam(vertices, faces)
     keys, indices = clipped_head(vertices, faces)
     lookup = {key: i for i, key in enumerate(keys)}
     target_names = sorted({name for preset in STYLE_TARGETS.values() for name in preset})
     targets = {name: read_target(source(f"targets/{name}.target", args.cache)) for name in target_names}
+    for target in targets.values():
+        for vertex, (a, b, weight) in added.items():
+            start, end = (target.get(i, (0, 0, 0)) for i in (a, b))
+            target[vertex] = tuple(x + (y - x) * weight for x, y in zip(start, end))
     points = [vertex_value(vertices, key) for key in keys]
 
     # Whole shifts per character are stored sparsely on the shared mesh.
