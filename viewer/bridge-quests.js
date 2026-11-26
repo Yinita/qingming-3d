@@ -9,7 +9,7 @@ export const TEA_QUEST = {
   id: "tea-shop-opening",
   title: "桥畔茶铺",
   premise: "对岸茶铺今晚要开张，可新到的一箱茶叶还搁在桥头。掌柜等着它下锅。",
-  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1, freightReward: 2, gardenSaleReward: 1 },
+  economy: { startCoins: 6, courierFee: 3, deliveryReward: 5, teaPrice: 1, freightReward: 2, gardenSaleReward: 1, grainSaleReward: 2 },
   stages: {
     waiting:   { title: "桥头取箱",   objective: "任务起点 · 取茶叶箱，再送到对岸茶铺。" },
     carrying:  { title: "送往茶铺",   objective: "已拿到茶叶。过桥，到茶铺柜台交货。" },
@@ -44,9 +44,9 @@ export function stageOf(phase) {
   return TEA_QUEST.stages[phase] ?? TEA_QUEST.stages.waiting;
 }
 
-export function maxCoins(gardenSales=0) {
-  const { startCoins, deliveryReward, freightReward, gardenSaleReward } = TEA_QUEST.economy;
-  return startCoins + deliveryReward + freightReward + gardenSales*gardenSaleReward;
+export function maxCoins(gardenSales=0,grainSold=false) {
+  const { startCoins, deliveryReward, freightReward, gardenSaleReward, grainSaleReward } = TEA_QUEST.economy;
+  return startCoins + deliveryReward + freightReward + gardenSales*gardenSaleReward+Number(grainSold)*grainSaleReward;
 }
 
 // Append one ledger line to the mission state. The state is what gets saved,

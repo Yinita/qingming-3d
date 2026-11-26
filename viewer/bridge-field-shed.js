@@ -187,11 +187,6 @@ export function buildFieldShed(parent,city,surface,height) {
     kernels.setColorAt(i,tint.setScalar(.78+.28*(.5+.5*Math.sin(i*21.44))));
   }
   kernels.receiveShadow=true;root.add(kernels);
-  const scoop=new THREE.LatheGeometry([[0,.003],[.095,.001],[.108,.012],[.117,.041],
-    [.116,.055],[.106,.053],[.100,.034],[.082,.020],[0,.016]].map(p=>new THREE.Vector2(...p)),21);
-  geometry(fir,scoop.rotateZ(-.24).translate(.25,.547,binZ+.058));
-  const shaft=detailedBox(.038,.037,.219,fir,.008,phase+=.35);
-  geometry(fir,shaft.rotateX(-.23).rotateY(.58).translate(.142,.590,binZ-.091));
   install(root,"Timber, masonry and fitted grain-store furnishings");
   for(const side of [-1,1]) {
     const px=x+side*(hx-.082);
@@ -271,7 +266,7 @@ export function buildFieldShed(parent,city,surface,height) {
     person.graspProp(hand,grip,rotation.setFromEuler(wrist.set(.18,angle+.15,-.12,"YXZ")),weight,.72);
   }
   restore();
-  return {frame,near,use,restore,inside,pose,handWeight,opened:()=>angle===opens,
+  return {frame,near,use,restore,inside,pose,handWeight,grain:{root,binZ,millet,pile,kernels},opened:()=>angle===opens,
     name:()=>target===0 ? "推开粮棚门" : "合上粮棚门",
     inspect:()=>({door:{...fieldDoor},shed:{...fieldShed},platform,angle,target,blocked,open:angle===opens})};
 }

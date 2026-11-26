@@ -198,7 +198,7 @@ export function createGardenTrade(parent,city,surface,floor,crops,harvest) {
     keeper.torsoPivot.rotation.x-=1.13*bend;
     keeper.poseFeet(gait.feet,floor,actor.x,actor.y,actor.z,heading);
 
-    const speaking=speech.id==="gardenOffer" || speech.id==="gardenSorting" || speech.id==="gardenSold";
+    const speaking=speech.id==="grainSold" || speech.id==="gardenOffer" || speech.id==="gardenSorting" || speech.id==="gardenSold";
     if(collect || stow) {
       const target=collect ? harvest.tray : bin;
       attend(keeper,target.x,collect ? harvest.basketBase+.14 : crate.y+.16,target.z,dt,.026);

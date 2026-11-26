@@ -13,6 +13,8 @@ const lines={
     "yi wen / gang zheng hao de , wo gei nin bao yi kuai"],
   shopper:["采买客","多谢，这一路正饿着。",
     "duo xie , zhe yi lu zheng e zhe"],
+  grainSold:["菜农","这袋黍米够煮一锅粥。二文收好，我捎到集上去。",
+    "zhe dai shu mi gou zhu yi guo zhou / er wen shou hao , wo shao dao ji shang qu"],
   gardenOffer:["菜农","有菜就放竹筐里。两株一文，我收来装箱。",
     "you cai jiu fang zhu kuang li / liang zhu yi wen , wo shou lai zhuang xiang"],
   gardenSorting:["菜农","这两株我收了。稍等，我装进木箱。",
