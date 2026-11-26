@@ -1988,6 +1988,17 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const offset=lerp(lerp(.62,1.30,sawFraming),.24,roomFraming);
         cameraGoal.set(player.x-fwd.x*boom+side.x*offset,cameraY+lerp(2.18,1.69,roomFraming)+player.pitch*-.78,
                        player.z-fwd.z*boom+side.z*offset);
+        const seatFraming=chairBefore ? teaRoom.chair.weight : 0;
+        if(seatFraming>0) {
+          // Orbit from the open side of the seat, away from the close right wall.
+          const delta=player.yaw-teaRoom.chair.yaw;
+          const turn=clamp(Math.atan2(Math.sin(delta),Math.cos(delta)),-.37,.37);
+          const x=player.x-.93*Math.cos(turn)+.21*Math.sin(turn);
+          const z=player.z+.93*Math.sin(turn)+.21*Math.cos(turn);
+          cameraGoal.x=lerp(cameraGoal.x,x,seatFraming);
+          cameraGoal.y=lerp(cameraGoal.y,cameraY+1.66-player.pitch*.39,seatFraming);
+          cameraGoal.z=lerp(cameraGoal.z,z,seatFraming);
+        }
         const length=cameraPivot.distanceTo(cameraGoal);
         const clearance=city.cameraDistance(cameraPivot,cameraGoal);
         cameraObstacle=clearance.obstacle;
@@ -1995,7 +2006,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         cameraClose=boomLength<(indoors ? .53 : .75);
         camera.position.copy(cameraPivot).lerp(cameraGoal,boomLength/length);
         const lookAhead=lerp(2,.83,sawFraming);
-        camera.lookAt(player.x+fwd.x*lookAhead,cameraY+1.05+player.pitch*2.3,player.z+fwd.z*lookAhead);
+        camera.lookAt(lerp(player.x+fwd.x*lookAhead,player.x-.23,seatFraming),
+          cameraY+lerp(1.05+player.pitch*2.3,1.19,seatFraming),
+          lerp(player.z+fwd.z*lookAhead,player.z-.16,seatFraming));
       }
       if (Number.isFinite(teaShotStart)) {
         const t = elapsed - teaShotStart;

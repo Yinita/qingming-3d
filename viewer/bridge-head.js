@@ -540,15 +540,16 @@ function dentalRow(head,mouth,lower,material) {
   for(let i=0;i<=sections;i++) {
     const t=2*i/sections-1, curve=Math.abs(t);
     const grooves=Math.pow(.5+.5*Math.cos((t+1)*Math.PI*8),13);
-    const corner=.0014*curve**2+.00048*grooves;
-    const cut=lower ? centerY-.0035-corner : centerY-.0019+corner;
+    const arch=.0014*curve**2, groove=.00048*grooves;
+    const cut=centerY+(lower ? -.0037+arch-groove : -.0019+arch+groove);
     const root=cut+(lower ? -.0069 : .0084)*(1-.28*curve);
     const depth=centerZ+.0094+.018*curve**2+.00072*grooves+(lower ? .0025 : 0);
     const tone=.98-.13*curve-.105*grooves;
     for(const [y,z,shade] of [[root,depth+.0017,.87],[lerp(root,cut,.49),depth,tone],
       [cut,depth+.00086,.94*tone],[cut,depth+.0037,.67*tone]]) {
       vertices.push(centerX+t*halfWidth,y,z);
-      colors.push(shade,shade*.983,shade*.944);
+      const light=lower ? shade*.79 : shade;
+      colors.push(light,light*.983,light*.944);
     }
     if(i) for(let j=0;j<3;j++) {
       const p=(i-1)*4+j,q=p+4;
@@ -574,9 +575,9 @@ function mouthInterior(head,face,mouth) {
   const jawDeltas=[0,2,3].map(i=>face.morphAttributes.position[i].getY(mouth.center.lower)-baseY);
   const tongue=attach(lower,new THREE.SphereGeometry(1,16,8),
     new THREE.MeshBasicMaterial({color:0x683435}),"Tongue behind the dental arch");
-  tongue.position.set(face.attributes.position.getX(mouth.center.lower),baseY-.0067,
-    face.attributes.position.getZ(mouth.center.lower)+.025);
-  tongue.scale.set(.015,.005,.011);
+  tongue.position.set(face.attributes.position.getX(mouth.center.lower),baseY-.0101,
+    face.attributes.position.getZ(mouth.center.lower)+.030);
+  tongue.scale.set(.022,.005,.017);
   tongue.castShadow=tongue.receiveShadow=false;
   return morph=>{
     const amount=morph[0]+morph[2]+morph[3];
