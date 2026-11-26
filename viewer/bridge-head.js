@@ -118,12 +118,13 @@ function fitMouthSeam(source) {
     const front=smoothstep(z,1.37,1.49);
     const around=(1-smoothstep(Math.abs(y-edgeY),.012,.148))*(1-smoothstep(u,.94,1.42));
     source[i+1]+=(mid(x)-edgeY)*around*front;
-    const vertical=source[i+1]-mid(x);
-    const inset=(vertical>=0 ? .036 : .049)*smoothstep(Math.abs(vertical),.025,.15);
-    const roll=vertical>=0 ? .023*Math.exp(-(((vertical-.031)/.033)**2)) :
-      .014*Math.exp(-(((vertical+.033)/.030)**2));
-    const profile=depth(x)-inset+roll*(1-smoothstep(u,.38,1))*smoothstep(Math.abs(vertical),0,.023);
-    const blend=front*(1-smoothstep(u,.73,1.13))*(1-smoothstep(Math.abs(vertical),.047,.123));
+    const vertical=source[i+1]-mid(x), distance=Math.abs(vertical);
+    const lower=vertical<0;
+    // Let the lower lip turn into the chin across several rows of the source mesh.
+    const roll=(lower ? .023 : .034)*Math.sin(Math.PI*clamp(distance/(lower ? .103 : .118),0,1));
+    const inset=(lower ? .049 : .010)*smoothstep(distance,.032,lower ? .168 : .134);
+    const profile=depth(x)-inset+roll*(1-smoothstep(u,.40,1));
+    const blend=front*(1-smoothstep(u,.66,1.18))*(1-smoothstep(distance,lower ? .089 : .074,lower ? .182 : .154));
     source[i+2]=lerp(z,profile,blend);
   }
   const region=new Map();
@@ -557,15 +558,17 @@ function dentalRow(head,mouth,lower,material) {
   const halfWidth=mouth.width*Math.abs(sourceScale[0])*(lower ? .59 : .69);
   const vertices=[],colors=[],index=[];
   const sections=64;
+  const contacts=[0,.255,.455,.658,.857];
   // Four rows form the rounded enamel face and return under the cut edge.
   for(let i=0;i<=sections;i++) {
     const t=2*i/sections-1, curve=Math.abs(t);
-    const grooves=Math.pow(.5+.5*Math.cos((t+1)*Math.PI*8),13);
-    const arch=.0012*curve**2, groove=.00017*grooves;
+    const contact=Math.min(...contacts.map(edge=>Math.abs(curve-edge)));
+    const grooves=1-smoothstep(contact,.008,.035);
+    const arch=.0012*curve**2, groove=.00023*grooves;
     const cut=centerY+(lower ? -.0102+arch-groove : -.0025+arch+groove);
     const root=cut+(lower ? -.0065 : .0076)*(1-.31*curve);
     const depth=centerZ+.0108+.018*curve**2+.00038*grooves+(lower ? .0053 : 0);
-    const tone=.96-.16*curve-.082*grooves;
+    const tone=.96-.16*curve-.062*grooves;
     for(const [y,z,shade] of [[root,depth+.0017,.87],[lerp(root,cut,.49),depth,tone],
       [cut,depth+.00086,.94*tone],[cut,depth+.0037,.67*tone]]) {
       vertices.push(centerX+t*halfWidth,y,z);
