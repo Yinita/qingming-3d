@@ -28,22 +28,25 @@ export function backlaneRelief(x,z) {
   return -.345*cut;
 }
 
-export function cutDrainApron(material) {
-  // The cream apron lies above the water in this ditch. Keep the terrain
-  // visible below its opening while leaving the original scroll view intact.
-  const cut={value:0};
+export function cutDrainApron(material,wellSite) {
+  // The cream apron covers the ditch and shaft in the painting projection.
+  // Reveal the modeled depth under both openings in the street view.
+  const cut={value:0}, well={value:0};
   material.onBeforeCompile=shader=>{
     shader.uniforms.apronDrainCut=cut;
+    shader.uniforms.apronWellCut=well;
     shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec2 apronPoint;")
       .replace("#include <begin_vertex>","#include <begin_vertex>\napronPoint=(modelMatrix*vec4(position,1.)).xz;");
     shader.fragmentShader=shader.fragmentShader.replace("#include <common>",
-      "#include <common>\nvarying vec2 apronPoint; uniform float apronDrainCut;")
+      "#include <common>\nvarying vec2 apronPoint; uniform float apronDrainCut,apronWellCut;")
       .replace("#include <clipping_planes_fragment>",`#include <clipping_planes_fragment>
         if(apronDrainCut>.5 && abs(apronPoint.x-(${ditch.x.toFixed(3)}))<.485 &&
           apronPoint.y>${(ditch.minZ-.4).toFixed(3)} && apronPoint.y<${(ditch.maxZ+.4).toFixed(3)}) discard;
+        if(apronWellCut>.5 && length(apronPoint-vec2(${wellSite.x.toFixed(3)},${wellSite.z.toFixed(3)}))<
+          ${(wellSite.opening+.05).toFixed(3)}) discard;
       `);
   };
-  return active=>{cut.value=Number(active);};
+  return (active,showWell)=>{cut.value=Number(active);well.value=Number(showWell);};
 }
 
 export function createBacklane(parent,city,surface,joinery,sound,registerPavedSurface,crossingOccupied) {

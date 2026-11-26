@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { buildStreetworks,pavedAprons,streetworksRelief } from "./bridge-streetworks.js";
 import { canalDepth, waterHeight } from "./bridge-canal-bed.js";
 import { backlaneRelief } from "./bridge-backlane.js";
+import { wellSite } from "./bridge-well.js";
 
 // Shallow stonework set into the dirt at the market and bridge approaches.
 const lanes=[
@@ -88,15 +89,17 @@ export function createStreetTerrain(width,depth) {
   const west=coordinates(-width/2-9,-width/2,[[-78.35,-74]]);
   const xs=[...west.slice(0,-1),...coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges])];
   const zs=coordinates(-depth,0,[[-52,-14],[-14,-11]]);
-  const position=[],uv=[],index=[];
+  const position=[],uv=[],index=[],wellOpening=[];
   for(const z of zs) for(const x of xs) {
     position.push(x,-(z+depth/2),streetSurfaceHeight(x,z));
     uv.push(x/width+.5,.5-(z+depth/2)/depth);
+    wellOpening.push(Math.hypot(x-wellSite.x,z-wellSite.z)<wellSite.opening);
   }
   const columns=xs.length;
   for(let row=0;row<zs.length-1;row++) for(let col=0;col<columns-1;col++) {
     const a=row*columns+col, b=a+columns;
-    index.push(a,b,a+1,b,b+1,a+1);
+    if(!wellOpening[a] && !wellOpening[b] && !wellOpening[a+1]) index.push(a,b,a+1);
+    if(!wellOpening[b] && !wellOpening[b+1] && !wellOpening[a+1]) index.push(b,b+1,a+1);
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute("position",new THREE.Float32BufferAttribute(position,3));

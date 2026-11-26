@@ -7,6 +7,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { riverWorker } from "./bridge-people.js";
 import { createFreightCart } from "./bridge-freight.js";
 import { buildStreetGround } from "./bridge-street-ground.js";
+import { buildStreetWell } from "./bridge-well.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
@@ -602,6 +603,7 @@ export function createStreetScene(scene,objects,anchor,terrain) {
   const livestock=buildLivestock(root,collisions,objects,anchor,origin,streetHeight);
   const market=buildLivingMarket(root,collisions,surface,streetHeight,origin);
   const freight=createFreightCart(root,collisions,surface,streetHeight);
+  const well=buildStreetWell(root,collisions,surface,streetHeight);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
   const {sync:syncResidents,updateHeads}=residents(root,placed,surface,streetHeight);
   function registerHouse(object) {
@@ -615,7 +617,7 @@ export function createStreetScene(scene,objects,anchor,terrain) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,freight,livestock,housing,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,freight,livestock,housing,well,
     updateTrees:crowns.update,foliage:crowns.inspect,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
     trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};

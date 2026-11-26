@@ -36,7 +36,7 @@ export function createMissionTouchPad() {
   }
   const buttons=Array.from(panel.children);
   const labels={walk:["向前","向左","后退","向右"],row:["划向对岸","向左","划向出发岸","向右"],
-    haul:["向前推","左转","向后拉","右转"]};
+    haul:["向前推","左转","向后拉","右转"],well:["提起水桶","","放下水桶",""]};
   let mode="walk";
   return {
     move:key=>!panel.hidden && held.has(key),
@@ -48,11 +48,15 @@ export function createMissionTouchPad() {
     },
     mode(next) {
       if(mode===next) return;
+      clear();
       mode=next;
-      panel.dataset.rowing=String(mode==="row");
+      panel.dataset.mode=mode;
+      panel.dataset.vertical=String(mode==="row" || mode==="well");
+      panel.setAttribute("aria-label",mode==="well" ? "辘轳" : "移动");
       for(const [i,button] of buttons.entries()) {
         button.setAttribute("aria-label",labels[mode][i]);
-        button.textContent=(mode==="haul" ? ["↑","↶","↓","↷"] : ["↑","←","↓","→"])[i];
+        button.textContent=(mode==="well" ? ["提桶","","放桶",""] :
+          mode==="haul" ? ["↑","↶","↓","↷"] : ["↑","←","↓","→"])[i];
       }
     },
     size:h=>panel.style.setProperty("--mission-hud-height",h+"px"),
