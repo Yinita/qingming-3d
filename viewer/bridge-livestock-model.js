@@ -184,7 +184,7 @@ function detail(g,colour,bone,nap) {
   return g;
 }
 
-function buildGeometry(kind,coating,lod) {
+function buildGeometry(kind,coating,lod,walking) {
   const spec=blueprints[kind];
   const horse=kind==="horse",ox=kind==="ox";
   const parts=[], radial=lod ? 12 : 24, samples=lod ? 1 : 3;
@@ -266,12 +266,12 @@ function buildGeometry(kind,coating,lod) {
   shape(spec.tail,(x,y,z,t)=>pigmentation.copy(hair).multiplyScalar(.83+.17*Math.sin(x*42+z*31+y*11)+t*.15),
     fixed(tail),1,radial);
 
-  const contacts=[];
+  const contacts=[],legs=[];
   for(const s of [-1,1]) for(const front of [true,false]) {
     const [hx,hy,hz]=front ? spec.fore : spec.rear;
     const [fx,fy,fz]=front ? spec.frontFoot : spec.hindFoot;
     const step=horse ? .026 : .020;
-    const bone=firstLeg+contacts.length;
+    const bone=firstLeg+contacts.length*(walking ? 3 : 1);
     const kneeZ=front ? hz-.014 : hz-.093;
     const hockZ=front ? lerp(kneeZ,fz,.50)+.002 : fz+.080;
     const points=[[s*hx,hy,hz],[s*hx,hy*.84,kneeZ],[s*(hx*.79+fx*.21),hy*.66,kneeZ],
@@ -279,18 +279,25 @@ function buildGeometry(kind,coating,lod) {
     const breadth=ox ? 1.15 : 1;
     const radii=[[.081,.109],[front ? .097 : .118,front ? .106 : .136],[.068,.075],
       [.049,.058],[.033,.040],[.037,.045],[.045,.047]].map(v=>v.map(n=>n*breadth));
+    const legWeight=t=>{
+      if(!walking) return [root,bone,smoothstep(t,.10,.83)];
+      if(t<.32) return [root,bone,smoothstep(t,.08,.29)];
+      if(t<.80) return [bone,bone+1,smoothstep(t,.32,.64)];
+      return [bone+1,bone+2,smoothstep(t,.80,1)];
+    };
     shape(limbRows(points,radii),(x,y,z,t)=>coat(x,y,z).lerp(dark,smoothstep(t,.32,.87)*.77)
       .lerp(amber,horse && coating===0 && s<0 && front ? smoothstep(t,.65,.92)*.66 : 0),
-      t=>[root,bone,smoothstep(t,.10,.83)],1,lod ? 9 : 18);
+      legWeight,1,lod ? 9 : 18);
     const blocks=ox ? [-.026,.026] : [0];
     for(const gap of blocks) {
       const w=ox ? .023 : .050;
       const rows=[[s*fx+gap,.095,fz,w*.84,.041],[s*fx+gap,.068,fz-.009,w,.062],
         [s*fx+gap,.017,fz-.014,w*1.09,.065],[s*fx+gap,fy,fz-.012,w*.89,.057]];
       shape(rows,(_x,_y,_z,t)=>pigmentation.copy(dark).lerp(groundColor,.43+t*.17).multiplyScalar(.66+.16*Math.sin(t*Math.PI)),
-        fixed(bone),-.15,12);
+        fixed(bone+(walking ? 2 : 0)),-.15,12);
     }
     contacts.push(new THREE.Vector3(s*fx,0,fz-step));
+    if(walking) legs.push([points[0],points[3],points.at(-1)].map(v=>new THREE.Vector3(...v)));
   }
   const headAt=sectionPath(spec.skull);
   const bridle=ox ? 0x918067 : coating%2===0 ? 0x79573e : 0x554537;
@@ -355,27 +362,38 @@ function buildGeometry(kind,coating,lod) {
   const geometry=mergeGeometries(parts);
   parts.forEach(g=>g.dispose());
   geometry.computeBoundingSphere();
-  return {geometry,contacts};
+  return {geometry,contacts,legs};
 }
 
 const templates=new Map();
-function template(kind,coat,lod) {
-  const id=kind+":"+coat+":"+Number(lod);
-  if(!templates.has(id)) templates.set(id,buildGeometry(kind,coat,lod));
+function template(kind,coat,lod,walking) {
+  const id=kind+":"+coat+":"+Number(lod)+":"+Number(walking);
+  if(!templates.has(id)) templates.set(id,buildGeometry(kind,coat,lod,walking));
   return templates.get(id);
 }
 
-export function createLivestockRig(kind,variant) {
+export function createLivestockRig(kind,variant,walking=false) {
   const spec=blueprints[kind], coat=variant%spec.coat.length;
-  const near=template(kind,coat,false), far=template(kind,coat,true);
+  const near=template(kind,coat,false,walking), far=template(kind,coat,true,walking);
   const mesh=new THREE.SkinnedMesh(near.geometry,skinMaterial);
-  const bones=Array.from({length:10},()=>new THREE.Bone());
+  const bones=Array.from({length:walking ? 18 : 10},()=>new THREE.Bone());
   mesh.add(bones[root]);
   const [a,b,c]=spec.pivot;
   bones[chest].position.set(0,kind==="donkey" ? .83 : 1.047,0);
   bones[head].position.set(a,b,c);
   bones[tail].position.set(...spec.tail[0].slice(0,3));
-  for(const i of [chest,head,tail,6,7,8,9]) bones[root].add(bones[i]);
+  for(const i of [chest,head,tail]) bones[root].add(bones[i]);
+  const legs=near.legs.map((rest,i)=>{
+    const [upper,knee,hoof]=bones.slice(firstLeg+3*i,firstLeg+3*i+3);
+    upper.position.copy(rest[0]);
+    knee.position.subVectors(rest[1],rest[0]);
+    hoof.position.subVectors(rest[2],rest[1]);
+    bones[root].add(upper);
+    upper.add(knee);
+    knee.add(hoof);
+    return {upper,knee,hoof,rest};
+  });
+  if(!walking) for(const bone of bones.slice(firstLeg)) bones[root].add(bone);
   for(const [i,s] of [[leftEar,-1],[rightEar,1]]) {
     const [x,y,z]=spec.ear;
     bones[i].position.set(s*x-a,y-b,z-c);
@@ -387,7 +405,8 @@ export function createLivestockRig(kind,variant) {
   mesh.castShadow=mesh.receiveShadow=true;
   return {
     mesh,bones:[bones[chest],bones[head],bones[tail],bones[leftEar],bones[rightEar]],
-    hoofBones:bones.slice(firstLeg),contacts:near.contacts,sniff:new THREE.Vector3(...spec.sniff).sub(bones[head].position),
+    hoofBones:walking ? legs.map(leg=>leg.hoof) : bones.slice(firstLeg),legs,contacts:near.contacts,
+    sniff:new THREE.Vector3(...spec.sniff).sub(bones[head].position),
     setFar(distant){mesh.geometry=distant ? far.geometry : near.geometry;},
   };
 }

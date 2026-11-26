@@ -215,18 +215,20 @@ export function buildStreetWell(parent,city,surface,floor) {
   const wet=plain(0x465943,.28,.34), streamMat=plain(0xa4b9a6,.24,.28);
   streamMat.transparent=true;streamMat.opacity=.77;streamMat.depthWrite=false;streamMat.side=THREE.DoubleSide;
   const water=wet.clone();
-  const ripples={value:0}, agitation={value:0};
+  const ripples={value:0}, agitation={value:0}, splashAt={value:new THREE.Vector2(0,-.08)};
   water.customProgramCacheKey=()=>"windlass-water";
   water.onBeforeCompile=shader=>{
     shader.uniforms.wellTime=ripples;
     shader.uniforms.wellAgitation=agitation;
+    shader.uniforms.wellSplash=splashAt;
     shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nvarying vec2 wellSurface;")
       .replace("#include <begin_vertex>","#include <begin_vertex>\nwellSurface=position.xy;");
     shader.fragmentShader=shader.fragmentShader.replace("#include <common>",`#include <common>
       varying vec2 wellSurface;
       uniform float wellTime, wellAgitation;
+      uniform vec2 wellSplash;
     `).replace("#include <color_fragment>",`#include <color_fragment>
-      float distanceToFlow=length(wellSurface-vec2(0.,-.08));
+      float distanceToFlow=length(wellSurface-wellSplash);
       float ripple=sin(dot(wellSurface,vec2(37.,19.))+wellTime*2.4)*
         sin(dot(wellSurface,vec2(-13.,56.))-wellTime*1.8);
       float wave=sin(distanceToFlow*82.-wellTime*14.)*exp(-distanceToFlow*4.6)*wellAgitation;
@@ -241,6 +243,8 @@ export function buildStreetWell(parent,city,surface,floor) {
   drawSurface(root,new THREE.CircleGeometry(.453,56),0,waterline,0);
   const bucketWater=drawSurface(bail,new THREE.CircleGeometry(.153,36),0,-.190,0);
   const troughZ=1.54;
+  const sipOffset={x:.12,z:.17};
+  const basin={x:x+sipOffset.x,z:z+troughZ};
   const trough=new THREE.Group();trough.name="Stone watering trough";
   root.add(trough);
   plank(trough,stone[2],1.24,.242,.686,0,.126,troughZ,.037);
@@ -301,7 +305,10 @@ export function buildStreetWell(parent,city,surface,floor) {
     return station;
   }
   let stage="idle",age=0,gripAge=0,bucketY=low,drive=0,filled=true,volume=.18,pours=0,latch=false;
+  let lapping=0;
   function canPour() {return bucketY>=high-.018 && filled && volume<.985;}
+  function canWater() {return !pouring() && volume>=.39;}
+  function pouring() {return stage==="pour";}
   function near(player) {return Math.hypot(player.x-station.x,player.z-station.z)<1.17;}
   function use(player) {
     if(stage==="idle" && near(player)) {stage="approach";age=gripAge=0;return "take";}
@@ -366,7 +373,13 @@ export function buildStreetWell(parent,city,surface,floor) {
     wetChannel.visible=channelFlow;
     outflow.visible=dropMesh.visible=pouring && age>1.10 && age<2.51;
     ripples.value=time;
-    agitation.value=pouring ? smoothstep(age,1.03,1.24)*(1-smoothstep(age,2.26,2.88)) : 0;
+    if(pouring) {
+      splashAt.value.set(0,.08);
+      agitation.value=smoothstep(age,1.03,1.24)*(1-smoothstep(age,2.26,2.88));
+    } else {
+      splashAt.value.set(sipOffset.x,-sipOffset.z);
+      agitation.value=lapping;
+    }
     const amount=volume+(pouring ? (.285*smoothstep(age,1.12,2.44)) : 0);
     troughWater.position.y=.264+.183*Math.min(1,amount);
     if(fall.visible) {
@@ -398,13 +411,25 @@ export function buildStreetWell(parent,city,surface,floor) {
     person.graspProp(1,leverGrip.getWorldPosition(waterMark),viewFrame.setFromEuler(holdPose),weight,.64);
   }
   function restore(saved=.18) {
-    stage="idle";age=gripAge=0;bucketY=low;drive=0;filled=true;latch=false;pours=0;
+    stage="idle";age=gripAge=0;bucketY=low;drive=0;filled=true;latch=false;pours=0;lapping=0;
     volume=Number.isFinite(saved) ? clamp(saved,.18,1) : .18;
     render(0);
   }
   restore();
   return {station,approachMarker,near,use,release,frame,render,pose,restore,canPour,
     active:()=>stage!=="idle",operating:()=>stage==="working" || stage==="pour",
-    pouring:()=>stage==="pour", progress:()=>(bucketY-low)/(high-low), full:()=>volume>=.985, filled:()=>filled,
+    pouring, canWater, basin, progress:()=>(bucketY-low)/(high-low), full:()=>volume>=.985, filled:()=>filled,
+    sipPoint:target=>target.set(basin.x,y+.264+.183*volume,basin.z+sipOffset.z),
+    leadClearance(px,pz,ropeY) {
+      const u=Math.abs(px-x),v=Math.abs(pz-basin.z);
+      const inner=smoothstep(Math.max(u/.467,v/.268),.88,1.05);
+      const outer=1-smoothstep(Math.max(u/.628,v/.425),.96,1.12);
+      return ropeY+Math.max(0,y+.504-ropeY)*inner*outer;
+    },
+    lap:amount=>{lapping=amount;},
+    finishDrink() {
+      volume=Math.max(.18,volume-.194);
+      return volume;
+    },
     inspect:()=>({stage,bucketY,angle:drum.rotation.x,volume,filled,pours,tip:bail.rotation.x,stream:fall.visible})};
 }

@@ -182,6 +182,16 @@
       max-width:calc(100vw - 42px); padding:4px 8px 7px; }
     body.well-working #missionTouchPad:not([hidden]) { bottom:calc(76px + env(safe-area-inset-bottom)); margin-bottom:0; }
   }
+  body.stock-leading #missionHud > .mission-actions:has(#missionExit),
+  body.stock-leading #missionHud > .mission-actions button:not(#missionCamera):not(#missionStockRelease) { display:none; }
+  body.stock-leading #missionHud :is(.mission-title, #missionProgress, #missionSteps, #missionObjective,
+    .mission-metrics:not(#missionStockStatus), #missionEconomy, #missionSpeech, .mission-controls) { display:none; }
+  @media (max-width:760px), (max-height:525px) {
+    body.stock-leading #missionHud { top:60px; bottom:auto; margin-bottom:0; width:max-content;
+      max-width:calc(100vw - 42px); padding:4px 8px 7px; }
+    body.stock-leading #missionTouchPad:not([hidden]) { bottom:calc(76px + env(safe-area-inset-bottom)); margin-bottom:0; }
+    #missionStockRelease { min-height:44px; }
+  }
   #missionRestartDialog { max-width:min(320px,calc(100vw - 52px)); background:#faf1de; color:#3a2d25;
     border:1px solid #b39b76; border-top:3px solid #843b30; padding:18px 21px; }
   #missionRestartDialog::backdrop { background:#2c25229e; }
@@ -253,7 +263,7 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=146",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=162",
+  "./bridge-mission.js": "./bridge-mission.js?v=163",
   "./bridge-street-camera.js": "./bridge-street-camera.js?v=161",
   "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=159",
   "./bridge-chest-transfer.js": "./bridge-chest-transfer.js?v=159",
@@ -266,7 +276,7 @@
   "./bridge-houses.js": "./bridge-houses.js?v=141",
   "./bridge-architecture.js": "./bridge-architecture.js?v=120",
   "./bridge-collision.js": "./bridge-collision.js?v=161",
-  "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=119",
+  "./bridge-livestock-model.js": "./bridge-livestock-model.js?v=163",
   "./bridge-quests.js": "./bridge-quests.js?v=128",
   "./bridge-hands.js": "./bridge-hands.js?v=112",
   "./bridge-people.js": "./bridge-people.js?v=160",
@@ -289,7 +299,8 @@
   "./bridge-market-gesture.js": "./bridge-market-gesture.js?v=126",
   "./bridge-steamer.js": "./bridge-steamer.js?v=122",
   "./bridge-touch.js": "./bridge-touch.js?v=162",
-  "./bridge-well.js": "./bridge-well.js?v=162",
+  "./bridge-stock-lead.js": "./bridge-stock-lead.js?v=163",
+  "./bridge-well.js": "./bridge-well.js?v=163",
   "./bridge-street-trees.js": "./bridge-street-trees.js?v=123",
   "./bridge-leaf-light.js": "./bridge-leaf-light.js?v=123"
 } }
