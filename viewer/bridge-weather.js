@@ -3,7 +3,7 @@ import { createGroundPuddles } from "./bridge-puddles.js";
 import { roadsideHollows } from "./bridge-street-ground.js";
 
 const {clamp,damp,smoothstep}=THREE.MathUtils;
-const area={x:-78,z:-55,width:44,depth:30};
+const area={x:-111,z:-55,width:77,depth:35};
 const cell=.25, columns=area.width/cell, rows=area.depth/cell;
 const roofLevel=(profile,z)=>profile.eave+(profile.run-z)*profile.slope+.129*(z/profile.run)**4+.05;
 
@@ -147,7 +147,8 @@ function weatherMaterial(material,coat,kind) {
 }
 
 const groundNames=new Set(["West bridge approach","East bridge approach","Stone threshold","Sediment at paving joints",
-  "Inset street paving and gravel"]);
+  "Inset street paving and gravel","Kitchen garden stone path","Grain-store flagstone landing",
+  "Grain-store threshold step"]);
 
 export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge,water}) {
   const group=new THREE.Group();
@@ -191,7 +192,7 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
   for(const roof of roofs) materials.set(roof.mesh.material,"roof");
   for(const model of [root,street]) model.traverse(mesh=>{
     if(groundNames.has(mesh.name)) materials.set(mesh.material,"ground");
-    if(mesh.name==="Wooden bridge deck") materials.set(mesh.material,"deck");
+    if(mesh.name==="Wooden bridge deck" || mesh.name==="Wooden field footbridge deck") materials.set(mesh.material,"deck");
   });
   for(const [material,type] of materials) weatherMaterial(material,coat,type);
 
@@ -323,6 +324,11 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
       if(film<.001) return 1;
       if(Number.isFinite(roofAt(x,z))) return 1-film*.02;
       return 1-film*(Number.isFinite(puddles.heightAt(x,z,surface(x,z))) ? .18 : .09);
+    },
+    groundMoisture(x,y,z) {
+      if(film<.001 || fieldIndex(x,z)<0) return {wet:0,pool:false};
+      const wet=Number.isFinite(roofAt(x,z)) ? film*.02 : film;
+      return {wet,pool:wet>.10 && puddles.heightAt(x,z,y)-y>.0041};
     },
     footstep(x,y,z,time,source) {
       const pool=puddles.heightAt(x,z,y);

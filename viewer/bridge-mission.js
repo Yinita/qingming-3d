@@ -21,12 +21,13 @@ import { createTimberPorter } from "./bridge-timber-porter.js";
 import { createWateringDonkey } from "./bridge-stock-lead.js";
 import { createIrrigation } from "./bridge-irrigation.js";
 import { readGardenInventory,vegetablesPerSale } from "./bridge-crops.js";
-import { gardenGate,westBankAccess } from "./bridge-west-bank.js";
-import { fieldRoute,fieldsFooting,insideFields } from "./bridge-field-layout.js";
+import { cropBeds,gardenGate,westBankAccess } from "./bridge-west-bank.js";
+import { channelFade,channelX,fieldRoute,fieldsFooting,insideFields } from "./bridge-field-layout.js";
 import { createGrainWork } from "./bridge-grain.js";
 import { canalDepth, canalHalfLength, canalOrigin, canalShoreRadius, waterHeight } from "./bridge-canal-bed.js";
 import { buildPebbleToss } from "./bridge-pebbles.js";
 import { advanceStreetVelocity, createGroundedGait } from "./bridge-gait.js";
+import { createGroundTracks } from "./bridge-ground-tracks.js";
 import { circleTouchesBox, sweepHorizontal, sweepYaw, workerHeight, workerRadius } from "./bridge-collision.js";
 import { tileRoof } from "./bridge-architecture.js";
 import { TEA_QUEST, createQuestJournal, maxCoins, record, stageOf } from "./bridge-quests.js";
@@ -625,9 +626,39 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(roomHeight>=y-.009) return roomHeight>.12 ? "wood" : "stone";
     return backlane.materialAt(x,y,z)??ferryLandingMaterial(x,z,y)??workshop.materialAt(x,z,y)??street.streetHeight.materialAt(x,z);
   }
-  function footfall(x,y,z,vx,vz,emitter,wet=false,loaded) {
+  const {smoothstep:softEdge}=THREE.MathUtils;
+  function trackMoisture(x,y,z,medium) {
+    const sample=weather.groundMoisture(x,y,z);
+    if(medium!=="earth") return sample;
+    const soil=walkingGround.userData.gardenWater;
+    let deposit=0;
+    if(x>-82.2 && x<-76.85 && z>-35.8 && z<-29.4) {
+      for(const [i,bed] of cropBeds.entries()) {
+        const hit=soil[i];
+        if(hit.z<=0) continue;
+        const patch=1-softEdge(Math.max(Math.abs(x-bed.x)/(bed.wide ? .398 : .372),2*Math.abs(z-bed.z)/bed.length),.84,1.12);
+        const near=1-softEdge(Math.hypot((hit.x-x)*1.62,hit.y-z),.14,.98);
+        deposit=Math.max(deposit,patch*hit.z*(.32+.68*near));
+      }
+    } else if(insideFields(x,z)) {
+      deposit=.52*channelFade(z)*(1-softEdge(Math.abs(x-channelX(z)),.48,.91));
+    } else if(Math.abs(x-riverOrigin.x)<21 && depthAt(x,z)<.011 &&
+      (depthAt(x-.24,z)>.025 || depthAt(x+.24,z)>.025 || depthAt(x,z-.24)>.025 || depthAt(x,z+.24)>.025)) {
+      deposit=.54;
+    }
+    sample.wet=Math.max(sample.wet,deposit);
+    return sample;
+  }
+  const tracks=createGroundTracks(root,{heightAt:floor,
+    mediumAt:(x,y,z)=>depthAt(x,z)>.018 && !onBridge(x,z) && y<waterHeight-.006 ?
+      "water" : footSurface(x,y,z),
+    moistureAt:trackMoisture,
+  });
+  function footfall(x,y,z,vx,vz,emitter,wet=false,loaded,foot) {
     const speed=Math.hypot(vx,vz);
     if(speed<.20) return;
+    if(foot && view==="mission" && Math.hypot(x-player.x,z-player.z)<19)
+      tracks.contact(emitter,foot,elapsed,vx,vz);
     const wetPaving=!wet && speed>.24 && weather.footstep(x,y,z,elapsed,emitter);
     const family=wet || wetPaving ? "water" : footSurface(x,y,z);
     const laden=loaded??(emitter==="player" ? hasCargo() : emitter==="courier" || emitter==="porter");
@@ -636,26 +667,29 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     audio.play(family,x,z,volume,emitter,speed,laden);
   }
   timberPorter=createTimberPorter(root,city,material,floor,canStep,backlane.shortcutOpen,
-    (x,y,z,vx,vz,laden)=>footfall(x,y,z,vx,vz,"timberPorter",false,laden));
-  const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz)=>{
+    (x,y,z,vx,vz,laden,foot)=>footfall(x,y,z,vx,vz,"timberPorter",false,laden,foot));
+  const gait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,null,.23),(x,y,z,time,vx,vz,foot)=>{
     const depth=bridgeLook.field.height(x,z,time)-y;
     const wet=!onBridge(x,z) && depth>=.032 && depthAt(x,z)>=.024 && Math.hypot(vx,vz)>=.22;
     if(wet) {
       const strength=.19+.39*THREE.MathUtils.smoothstep(depth,.032,.55);
       bridgeLook.hit(x,z,time,strength,"step",vx,vz);
     }
-    footfall(x,y,z,vx,vz,"player",wet);
+    footfall(x,y,z,vx,vz,"player",wet,undefined,foot);
     return wet;
   });
-  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),(x,y,z,t,vx,vz)=>{
-    footfall(x,y,z,vx,vz,"courier");
+  const courierGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.17,courierSolid,.23,courierCargo),(x,y,z,t,vx,vz,foot)=>{
+    footfall(x,y,z,vx,vz,"courier",false,undefined,foot);
     return false;
   });
   const merchantGait=createGroundedGait(()=>merchantHome.y,()=>true,(x,y,z,t,vx,vz)=>{
     footfall(x,y,z,vx,vz,"merchant",false,false);
     return false;
   });
-  market.setGroundContact((role,foot,vx,vz)=>footfall(foot.x,foot.y,foot.z,vx,vz,role));
+  function npcFootSupport(role,feet) {
+    if(view==="mission") tracks.feet(role,feet,Math.hypot(feet[0].x-player.x,feet[0].z-player.z)<18);
+  }
+  market.setGroundContact((role,foot,vx,vz)=>footfall(foot.x,foot.y,foot.z,vx,vz,role,false,undefined,foot),npcFootSupport);
   const fwd = new THREE.Vector3();
   const side = new THREE.Vector3();
   const streetVelocity=new THREE.Vector2();
@@ -811,7 +845,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     obj.rotation.x = -Math.PI / 2;
     return obj;
   };
-  const footShadow = shadow(1.26, "rgba(54,42,27,0.62)");
+  const footShadow = shadow(.89, "rgba(54,42,27,0.24)");
   const cargoShadow = shadow(1.18, "rgba(54,42,27,0.62)");
 
   function remember() {
@@ -1154,6 +1188,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     boomLength=3.2;
     gait.reset();
     weather.reset();
+    tracks.reset();
     sendCourierHome();
     stopTeaShot();
     tea.reset();
@@ -2310,6 +2345,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(mode!=="mission") gardenTrade.restore();
     irrigation.show(mode==="mission");
     weather.show(mode==="mission");
+    tracks.visible(mode==="mission");
     light.storm(mode==="mission" ? weather.intensity : 0);
     if(mode!=="mission") {
       clearChestTransfer();
@@ -2659,7 +2695,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         moveX:(fwd.x*dz+side.x*dx)*driftScale,moveZ:(fwd.z*dz+side.z*dx)*driftScale,
         cargo:boardCargo.enabled ? boardCargo : null};
       market.frame(dt,visitor);
-      const porterLine=timberPorter.frame(dt,{...visitor,radius:backlane.playerClearance(workerRadius)},attend);
+      const porterLine=timberPorter.frame(dt,{...visitor,radius:backlane.playerClearance(workerRadius)},attend,npcFootSupport);
       if(porterLine) dialogue.speak(porterLine);
       const chairBefore=teaRoom.chairActive(), sitting=teaRoom.chair.phase==="sitting";
       if(teaRoom.seated() && (dx || dz)) teaRoom.standUp();
@@ -2990,7 +3026,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     playerBody.figure.rotation.y=bodyYaw;
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
     playerBody.rainWear.value=view==="mission" ? weather.clothing : 0;
-    footShadow.visible = playerBody.figure.visible && !wading && !riding;
+    footShadow.visible = playerBody.figure.visible && !firstPerson && !wading && !riding;
+    if(view==="mission") tracks.feet("player",gait.feet,footShadow.visible && !seated && !cameraClose);
     footShadow.position.set(player.x, floor(player.x, player.z) + .013, player.z);
     const delivery=selfDelivering() ? counterDelivery.action : null;
     const carrying=hasCargo() && !riding && !freightTransfer && !transfer &&
@@ -3103,12 +3140,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const wearing=state.phase==="courier" && (!courierDelivery || courierDelivery.stage==="approach" || courierDelivery.stage==="settle");
     animate(helper,courierGait.phase()-Math.PI*.5,Math.hypot(courierVX,courierVZ)>.01,wearing,dt);
     helper.poseFeet(courierGait.feet,floor,courier.x,courier.y,courier.z,courierYaw);
+    npcFootSupport("courier",courierGait.feet);
     const mp=merchant.figure.position;
     animate(merchant,merchantGait.phase()-Math.PI*.5,Math.abs(merchantVelocity)>.01,false,dt);
     merchant.poseFeet(merchantGait.feet,()=>merchantHome.y,mp.x,mp.y,mp.z,Math.PI);
     const speech=dialogue.speech(dt);
     if(view==="mission") joinery.frame(dt,player,speech,attend);
-    if(view==="mission" && gardenTrade.frame(dt,elapsed,player,speech,attend,footfall)==="sold") {
+    if(view==="mission" && gardenTrade.frame(dt,elapsed,player,speech,attend,footfall,npcFootSupport)==="sold") {
       remember();
       state.gardenHarvest=harvest.snapshot();
       const reward=TEA_QUEST.economy.gardenSaleReward;
@@ -3158,7 +3196,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     freight.speech(speech.id==="freightDriver" ? speech.shape : null,dt);
     teaRoom.speech(speech.id==="roomTea" ? speech.shape : null,dt);
     positionCrate();
-    if(view==="mission") syncActors();
+    if(view==="mission") {
+      syncActors();
+      tracks.update(elapsed);
+    }
     if (walking) ui();
     dialogue.update();
     markObjective();
@@ -3572,7 +3613,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       counterDelivery:counterDelivery.action ? {method:counterDelivery.action.method,
         stage:counterDelivery.action.stage,...counterDelivery.pose} : null,
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
-      gait:gait.inspect(),audio:audio.inspect(),weather:weather.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
+      gait:gait.inspect(),tracks:tracks.inspect(),audio:audio.inspect(),weather:weather.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,

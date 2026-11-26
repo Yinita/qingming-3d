@@ -211,6 +211,7 @@ export function buildWoodenBridge(group,center,surface) {
     const geometry = mergeGeometries(parts);
     parts.forEach(part => part.dispose());
     const model = new THREE.Mesh(geometry, material);
+    model.name=parts===boards ? "Wooden bridge deck" : "Wooden bridge rails and supports";
     model.castShadow = model.receiveShadow = true;
     model.layers.enable(1);
     group.add(model);

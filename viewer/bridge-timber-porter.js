@@ -166,8 +166,8 @@ export function createTimberPorter(parent,city,surface,floor,canStep,gateOpen,st
     return stage==="outbound" || stage==="unloading" || stage==="lifting" && age>.42;
   }
   const floorGait=createGroundedGait(floor,(x,z)=>canStep(x,z,.134,body,.22,load),
-    (x,y,z,t,vx,vz)=>{
-      stepSound(x,y,z,vx,vz,laden());
+    (x,y,z,t,vx,vz,foot)=>{
+      stepSound(x,y,z,vx,vz,laden(),foot);
       return false;
     });
   worker.figure.position.set(actor.x,floor(actor.x,actor.z),actor.z);
@@ -317,7 +317,7 @@ export function createTimberPorter(parent,city,surface,floor,canStep,gateOpen,st
     return peek ? null : to;
   }
 
-  function frame(dt,player,attend) {
+  function frame(dt,player,attend,footSupport) {
     if(!live) return null;
     time+=dt;
     age+=dt;
@@ -346,6 +346,7 @@ export function createTimberPorter(parent,city,surface,floor,canStep,gateOpen,st
     worker.figure.rotation.y=actor.yaw;
     worker.walkBody(floorGait.phase()-Math.PI*.5,Math.hypot(vx,vz)>.085,false,dt);
     worker.poseFeet(floorGait.feet,floor,actor.x,y,actor.z,actor.yaw);
+    footSupport("timberPorter",floorGait.feet);
 
     worker.torsoPivot.position.z=0;
     let weight=0;

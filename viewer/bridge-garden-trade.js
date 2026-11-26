@@ -94,8 +94,8 @@ export function createGardenTrade(parent,city,surface,floor,crops,harvest) {
   const actor=keeper.figure.position;
   const body=city.cylinder("Garden keeper",home.x,home.z,0,workerHeight,radius);
   let stepSound;
-  const gait=createGroundedGait(floor,(x,z)=>available(x,z,.11,.24),(x,y,z,time,vx,vz)=>{
-    stepSound(x,y,z,vx,vz,"gardenKeeper",false,transferred);
+  const gait=createGroundedGait(floor,(x,z)=>available(x,z,.11,.24),(x,y,z,time,vx,vz,foot)=>{
+    stepSound(x,y,z,vx,vz,"gardenKeeper",false,transferred,foot);
   });
   const handle=new THREE.Vector3(), start=new THREE.Vector3(), actual=new THREE.Vector3(), offset=new THREE.Vector3();
   const handFrame=new THREE.Quaternion(),wrist=new THREE.Euler(0,0,0,"YXZ");
@@ -165,7 +165,7 @@ export function createGardenTrade(parent,city,surface,floor,crops,harvest) {
     syncBody();
     return {speed,aligned:!movement.destination && turning<.075};
   }
-  function frame(dt,time,player,speech,attend,footfall) {
+  function frame(dt,time,player,speech,attend,footfall,footSupport) {
     if(distance(player,home)>16 && stage==="idle") return null;
     stepSound=footfall;
     const {speed,aligned}=advance(dt,time,player);
@@ -197,6 +197,7 @@ export function createGardenTrade(parent,city,surface,floor,crops,harvest) {
     keeper.torsoPivot.position.z=-.32*bend;
     keeper.torsoPivot.rotation.x-=1.13*bend;
     keeper.poseFeet(gait.feet,floor,actor.x,actor.y,actor.z,heading);
+    footSupport("gardenKeeper",gait.feet);
 
     const speaking=speech.id==="grainSold" || speech.id==="gardenOffer" || speech.id==="gardenSorting" || speech.id==="gardenSold";
     if(collect || stow) {

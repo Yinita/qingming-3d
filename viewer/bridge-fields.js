@@ -241,7 +241,7 @@ export function buildWestFields(parent,city,surface,height) {
     const shape=mergeGeometries(geometries);
     for(const geometry of geometries) geometry.dispose();
     const mesh=new THREE.Mesh(shape,material);
-    mesh.name="Field crossings, terraces and ditch edging";
+    mesh.name=material===planks ? "Wooden field footbridge deck" : "Field crossings, terraces and ditch edging";
     mesh.castShadow=mesh.receiveShadow=true;root.add(mesh);
   }
   plantedFields(root,height);
