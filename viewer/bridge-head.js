@@ -270,7 +270,9 @@ function coverLine(x,z,wrapped) {
   // A combed hairline: a slight peak at the centre and recessed temples, not a level cap edge.
   const shape=wrapped ? 0 : front*(.062*smoothstep(earDistance,.10,.40)*(1-smoothstep(earDistance,.50,.66))
     -.034*Math.exp(-((x/.13)**2)));
-  return 6.91+.743*front+earClearance+temple+point+shape+(wrapped ? .035 : 0);
+  // At the back the hair ends in a soft point at the nape instead of a level bowl cut.
+  const nape=wrapped ? 0 : -(1-front)*(.105*Math.exp(-((x/.27)**2))-.03*smoothstep(earDistance,.30,.55));
+  return 6.91+.743*front+earClearance+temple+point+shape+nape+(wrapped ? .035 : 0);
 }
 
 function scalpGeometry(skin,source,wrapped) {
@@ -288,7 +290,10 @@ function scalpGeometry(skin,source,wrapped) {
     const p=atA.fromBufferAttribute(xyz,a).lerp(atB.fromBufferAttribute(xyz,b),t);
     const angle=Math.atan2(p.x,p.z);
     const ribs=Math.sin(angle*4.4+p.y*113)+.63*Math.cos(angle*7.0-p.y*70);
-    const thickness=wrapped ? .0074+.00165*ribs : .0026+.00048*ribs;
+    // Thin the hair to nothing at its edge so it grows out of the skin rather than ending in a lip.
+    const height=a===b ? rise[a] : 0;
+    const edge=wrapped ? 1 : .15+.85*smoothstep(height,0,.09);
+    const thickness=(wrapped ? .0074+.00165*ribs : .0026+.00048*ribs)*edge;
     axis.fromBufferAttribute(normal,a).lerp(atB.fromBufferAttribute(normal,b),t).normalize();
     p.addScaledVector(axis,thickness);
     const id=vertices.length/3;
