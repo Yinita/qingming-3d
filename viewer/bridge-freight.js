@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { circleTouchesBox, rectanglesOverlap,workerHeight,workerRadius } from "./bridge-collision.js";
-import { buildFreightModel,cargoFloor,passengerBench,wheelRadius,wheelTrack } from "./bridge-freight-model.js";
+import { buildFreightModel,cargoFloor,passengerBench,wheelRadius,wheelTrack,wheelTyreWidth } from "./bridge-freight-model.js";
 
 const route=[
   [-45.20,-35.60],[-40.35,-35.60],[-39.40,-34.85],[-39.40,-34.32],
@@ -175,7 +175,7 @@ export function createFreightCart(parent,city,surface,terrain) {
     return target;
   }
 
-  function draw(time,rollWheels) {
+  function draw(time,rollWheels,recordWheel) {
     const {heading,animalYaw}=at(distance);
     cartYaw=heading;
     for(const [i,s] of sections.entries()) Object.assign(s.solid,poses[i]);
@@ -203,7 +203,11 @@ export function createFreightCart(parent,city,surface,terrain) {
     }
     for(const [i,wheel] of wheels.entries()) {
       const p=wheelPoints[i],old=wheelLast[i];
-      if(rollWheels && hasWheels) roll[i]-=((p.x-old.x)*(-s)+(p.z-old.z)*(-c))/wheelRadius;
+      if(rollWheels && hasWheels) {
+        const advance=(p.x-old.x)*(-s)+(p.z-old.z)*(-c);
+        roll[i]-=advance/wheelRadius;
+        if(advance>.0005) recordWheel?.(i,old,p,time,wheelTyreWidth);
+      }
       old.copy(p);
       wheel.rotation.x=roll[i];
       shadows.place(2+i,p.x,p.z,heading,.089,.178,.79);
@@ -341,7 +345,7 @@ export function createFreightCart(parent,city,surface,terrain) {
     }
   }
 
-  function update(dt,time,player,body,requestedDepot=null) {
+  function update(dt,time,player,body,requestedDepot=null,recordWheel) {
     if(!awake && Math.hypot(player.x-frame.position.x,player.z-frame.position.z)>10) return;
     if(access(player.x,player.z)) awake=true;
     if(stop!==null && awake) {
@@ -383,7 +387,7 @@ export function createFreightCart(parent,city,surface,terrain) {
       speed=0;
       blocked=null;
     }
-    draw(time,true);
+    draw(time,true,recordWheel);
     if(passenger!=="ground") return posePassenger(player,time);
   }
 
@@ -459,7 +463,7 @@ export function createFreightCart(parent,city,surface,terrain) {
         horse:animal.horse.position.toArray(),speed,travelled,loops,passenger,seatsTaken,awake,
         stop:stop===null ? null : stops[stop].name,next:stops[next].name,blocked,
         rider:passenger==="ground" ? null : {...rider},
-        wheels:roll.slice(),wheelError:wheelError.slice(),hoofClearance:hoofError.slice(),axleSideSlip,
+        wheels:roll.slice(),wheelContacts:wheelPoints.map(p=>p.toArray()),wheelError:wheelError.slice(),hoofClearance:hoofError.slice(),axleSideSlip,
         access:stop===null ? [] : standings(player,walkable,false)};
     },
   };

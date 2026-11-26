@@ -654,6 +654,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       "water" : footSurface(x,y,z),
     moistureAt:trackMoisture,
   });
+  const wheelTracks=walkingGround.userData.wheelTracks;
+  wheelTracks.configure((x,z)=>street.streetHeight.materialAt(x,z),(x,y,z)=>weather.groundMoisture(x,y,z).wet);
+  function recordWheel(index,from,to,time,width) {
+    const pressure=1+.34*Number(freightStage()==="loaded")+.18*Number(freight.active());
+    wheelTracks.record(index,from,to,time,pressure,width);
+  }
   function footfall(x,y,z,vx,vz,emitter,wet=false,loaded,foot) {
     const speed=Math.hypot(vx,vz);
     if(speed<.20) return;
@@ -1189,6 +1195,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     gait.reset();
     weather.reset();
     tracks.reset();
+    wheelTracks.reset();
     sendCourierHome();
     stopTeaShot();
     tea.reset();
@@ -2728,7 +2735,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const reserve=freightTransfer ? freight.depot() :
         freightHeld==="picked" || (guideFreight && freightStage()==="ready") ? 0 :
         !freightHeld && freightStage()==="loaded" ? 1 : null;
-      const cartLanded=freight.update(dt,elapsed,player,visitor,reserve)==="landed";
+      const cartLanded=freight.update(dt,elapsed,player,visitor,reserve,recordWheel)==="landed";
       const landed=ferryLanded || cartLanded;
       const carrier=passengerCarrier();
       const aboard=Boolean(carrier);
@@ -3199,6 +3206,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(view==="mission") {
       syncActors();
       tracks.update(elapsed);
+      wheelTracks.update(elapsed,weather.film);
     }
     if (walking) ui();
     dialogue.update();
@@ -3613,7 +3621,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       counterDelivery:counterDelivery.action ? {method:counterDelivery.action.method,
         stage:counterDelivery.action.stage,...counterDelivery.pose} : null,
       wading, waterDepth: wadeDepth(player.x,player.z), dampness, wetLine, stones: stones.inspect(),
-      gait:gait.inspect(),tracks:tracks.inspect(),audio:audio.inspect(),weather:weather.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
+      gait:gait.inspect(),tracks:tracks.inspect(),wheelTracks:wheelTracks.inspect(),audio:audio.inspect(),weather:weather.inspect(),velocity:{x:streetVelocity.x,z:streetVelocity.y},ferry:ferry.inspect(player),ferryDelivery:state.ferryCrossing===true,
       water: bridgeLook.inspect(elapsed), wind: foreground.inspect(), tea: { ...tea.inspect(), closeUp: Number.isFinite(teaShotStart) },
       collision:{solids:city.inspect(),cameraObstacle,cameraDistance:boomLength,
         carryOverlap:cargoCollision(player.x,player.z,bodyYaw)?.name??null,

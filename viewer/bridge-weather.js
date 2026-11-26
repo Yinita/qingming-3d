@@ -317,6 +317,7 @@ export function createBridgeWeather({root,street,ground,surface,depthAt,onBridge
   return {
     get active() { return storm; },
     get intensity() { return intensity; },
+    get film() { return film; },
     get clothing() { return dampClothes; },
     get sheltered() { return sheltered; },
     toggle() { storm=!storm; },

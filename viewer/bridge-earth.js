@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { canalBankGLSL } from "./bridge-canal-bed.js";
 import { cropBeds, westBankEarthGLSL } from "./bridge-west-bank.js";
 import { fieldsGLSL } from "./bridge-field-layout.js";
+import { createWheelTracks,wheelTrackGLSL } from "./bridge-wheel-tracks.js";
 
 const textureRoot="../data/bridge-finish/earth/";
 const layers=[
@@ -12,9 +13,12 @@ const layers=[
 export function createEarthMaterial(origin,load) {
   const material=new THREE.MeshStandardMaterial({color:0xb39d78,roughness:.94});
   const gardenWater=cropBeds.map(()=>new THREE.Vector3());
+  const wheelTracks=createWheelTracks();
   material.userData.gardenWater=gardenWater;
+  material.userData.wheelTracks=wheelTracks;
   const uniforms={
     earthCanalOrigin:{value:origin}, earthReady:{value:0}, gardenWater:{value:gardenWater},
+    ...wheelTracks.uniforms,
   };
   const loading=layers.flatMap(([directory,key])=>[
     ["color.webp",key+"Color",THREE.SRGBColorSpace],
@@ -66,6 +70,7 @@ export function createEarthMaterial(origin,load) {
         }
         ${westBankEarthGLSL}
         ${fieldsGLSL}
+        ${wheelTrackGLSL}
       `)
       .replace("#include <color_fragment>",`#include <color_fragment>
         vec2 pEarth=earthPoint;
@@ -135,18 +140,26 @@ export function createEarthMaterial(origin,load) {
         earthColor=mix(earthColor,vec3(.721,.681,.504),smoothstep(114.,160.,-pEarth.x)*.78);
         vec3 baseEarth=mix(diffuseColor.rgb,vec3(.32,.26,.164),westField*.52);
         baseEarth=mix(baseEarth,vec3(.142,.092,.054),loam)*mix(1.,.58,irrigationWet);
-        diffuseColor.rgb=mix(baseEarth,earthColor,earthReady);
+        vec3 wheelImprint=wheelSurface(pEarth);
+        float rutWet=wheelTrackRain*max(.14,wheelImprint.b);
+        vec3 packedTint=mix(vec3(.64,.67,.66),vec3(.47,.53,.55),rutWet);
+        diffuseColor.rgb=mix(baseEarth,earthColor,earthReady)*mix(vec3(1.),packedTint,wheelImprint.r*.91);
+        diffuseColor.rgb*=1.+wheelImprint.g*(.16+.07*grain);
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         float dryRough=mix(mix(compactSurface.b,alternateSurface.b,packedWeight),vergeSurface.b,edge);
         float earthRough=mix(dryRough-.19*wheel-.17*earthMoisture-.19*fieldTint.z,.92-.33*irrigationWet,loam);
         roughnessFactor=mix(roughnessFactor,clamp(earthRough,.54,1.),earthReady);
+        roughnessFactor=mix(roughnessFactor,mix(.78,.34,rutWet),wheelImprint.r);
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 compactRelief=mix(compactSurface.rg*2.-1.,(alternateSurface.rg*2.-1.)*turn,packedWeight);
         vec2 vergeRelief=(vergeSurface.rg*2.-1.)*turn;
         vec2 earthRelief=mix(mix(compactRelief*.73,vergeRelief*.91,edge),compactRelief*.92,loam)*(1.-.48*wheel);
-        normal=normalize(normal+mat3(viewMatrix)*vec3(earthRelief.x,0.,earthRelief.y)*earthReady);
+        vec2 rutSlope=wheelImprint.r+wheelImprint.g>.002 ? wheelSlope(pEarth) : vec2(0.);
+        float rutClose=1.-smoothstep(.024,.114,max(length(dFdx(pEarth)),length(dFdy(pEarth))));
+        vec2 relief=earthRelief*earthReady*mix(1.,.67,wheelImprint.r)-rutSlope*rutClose;
+        normal=normalize(normal+mat3(viewMatrix)*vec3(relief.x,0.,relief.y));
       `);
   };
   return material;

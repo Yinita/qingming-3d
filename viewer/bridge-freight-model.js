@@ -5,6 +5,7 @@ import { riverWorker } from "./bridge-people.js";
 
 export const wheelRadius=.434;
 export const wheelTrack=.647;
+export const wheelTyreWidth=.065;
 export const cargoFloor=.183;
 export const passengerBench={y:.443,z:.544};
 const driverBench={y:.455,z:-.495};
@@ -305,7 +306,7 @@ export function buildFreightModel(root,surface) {
     const spokes=fittings(wheel,"Tenoned spokes, felloe and hub");
     const rim=new THREE.TorusGeometry(wheelRadius-.035,.031,12,56).rotateY(PI/2);
     spokes.add(oak,rim,0,0,0);
-    const tyre=new THREE.CylinderGeometry(wheelRadius,wheelRadius,.065,56,1,true).rotateZ(PI/2);
+    const tyre=new THREE.CylinderGeometry(wheelRadius,wheelRadius,wheelTyreWidth,56,1,true).rotateZ(PI/2);
     spokes.add(iron,tyre,0,0,0);
     spokes.rod(stressWood,[-.092,0,0],[.104,0,0],.093,.087,18);
     for(const x of [-.086,.093]) spokes.rod(iron,[x-.016,0,0],[x+.016,0,0],.091,.091,18);
