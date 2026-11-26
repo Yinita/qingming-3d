@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { circleTouchesBox, rectanglesOverlap,workerHeight,workerRadius } from "./bridge-collision.js";
-import { buildFreightModel,cargoFloor,passengerBench,wheelRadius,wheelTrack,wheelTyreWidth } from "./bridge-freight-model.js";
+import { buildFreightModel,cargoFloor,freightBed,passengerBench,wheelRadius,wheelTrack,wheelTyreWidth } from "./bridge-freight-model.js";
 
 const route=[
   [-45.20,-35.60],[-40.35,-35.60],[-39.40,-34.85],[-39.40,-34.32],
@@ -102,7 +102,7 @@ export function createFreightCart(parent,city,surface,terrain) {
   root.name="East bank market freight cart";
   parent.add(root);
   const shadows=contactShadows(root,terrain);
-  const {frame,chassis,wheels,animal,workDriver,speech}=buildFreightModel(root,surface);
+  const {frame,chassis,gate,wheels,animal,workDriver,speech}=buildFreightModel(root,surface);
   const stand=[-1,1].map(side=>({x:0,y:0,z:0,yaw:0,side,pitch:0}));
   const grip=new THREE.Vector3();
   root.traverse(object=>object.layers.enable(1));
@@ -445,7 +445,11 @@ export function createFreightCart(parent,city,surface,terrain) {
     },
     deferTransfer(dt) { transferAt+=dt; },
     depot:()=>stop,
-    loadingPoint(target) { return chassis.localToWorld(target.set(0,cargoFloor+.018,-.069)); },
+    loadingPoint(target,tail=0) { return chassis.localToWorld(target.set(0,freightBed.y,lerp(freightBed.front,freightBed.tail,tail))); },
+    handlingPoint(target,rear,height=0) { return chassis.localToWorld(target.set(0,height,rear)); },
+    hitchPoint(target) { return gate.localToWorld(target.set(0,.151,.045)); },
+    tailboard(open) { gate.rotation.x=open*Math.PI*.5; },
+    loadingSolid:sections[0].solid,
     stopPoint(index,target,lateral=0,rear=1.44) {
       const s=stops[index].at*cartRoute.length;
       const mark=cartRoute.axle(s,target);

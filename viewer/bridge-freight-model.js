@@ -7,7 +7,8 @@ export const wheelRadius=.434;
 export const wheelTrack=.647;
 export const wheelTyreWidth=.065;
 export const cargoFloor=.183;
-export const passengerBench={y:.443,z:.544};
+export const passengerBench={y:.619,z:.544};
+export const freightBed={y:cargoFloor+.018,front:-.069,tail:.648};
 const driverBench={y:.455,z:-.495};
 const PI=Math.PI, up=new THREE.Vector3(0,1,0);
 
@@ -250,7 +251,7 @@ export function buildFreightModel(root,surface) {
       cart.box(iron,.076,.032,.085,side*.485,.346,z);
     }
     for(const z of [.293,.725]) cart.box(stressWood,.053,.233,.057,side*.468,.437,z);
-    cart.box(board,.071,.057,.521,side*.468,.554,.509);
+    cart.box(board,.071,.057,.521,side*.468,.718,.509);
   }
   for(let i=0;i<7;i++) {
     cart.box(i%4===2 ? oak : board,.130,.049,1.51,.135*(i-3),cargoFloor-.024,.064,.73*i);
@@ -260,12 +261,24 @@ export function buildFreightModel(root,surface) {
     cart.box(board,w,.052,.254,0,y-.026,z);
     for(const x of [-.329,.329]) cart.box(oak,.066,y-cargoFloor,.065,x,(y+cargoFloor)*.5,z);
   }
-  cart.box(board,.366,.119,.033,0,.291,.819);
+  const gate=new THREE.Group();
+  gate.name="Hinged freight tailboard";
+  gate.position.set(0,.179,.819);
+  chassis.add(gate);
+  const tail=fittings(gate,"Tailboard oak and hinges");
+  tail.box(board,.483,.145,.034,0,.076,0);
+  tail.box(iron,.061,.035,.030,0,.137,.026);
+  tail.rod(iron,[-.041,.148,.039],[.041,.148,.039],.008);
+  for(const x of [-.193,.193]) {
+    tail.box(iron,.036,.12,.011,x,.065,.021);
+    tail.rod(iron,[x-.028,0,0],[x+.028,0,0],.012);
+  }
+  tail.finish();
   cart.box(board,.55,.047,.162,0,.025,.901);
   for(const x of [-.214,.214]) cart.rod(iron,[x,.030,.904],[x,.17,.752],.015,.016);
   cart.box(board,.74,.045,.154,0,.094,-.732);
-  for(const x of [-.237,.237]) cart.box(stressWood,.045,.037,.328,x,cargoFloor+.018,-.069);
-  cart.box(oak,.476,.036,.041,0,cargoFloor+.018,.099);
+  for(const x of [-.156,.156]) cart.box(stressWood,.054,.018,1.041,x,freightBed.y-.009,.295);
+  cart.box(oak,.476,.035,.041,0,cargoFloor+.016,-.254);
   for(const z of [-.361]) {
     const bale=loft([[z-.15,.358,.067,.069],[z-.11,.350,.21,.15],[z,.346,.416,.164],
       [z+.088,.340,.307,.146],[z+.148,.353,.078,.074]],24);
@@ -360,5 +373,5 @@ export function buildFreightModel(root,surface) {
     }
     driver.poseSleeves();
   }
-  return {frame,chassis,wheels,animal,workDriver,speech:(shape,dt)=>driver.face.speak(shape,dt)};
+  return {frame,chassis,gate,wheels,animal,workDriver,speech:(shape,dt)=>driver.face.speak(shape,dt)};
 }

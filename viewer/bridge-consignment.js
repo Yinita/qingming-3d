@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { detailedBox } from "./bridge-look.js";
 
-export const parcelSize={halfX:.205,halfZ:.158,height:.338};
+export const parcelSize={halfX:.232,halfZ:.172,height:.333};
 
 export function buildConsignment(parent,city,surface,freight) {
   const wood=surface("tea-wood",0xc8af8c,.82,.89);
@@ -76,7 +76,17 @@ export function buildConsignment(parent,city,surface,freight) {
     board(parcel,rope,.017,.012,.329,x,.337,0);
     for(const side of [-1,1]) board(parcel,brass,.026,.027,.016,x,.049,side*.164);
   }
+  for(const side of [-1,1]) {
+    for(const z of [-.077,.077]) {
+      board(parcel,frame,.023,.043,.038,side*.207,.211,z);
+      board(parcel,brass,.007,.015,.015,side*.221,.212,z);
+    }
+    board(parcel,wood,.028,.028,.168,side*.217,.211,0);
+  }
   label(parcel,"瓷",0,.177,.173,.127,.118);
+  board(parcel,brass,.051,.046,.012,0,.213,.164);
+  piece(parcel,new THREE.TorusGeometry(.014,.0035,7,16),brass,0,.214,.172);
+  for(const part of parcel.children) part.position.y-=.011;
 
   function stage(index,title,lateral) {
     const at=freight.stopPoint(index,new THREE.Vector3(),lateral,1.64);
@@ -89,18 +99,20 @@ export function buildConsignment(parent,city,surface,freight) {
       board(depot,frame,.071,.272,.076,x,.135,z);
     }
     for(const x of [-.263,.263]) board(depot,frame,.066,.064,.415,x,.122,0);
-    board(depot,frame,.070,2.23,.074,-.278,1.11,-.12);
-    board(depot,frame,.59,.052,.077,-.052,2.18,-.12);
-    const plaqueX=.022, plaqueY=1.988, plaqueZ=-.12;
+    const side=index===0 ? 1 : -1, postX=side*.278, plaqueZ=.13;
+    const post=board(depot,frame,.070,2.23,.074,postX,1.11,plaqueZ);
+    board(depot,frame,.59,.052,.077,side*.052,2.18,plaqueZ);
+    const plaqueX=-side*.022, plaqueY=1.988;
     for(const x of [plaqueX-.192,plaqueX+.192]) board(depot,rope,.019,.112,.018,x,2.124,plaqueZ);
     board(depot,frame,.608,.269,.057,plaqueX,plaqueY,plaqueZ);
     label(depot,title,plaqueX,plaqueY,plaqueZ+.030,.564,.224,plaqueZ-.030);
     for(const z of [plaqueZ-.033,plaqueZ+.033]) for(const x of [plaqueX-.266,plaqueX+.266])
       board(depot,brass,.016,.016,.012,x,plaqueY+.083,z);
     const collider=city.meshBox(title,depot.children[0]);
+    const postCollider=city.meshBox(title+"牌柱",post);
     const foot={x:at.x,z:at.z,y:at.y+.329};
     const approach=freight.stopPoint(index,new THREE.Vector3(),lateral*.71,1.56);
-    return {foot,approach,collider};
+    return {foot,approach,collider,postCollider,post:{x:at.x+postX,z:at.z+plaqueZ}};
   }
   const origin=stage(0,"瓷器貨棧",-1.19);
   const destination=stage(1,"北巷收貨",-1.26);
@@ -108,6 +120,8 @@ export function buildConsignment(parent,city,surface,freight) {
     root.visible=on;
     origin.collider.enabled=on;
     destination.collider.enabled=on;
+    origin.postCollider.enabled=on;
+    destination.postCollider.enabled=on;
   }
   visible(false);
   return {root,parcel,origin,destination,visible};
