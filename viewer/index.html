@@ -45,7 +45,7 @@
   #missionCake:not(:disabled), #missionShareCake:not(:disabled), #missionFerry { color:#fff4dc; background:#793b30; border-color:#793b30;
     font-weight:700; }
   @media (pointer:coarse) {
-    #missionInteract, #missionJournal, #missionAnimal, #missionWorkshop, #missionYardAction,
+    #missionInteract, #missionInspectChest, #missionJournal, #missionAnimal, #missionWorkshop, #missionYardAction,
     #missionCake, #missionShareCake, #missionFerry { min-height:44px; }
   }
   #missionTouchPad { display:none; }
@@ -213,7 +213,8 @@
   @media (min-width:511px) and (max-height:459px) {
     body.mission-open #scene-background { top:59px; left:auto; right:10px; width:105px; }
   }
-  body.tea-closeup #missionHud { display:none; }
+  body.tea-closeup #missionHud,
+  body.chest-inspection :is(#missionHud, #missionTouchPad:not([hidden]), #missionNotice) { display:none; }
   body.tea-room-open #missionProgress, body.tea-room-open #missionSteps,
   body.tea-room-open #missionObjective, body.tea-room-open .mission-controls { display:none; }
   @media(max-width:600px) {
@@ -236,7 +237,8 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=146",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=155",
+  "./bridge-mission.js": "./bridge-mission.js?v=158",
+  "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=158",
   "./bridge-audio.js": "./bridge-audio.js?v=144",
   "./bridge-weather.js": "./bridge-weather.js?v=154",
   "./bridge-puddles.js": "./bridge-puddles.js?v=154",
