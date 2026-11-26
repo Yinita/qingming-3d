@@ -1994,10 +1994,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(freightHeld==="picked" || stage==="loaded") {
       const loading=freightHeld==="picked", depot=loading ? 0 : 1;
       const docked=freight.depot()===depot;
-      const {x,z}=docked ? freight.latchPoint(freightTarget) : freight.stopPoint(depot,freightTarget,0,2.04);
-      return {id:loading ? "load" : "unload",x,z,reach:docked ? .65 : .36,docked,
+      const {x,z}=docked ? freight.latchPoint(freightTarget) : freight.stopPoint(depot,freightTarget,-1.42,2.58);
+      return {id:loading ? "load" : "unload",x,z,reach:docked ? .65 : .32,docked,
         label:loading ? "车尾 · 装瓷器" : "北巷 · 卸瓷器",
-        prepare:!docked ? null : loading ? freightBoardingClear : freightPackClear};
+        prepare:!docked ? freightWaitingClear : loading ? freightBoardingClear : freightPackClear};
     }
     return {id:"pick",...consignment.origin.foot,reach:.74,label:"瓷器货栈",prepare:freightPackClear};
   }
@@ -2008,6 +2008,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function freightBoardingClear(point) {
     return Boolean(freight.action(point,walkable,false));
+  }
+
+  function freightWaitingClear(point) {
+    return freight.outsideLane(point,freightHeld ? .61 : workerRadius);
   }
 
   function freightRoutePass(x,z,yaw) {

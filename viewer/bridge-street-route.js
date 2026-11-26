@@ -19,11 +19,16 @@ function segment(a,b,pass) {
   return true;
 }
 
+function canArrive(point,goal,pass) {
+  if(gap(point,goal)>goal.reach) return false;
+  const yaw=heading(point,goal);
+  return pass(point.x,point.z,yaw) && (!goal.prepare || goal.prepare(point,yaw));
+}
+
 export function planStreetRoute(start,goal,pass) {
   const {west,south}=bounds;
   const target={x:goal.x,z:goal.z};
-  const ends=point=>gap(point,target)<=goal.reach && pass(point.x,point.z,heading(point,target)) &&
-    (!goal.prepare || goal.prepare(point,heading(point,target)));
+  const ends=point=>canArrive(point,goal,pass);
   if(ends(start)) return [];
   // The normal standing area can be narrower than a grid cell beside a counter.
   const angles=16, angleToStart=Math.atan2(start.z-target.z,start.x-target.x);
@@ -148,7 +153,7 @@ export function createStreetRoute(parent,floor) {
         path.shift();
       }
       while(path?.length>1 && gap(start,path[1])<4 && segment(start,path[1],pass)) path.shift();
-      const lost=path?.length ? !segment(start,path[0],pass) : gap(start,goal)>goal.reach;
+      const lost=path?.length ? !segment(start,path[0],pass) : !canArrive(start,goal,pass);
       if(changed || (lost || !path) && time-planned>.42) {
         planned=time;
         path=planStreetRoute(start,goal,pass);

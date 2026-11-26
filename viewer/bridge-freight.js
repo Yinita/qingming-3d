@@ -148,6 +148,16 @@ export function createFreightCart(parent,city,surface,terrain) {
     return {heading,animalYaw};
   }
 
+  const sweptLane=[];
+  const laneSamples=Math.ceil(cartRoute.length/.12);
+  for(let i=0;i<laneSamples;i++) {
+    at(i*cartRoute.length/laneSamples);
+    for(const [j,{halfX,halfZ}] of sections.entries()) {
+      const {x,z,yaw}=poses[j];
+      sweptLane.push({x,z,yaw,halfX,halfZ});
+    }
+  }
+
   function obstacle(atDistance,body,anticipate=false) {
     at(atDistance);
     for(const [i,spec] of sections.entries()) {
@@ -447,6 +457,9 @@ export function createFreightCart(parent,city,surface,terrain) {
       return mark;
     },
     latchPoint(target) { return chassis.localToWorld(target.set(0,0,1.38)); },
+    outsideLane(point,radius) {
+      return sweptLane.every(p=>!circleTouchesBox(point.x,point.z,radius+.13,p.x,p.z,p.halfX,p.halfZ,p.yaw));
+    },
     cargoAttitude(target) { return chassis.getWorldQuaternion(target); },
     active:()=>passenger!=="ground",
     grounding(x,z) {
