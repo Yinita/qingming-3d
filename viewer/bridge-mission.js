@@ -2976,7 +2976,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       gardenRoad[2].z=gardenRoad[3].z=lane;
       gardenStep=player.x<-75.13 && player.z>-33.10 ? 6 : player.z>-32.21 ? 5 :
         player.z>lane-.09 && player.x>-73.62 ? 4 : player.z>lane-.09 ? 3 :
-        player.z>-38.84 && player.x<-74.30 ? 2 : player.z>-38.82 ? 1 : 0;
+        player.z>-36.45 || player.z>-38.84 && player.x<-74.30 ? 2 : player.z>-38.82 ? 1 : 0;
       hint.textContent="从西岸井棚旁边往北走，绕过拴驴桩，再到菜园门口。";
     }
     ui();
