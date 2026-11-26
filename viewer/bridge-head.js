@@ -31,8 +31,8 @@ function skinColour(x,y,z,role,mouth) {
   const lipU=Math.abs(x-mouth.center.x)/mouth.width;
   const lipMid=mouth.mid(x);
   const vermilion=Math.max(0,1-lipU**2);
-  const top=lipMid+(.068+.020*Math.exp(-((lipU-.26)**2)/.032))*vermilion;
-  const bottom=lipMid-.064*vermilion;
+  const top=lipMid+(.061+.019*Math.exp(-((lipU-.26)**2)/.040))*vermilion;
+  const bottom=lipMid-.058*vermilion;
   const lip=(1-smoothstep(lipU,.73,1.04))*smoothstep(y,bottom-.017,bottom+.010)*
     (1-smoothstep(y,top-.015,top+.025))*smoothstep(z,1.40,1.54);
   const upperLip=lip*smoothstep(y,lipMid-.014,lipMid+.014);
@@ -42,8 +42,8 @@ function skinColour(x,y,z,role,mouth) {
   const lashU=a-.31;
   const lash=Math.exp(-(((y-7.346+.38*lashU*lashU)/.015)**2))*(1-smoothstep(Math.abs(lashU),.115,.155))*smoothstep(z,1.30,1.40);
   const beard=role==="merchant" ? .24*gaussian(a,y,.149,6.45,.358,.32)*front : 0;
-  const parting=Math.exp(-(((y-lipMid)/.007)**2))*(1-smoothstep(lipU,.82,1.04))*smoothstep(z,1.46,1.54);
-  const tone=1+mottle-.078*jaw-.071*brow-beard-.42*lash-.051*parting-.033*upperLip;
+  const parting=Math.exp(-(((y-lipMid)/.008)**2))*(1-smoothstep(lipU,.65,.98))*smoothstep(z,1.46,1.54);
+  const tone=1+mottle-.078*jaw-.071*brow-beard-.42*lash-.044*parting-.031*upperLip;
   return [
     tone+flush+.023*lip,
     tone-.43*flush-.157*lip-underEye,
@@ -100,31 +100,32 @@ function fitMouthSeam(source) {
   const center=pairs[(pairs.length-1)/2];
   const width=Math.max(center.x-pairs[0].x,pairs.at(-1).x-center.x);
   const span=x=>Math.abs(x-center.x)/width;
+  const cornerAt=x=>x<center.x ? pairs[0] : pairs.at(-1);
   const mid=x=>{
     const u=Math.min(1,span(x));
-    return center.y+.006*Math.sin(Math.PI*u)**2-.022*u**4;
+    return lerp(center.y+.006*Math.sin(Math.PI*u)**2,cornerAt(x).y,u**4);
   };
-  const depth=x=>lerp(center.z,x<center.x ? pairs[0].z : pairs.at(-1).z,Math.min(1,span(x))**1.83);
+  const depth=x=>lerp(center.z,cornerAt(x).z,Math.min(1,span(x))**1.83);
   // Move the skin above and below the cut with its own edge to keep the lip rows from folding.
   for(let i=0;i<source.length;i+=3) {
     const x=source[i],y=source[i+1],z=source[i+2];
     const u=span(x);
-    if(u>1.42 || z<1.37 || Math.abs(y-center.y)>.23) continue;
+    if(u>=1.38 || z<=1.37 || Math.abs(y-center.y)>=.26) continue;
     const above=pairs.findIndex(pair=>pair.x>=x);
     const b=pairs[above<0 ? pairs.length-1 : above],a=pairs[Math.max(0,(above<0 ? pairs.length-1 : above)-1)];
     const t=a===b ? 0 : clamp((x-a.x)/(b.x-a.x),0,1);
     const aboveLip=y>=lerp(a.y,b.y,t);
     const edgeY=aboveLip ? lerp(a.upperY,b.upperY,t) : lerp(a.lowerY,b.lowerY,t);
     const front=smoothstep(z,1.37,1.49);
-    const around=(1-smoothstep(Math.abs(y-edgeY),.012,.148))*(1-smoothstep(u,.94,1.42));
+    const around=(1-smoothstep(Math.abs(y-edgeY),.012,.148))*(1-smoothstep(u,.80,1.38));
     source[i+1]+=(mid(x)-edgeY)*around*front;
     const vertical=source[i+1]-mid(x), distance=Math.abs(vertical);
     const lower=vertical<0;
     // Let the lower lip turn into the chin across several rows of the source mesh.
-    const roll=(lower ? .023 : .034)*Math.sin(Math.PI*clamp(distance/(lower ? .103 : .118),0,1));
-    const inset=(lower ? .049 : .010)*smoothstep(distance,.032,lower ? .168 : .134);
+    const roll=(lower ? .015 : .026)*Math.sin(Math.PI*clamp(distance/(lower ? .121 : .118),0,1));
+    const inset=(lower ? .026 : .010)*smoothstep(distance,.041,lower ? .199 : .134);
     const profile=depth(x)-inset+roll*(1-smoothstep(u,.40,1));
-    const blend=front*(1-smoothstep(u,.66,1.18))*(1-smoothstep(distance,lower ? .089 : .074,lower ? .182 : .154));
+    const blend=front*(1-smoothstep(u,.60,1.14))*(1-smoothstep(distance,lower ? .086 : .074,lower ? .195 : .154));
     source[i+2]=lerp(z,profile,blend);
   }
   const region=new Map();
@@ -523,18 +524,19 @@ function mouthLining(head,face,mouth) {
     const positions=[];
     const midY=(source.getY(mouth.center.upper)+source.getY(mouth.center.lower))*.5;
     const midZ=source.getZ(mouth.center.upper);
-    const width=[1,1.03,.72], height=[1,1.17,1.01], depth=[0,.004,.025];
+    const midX=source.getX(mouth.center.upper);
+    const width=[1,.96,.72], height=[1,.94,.86], depth=[0,.004,.025];
     for(let ring=0;ring<3;ring++) {
       for(const i of boundary) {
         const x=source.getX(i), y=source.getY(i), z=source.getZ(i);
-        positions.push(x*width[ring],lerp(midY,y,height[ring]),z+depth[ring]);
+        positions.push(lerp(midX,x,width[ring]),lerp(midY,y,height[ring]),z+depth[ring]);
       }
     }
-    positions.push(source.getX(mouth.center.upper),midY,midZ+.036);
+    positions.push(midX,midY,midZ+.036);
     return new THREE.Float32BufferAttribute(positions,3);
   }
   const indices=[],colors=[];
-  const shades=[[.124,.053,.049],[.077,.026,.024],[.042,.012,.015]];
+  const shades=[[.103,.042,.039],[.068,.024,.023],[.035,.011,.013]];
   for(let band=0;band<3;band++) for(let i=0;i<count;i++) {
     const p=band*count+i,q=band*count+(i+1)%count;
     colors.push(...shades[band]);
@@ -558,17 +560,20 @@ function dentalRow(head,mouth,lower,material) {
   const halfWidth=mouth.width*Math.abs(sourceScale[0])*(lower ? .59 : .69);
   const vertices=[],colors=[],index=[];
   const sections=64;
-  const contacts=[0,.255,.455,.658,.857];
+  const contacts=[0,.26,.46,.65,.84,1];
   // Four rows form the rounded enamel face and return under the cut edge.
   for(let i=0;i<=sections;i++) {
     const t=2*i/sections-1, curve=Math.abs(t);
-    const contact=Math.min(...contacts.map(edge=>Math.abs(curve-edge)));
-    const grooves=1-smoothstep(contact,.008,.035);
-    const arch=.0012*curve**2, groove=.00023*grooves;
-    const cut=centerY+(lower ? -.0102+arch-groove : -.0025+arch+groove);
+    const outer=contacts.findIndex(edge=>edge>=curve);
+    const left=contacts[Math.max(0,outer-1)],right=contacts[outer];
+    const across=right===left ? 0 : (curve-left)/(right-left);
+    const crown=Math.sin(Math.PI*across);
+    const groove=1-smoothstep(crown,0,.42);
+    const arch=.0012*curve**2;
+    const cut=centerY+(lower ? -.0102+arch-.00044*groove : -.0027+arch+.00055*groove);
     const root=cut+(lower ? -.0065 : .0076)*(1-.31*curve);
-    const depth=centerZ+.0108+.018*curve**2+.00038*grooves+(lower ? .0053 : 0);
-    const tone=.96-.16*curve-.062*grooves;
+    const depth=centerZ+.0108+.018*curve**2-.00039*crown+.00042*groove+(lower ? .0053 : 0);
+    const tone=.96-.16*curve-.085*groove;
     for(const [y,z,shade] of [[root,depth+.0017,.87],[lerp(root,cut,.49),depth,tone],
       [cut,depth+.00086,.94*tone],[cut,depth+.0037,.67*tone]]) {
       vertices.push(centerX+t*halfWidth,y,z);
@@ -592,7 +597,7 @@ function dentalRow(head,mouth,lower,material) {
 
 function mouthInterior(head,face,mouth) {
   const lining=mouthLining(head,face,mouth);
-  const enamel=new THREE.MeshStandardMaterial({color:0xc8b8a2,roughness:.76,
+  const enamel=new THREE.MeshStandardMaterial({color:0xd2c1aa,roughness:.72,
     vertexColors:true,side:THREE.DoubleSide});
   const upper=dentalRow(head,mouth,false,enamel),lower=dentalRow(head,mouth,true,enamel);
   const base=face.attributes.position, center=mouth.center.lower;
