@@ -61,7 +61,11 @@ const liquidShader = `
   uniform float pourTime;
   uniform float impact;
   varying vec2 teaUV;
+  varying vec3 bowlPoint;
   void main() {
+    float y=bowlPoint.y;
+    float wall=mix(.048,.081,clamp((y-.024)/.038,0.,1.))+.011*clamp((y-.062)/.051,0.,1.);
+    if(y<.024 || y>.124 || length(bowlPoint.xz)>wall-.001) discard;
     vec2 q = (teaUV-.5)*2.0 - vec2(.15,.11);
     float radius = length(q*vec2(1.,1.22));
     float phase = 30.0*radius - pourTime*22.0;
@@ -139,20 +143,45 @@ export function buildTea(stall) {
 
   const cup = new THREE.Group();
   cup.name = "Ceramic tea cup";
-  cup.position.set(cupX, cupBottom, cupZ);
+  const cupRest=new THREE.Vector3(cupX,cupBottom,cupZ);
+  cup.position.copy(cupRest);
   stall.add(cup);
-  mount(lathe([[0,.008],[.064,.008],[.068,.022],[.090,.055],[.106,.105],[.106,.124],
-    [.099,.129],[.091,.125],[.092,.108],[.081,.062],[.066,.032],[.048,.024],[0,.024]]),glaze,cup);
+  const bowlGlaze=glaze.clone();
+  bowlGlaze.vertexColors=true;
+  const bowl=lathe([[0,.014],[.060,.014],[.066,.023],[.090,.055],[.106,.105],[.106,.124],
+    [.099,.129],[.091,.125],[.092,.108],[.081,.062],[.066,.032],[.048,.024],[0,.024]]);
+  const ceramicPoints=bowl.attributes.position;
+  const kilnTones=[];
+  for(let i=0;i<ceramicPoints.count;i++) {
+    const y=ceramicPoints.getY(i),x=ceramicPoints.getX(i),z=ceramicPoints.getZ(i);
+    const kiln=1+.065*Math.sin(x*91-z*44+y*73)+.034*Math.sin(z*135+y*380);
+    const foot=eased(y,.017,.044), pool=eased(y,.040,.104);
+    kilnTones.push(kiln*(.78+.28*foot),kiln*(.61+.41*foot),kiln*(.49+.46*foot+.07*pool));
+  }
+  bowl.setAttribute("color",new THREE.Float32BufferAttribute(kilnTones,3));
+  mount(bowl,bowlGlaze,cup);
+  mount(new THREE.TorusGeometry(.057,.0047,8,44).rotateX(Math.PI/2),clay,cup,0,.016,0);
   mount(new THREE.TorusGeometry(.099,.0037,8,44).rotateX(Math.PI/2),lip,cup,0,.125,0);
+  const saucer=new THREE.Group();
+  saucer.name="Celadon saucer";
+  saucer.position.copy(cupRest);
+  stall.add(saucer);
   mount(lathe([[0,.001],[.096,.001],[.140,.010],[.144,.024],[.138,.029],
-    [.119,.020],[.073,.012],[0,.012]]),glaze,cup);
-  mount(new THREE.TorusGeometry(.141,.0029,6,42).rotateX(Math.PI/2),lip,cup,0,.025,0);
+    [.119,.020],[.073,.012],[0,.012]]),glaze,saucer);
+  mount(new THREE.TorusGeometry(.141,.0029,6,42).rotateX(Math.PI/2),lip,saucer,0,.025,0);
+  mount(new THREE.TorusGeometry(.075,.0018,6,40).rotateX(Math.PI/2),glaze,saucer,0,.013,0);
 
   const tea = mount(new THREE.CircleGeometry(1,48).rotateX(-Math.PI/2),
     new THREE.ShaderMaterial({
-      uniforms: { pourTime: { value: 0 }, impact: { value: 0 } },
+      uniforms: { pourTime: { value: 0 }, impact: { value: 0 }, inBowl: {value:new THREE.Matrix4()} },
       vertexShader: `varying vec2 teaUV;
-        void main(){ teaUV=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+        varying vec3 bowlPoint;
+        uniform mat4 inBowl;
+        void main(){
+          teaUV=uv;
+          bowlPoint=(inBowl*vec4(position,1.)).xyz;
+          gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+        }`,
       fragmentShader: liquidShader,
     }), cup);
   tea.castShadow = tea.receiveShadow = false;
@@ -221,9 +250,11 @@ export function buildTea(stall) {
 
   let began = -Infinity;
   let volume = 0;
+  let consumed = 0;
   let age = Infinity;
   let steamStrength = 0;
   let peakDrops = 0;
+  const restFrame=new THREE.Quaternion();
   const spout = new THREE.Vector3(), tip = new THREE.Vector3();
   const normal = new THREE.Vector3(), derivative = new THREE.Vector3(), tangent = new THREE.Vector3();
   const drop = new THREE.Object3D();
@@ -251,6 +282,23 @@ export function buildTea(stall) {
     return flight;
   }
 
+  function updateBowl() {
+    tea.visible=volume>.005;
+    tea.position.y=liquidLevel(volume)+.0004;
+    tea.quaternion.copy(cup.quaternion).invert();
+    tea.scale.setScalar(.132);
+    tea.updateMatrix();
+    tea.material.uniforms.inBowl.value.copy(tea.matrix);
+    steam.position.copy(cup.position);
+    steam.position.y+=.106;
+  }
+
+  function restoreBowl() {
+    cup.position.copy(cupRest);
+    cup.quaternion.copy(restFrame);
+    updateBowl();
+  }
+
   function update(time) {
     age = time - began;
     if (!Number.isFinite(age) && !tea.visible) {
@@ -260,11 +308,9 @@ export function buildTea(stall) {
     const live = age <= duration;
     const t = Math.min(age, duration);
     pot.rotation.set(0,turn(t),pose(t,pot.position));
-    volume = Number.isFinite(began) ? fill(t) : 0;
+    volume = Number.isFinite(began) ? Math.max(0,fill(t)-consumed) : 0;
     const level = cupBottom + liquidLevel(volume);
-    tea.visible = volume > .005;
-    tea.position.y = liquidLevel(volume) + .0004;
-    tea.scale.setScalar(.048 + .042 * Math.pow(volume,.67));
+    updateBowl();
     tea.material.uniforms.pourTime.value = Math.min(age, duration + 1);
     tea.material.uniforms.impact.value = eased(t, 1.07, 1.27)*(1 - eased(t, 3.26, 4.58));
     steamStrength = eased(volume,.06,.57)*(1-eased(age,8,28));
@@ -323,6 +369,20 @@ export function buildTea(stall) {
   pot.add(handleContact);
   return {
     duration:duration+pickupTime,
+    bowl:cup,cupRest,
+    kettleRest:new THREE.Vector3(potX,potRest,potZ),
+    ready:()=>age>=duration && Number.isFinite(age),
+    consume(amount) { consumed=amount; },
+    alignBowl(heading) {
+      restFrame.setFromEuler(new THREE.Euler(0,heading,0));
+      restoreBowl();
+    },
+    moveBowl(position,orientation) {
+      cup.position.copy(position);
+      cup.quaternion.copy(orientation);
+      updateBowl();
+    },
+    restoreBowl,
     grip(target,orientation) {
       if(orientation) pot.getWorldQuaternion(orientation).multiply(graspFrame);
       return handleContact.getWorldPosition(target);
@@ -332,7 +392,8 @@ export function buildTea(stall) {
     reset() {
       began = -Infinity;
       age = Infinity;
-      volume = peakDrops = steamStrength = 0;
+      volume = peakDrops = steamStrength = consumed = 0;
+      restoreBowl();
       pot.rotation.set(0,0,0);
       pose(duration,pot.position);
       tea.visible = steam.visible = stream.visible = false;

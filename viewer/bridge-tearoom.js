@@ -12,6 +12,7 @@ const openAngle=Math.PI*.544;
 const sillDepth=.164, stepDepth=.249, stepHeight=.071;
 const stepWidth=doorWidth+.33;
 const contactStart=.45, contactRelease=.65, pushEnd=.94;
+const sipEnd=3.46;
 const {damp,smoothstep,lerp,clamp}=THREE.MathUtils;
 
 export function buildTeaRoom(stall,city,surface,onDoorTouch) {
@@ -123,10 +124,20 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
   }
   for(const y of [1.34,1.51,1.78,2.013]) fixed(boards[0],pier-.14,.034,.066,hingeX-pier*.5,y,front+.05);
 
-  const prep={x:.13,z:-.57,w:1.47,d:.74,y:.885};
+  const prep={x:.347,z:-.6575,w:1.91,d:1.085,y:.885};
+  const bowlAt={x:.675,z:-.278}, serviceYaw=1.04, stoolYaw=.58;
+  const station=new THREE.Group();
+  station.rotation.y=serviceYaw;
+  room.add(station);
+  const tea=buildTea(station);
+  const bowlOffset=tea.cupRest.clone().applyQuaternion(station.quaternion);
+  station.position.set(bowlAt.x-bowlOffset.x,prep.y-.886,bowlAt.z-bowlOffset.z);
+  station.updateMatrix();
+  tea.alignBowl(stoolYaw-serviceYaw);
+  const kettleAt=tea.kettleRest.clone().applyMatrix4(station.matrix);
   fixed(worn,prep.w,.085,prep.d,prep.x,prep.y-.0425,prep.z,"Tea service table");
   fixed(frame,prep.w-.12,.137,prep.d-.10,prep.x,prep.y-.146,prep.z);
-  for(const x of [-.60,.60]) for(const z of [-.275,.275]) {
+  for(const x of [-.799,.799]) for(const z of [-.411,.411]) {
     fixed(frame,.079,.663,.074,prep.x+x,.465,prep.z+z);
   }
   const bench={x:-1.09,z:-.39};
@@ -136,10 +147,10 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
   fixed(frame,.072,.68,1.51,bench.x-.152,.465,bench.z);
   fixed(worn,1.02,.048,.279,-.82,1.57,back+.18);
   fixed(worn,.64,.046,.289,1.13,1.13,back+.18);
-  fixed(boards[1],.346,.042,.346,.53,prep.y+.008,-.59);
+  fixed(boards[1],.236,.027,.239,kettleAt.x,prep.y+.015,kettleAt.z);
   fixed(fabric,.317,.023,.239,-1.09,.604,-.63);
   fixed(frame,.18,.90,.22,1.492,.584,-1.81);
-  const stool={x:1.075,z:.34,y:.54};
+  const stool={x:1.075,z:.274,y:.54};
   fixed(worn,.377,.062,.376,stool.x,stool.y-.031,stool.z,"Tea room stool");
   for(const x of [-.152,.152]) for(const z of [-.147,.147]) {
     fixed(frame,.055,.382,.057,stool.x+x,.325,stool.z+z);
@@ -316,32 +327,45 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
     push=null;
   }
 
-  const station=new THREE.Group();
-  station.position.set(-.46,prep.y-.886,-1.66);
-  room.add(station);
-  const tea=buildTea(station);
+  station.traverse(object=>object.layers.enable(1));
   const server=riverWorker(room,surface,"attendant");
   server.figure.name="Tea room attendant";
-  server.figure.position.set(.62,floorY,-1.34);
-  server.figure.rotation.y=Math.PI;
-  server.stand(()=>origin.y+floorY,origin.x+.62,origin.y+floorY,origin.z-1.34,Math.PI);
+  server.figure.position.set(1.08,floorY-station.position.y,.32).applyMatrix4(station.matrix);
+  server.figure.rotation.y=Math.PI+serviceYaw;
+  const serverAt=server.figure.getWorldPosition(new THREE.Vector3());
+  server.stand(()=>origin.y+floorY,serverAt.x,serverAt.y,serverAt.z,server.figure.rotation.y);
   server.figure.traverse(object=>object.layers.enable(1));
-  const attendant=city.cylinder("Tea room attendant",origin.x+.62,origin.z-1.34,
+  const attendant=city.cylinder("Tea room attendant",serverAt.x,serverAt.z,
     origin.y+floorY,origin.y+floorY+workerHeight,workerRadius);
   solids.push(attendant);
   const grip=new THREE.Vector3(), handFrame=new THREE.Quaternion();
-  const cup={x:origin.x-.18,z:origin.z-.45};
-  let served=false;
+  const cup={x:origin.x+bowlAt.x,z:origin.z+bowlAt.z};
+  let served=false, drunk=false, sip=null;
+  const lipTarget=new THREE.Object3D();
+  lipTarget.name="Drink lip contact";
+  const rimContact=new THREE.Object3D();
+  rimContact.name="Near bowl rim";
+  rimContact.position.set(0,.126,.101);
+  tea.bowl.add(rimContact);
+  const bowlContacts=[-1,1].map(side=>{
+    const point=new THREE.Object3D();
+    point.name="Bowl palm contact";
+    point.position.set(side*.122,.081,.021);
+    tea.bowl.add(point);
+    return point;
+  });
+  const bowlAngle=new THREE.Euler(0,0,0,"YXZ"), bowlFrame=new THREE.Quaternion();
+  const wristFrame=new THREE.Quaternion(), bowlCenter=new THREE.Vector3(), facePoint=new THREE.Vector3();
+  const bowlWrists=[-1,1].map(side=>new THREE.Quaternion().setFromEuler(new THREE.Euler(1.17,-side*.16,0,"YXZ")));
 
   function contains(x,z) {
     return x>bounds.minX && x<bounds.maxX && z>bounds.minZ && z<bounds.maxZ;
   }
 
   const stoolPoint={x:origin.x+stool.x,z:origin.z+stool.z};
-  const standing={x:origin.x+.45,z:origin.z+.245};
+  const standing={x:origin.x+.45,z:origin.z+.270};
   const floorHeight=origin.y+floorY;
   const seatedRoot=origin.y+stool.y-.647;
-  const stoolYaw=.62;
   const chairFeet=[-1,1].map(side=>({side,x:0,y:floorHeight,z:0,yaw:0,pitch:0}));
   const chair={phase:"standing",age:0,y:floorHeight,yaw:stoolYaw,weight:0};
   const transfer={x:0,z:0,yaw:0};
@@ -357,7 +381,7 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
     return true;
   }
   function standUp() {
-    if(chair.phase!=="seated" ||
+    if(chair.phase!=="seated" || sip ||
         city.blocking(standing.x,standing.z,floorHeight,workerRadius,workerHeight)) return false;
     chair.phase="rising";
     chair.age=0;
@@ -395,8 +419,74 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
     return false;
   }
 
+  function canDrink() {
+    return chair.phase==="seated" && served && tea.ready() && !drunk && !sip;
+  }
+
+  function beginDrink() {
+    if(!canDrink()) return false;
+    sip={age:0};
+    return true;
+  }
+
+  function cancelDrink() {
+    if(!sip) return;
+    sip=null;
+    tea.consume(Number(drunk));
+    tea.restoreBowl();
+  }
+
+  function advanceDrink(dt) {
+    if(!sip) return false;
+    sip.age+=dt;
+    const swallow=.52*smoothstep(sip.age,1.46,1.79)+.48*smoothstep(sip.age,1.92,2.17);
+    tea.consume(swallow);
+    if(sip.age<sipEnd) return false;
+    drunk=true;
+    cancelDrink();
+    return true;
+  }
+
+  function poseDrink(playerBody) {
+    if(!sip) return;
+    const t=sip.age;
+    const hold=smoothstep(t,.05,.46)*(1-smoothstep(t,2.98,sipEnd));
+    const travel=smoothstep(t,.49,1.39)*(1-smoothstep(t,2.22,2.98));
+    const drink=smoothstep(t,1.29,1.51)*(1-smoothstep(t,2.19,2.40));
+    const lean=hold*(1-.78*travel);
+    playerBody.torsoPivot.position.z-=.258*lean;
+    playerBody.torsoPivot.rotation.x-=.202*lean;
+    playerBody.head.rotation.x-=.074*travel;
+    if(lipTarget.parent!==playerBody.head) {
+      lipTarget.position.set(0,-.073,-.151);
+      playerBody.head.add(lipTarget);
+    }
+    bowlAngle.set(.263*drink,stoolYaw-serviceYaw,0,"YXZ");
+    bowlFrame.setFromEuler(bowlAngle);
+    lipTarget.getWorldPosition(facePoint);
+    station.worldToLocal(facePoint);
+    bowlCenter.copy(rimContact.position).applyQuaternion(bowlFrame).negate().add(facePoint);
+    bowlCenter.lerpVectors(tea.cupRest,bowlCenter,travel);
+    bowlCenter.y+=.064*Math.sin(Math.PI*travel);
+    tea.moveBowl(bowlCenter,bowlFrame);
+    for(const [i,socket] of bowlContacts.entries()) {
+      socket.getWorldPosition(grip);
+      tea.bowl.getWorldQuaternion(wristFrame).multiply(bowlWrists[i]);
+      playerBody.graspProp(i,grip,wristFrame,hold,.18);
+    }
+  }
+
   return {
     entrance,contains,atChair,beginChair,standUp,seatFrame,chair,chairFeet,standing,
+    canDrink,beginDrink,cancelDrink,advanceDrink,poseDrink,
+    drinking:()=>sip!==null,
+    drinkLook() {
+      if(!sip) return 0;
+      const t=sip.age;
+      const attention=smoothstep(t,0,.46)*(1-smoothstep(t,3.12,sipEnd));
+      const raised=smoothstep(t,.56,1.35)*(1-smoothstep(t,2.25,2.94));
+      return -.33*attention*(1-.34*raised);
+    },
     show(visible) {
       room.visible=visible;
       for(const solid of solids) solid.enabled=visible;
@@ -478,20 +568,26 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
       server.torsoPivot.rotation.x=-.30*lean;
       const dx=player.x-origin.x-server.figure.position.x,dz=player.z-origin.z-server.figure.position.z;
       const watching=contains(player.x,player.z) && Math.hypot(dx,dz)<2.8;
-      const yaw=(watching ? clamp(Math.atan2(dx,dz),-.55,.55) : -.06)*(1-lean)-.13*lean;
+      const forward=server.figure.rotation.y;
+      const along=-(dx*Math.sin(forward)+dz*Math.cos(forward));
+      const across=dx*Math.cos(forward)-dz*Math.sin(forward);
+      const yaw=(watching ? clamp(-Math.atan2(across,along),-.55,.55) : -.06)*(1-lean)-.13*lean;
       server.head.rotation.x=damp(server.head.rotation.x,.024*Math.sin(time*1.42)-.12*lean,9,dt);
       server.head.rotation.y=damp(server.head.rotation.y,yaw,9,dt);
       server.face.lookEyes(.45*yaw,-.68*lean,dt);
       server.face.blink(Math.max(0,1-Math.abs(time%4.17-.15)/.11));
       server.holdKettle(tea.grip(grip,handFrame),handFrame,reach);
       server.poseSleeves();
-      return served && age>=tea.duration;
+      return served && tea.ready();
     },
     serve(time) { served=true;tea.start(time); },
-    restore(alreadyServed,time,resetDoor=false) {
+    restore(alreadyServed,time,{resetDoor=false,alreadyDrunk=false}={}) {
       cancelPush();
+      cancelDrink();
       served=alreadyServed;
+      drunk=served && alreadyDrunk;
       tea.reset();
+      tea.consume(Number(drunk));
       if(served) tea.start(time-tea.duration);
       if(resetDoor) {
         chair.phase="standing";
@@ -505,7 +601,8 @@ export function buildTeaRoom(stall,city,surface,onDoorTouch) {
     inspect(player) {
       return {inside:contains(player.x,player.z),nearDoor:this.atDoor(player),atTable:this.atTable(player),
         entrance,cup,chair:{...chair,atChair:atChair(player)},
-        door:{angle,target,blocked,x:door.x,z:door.z,push:push && {age:push.age,hand:push.hand}},served,tea:tea.inspect()};
+        door:{angle,target,blocked,x:door.x,z:door.z,push:push && {age:push.age,hand:push.hand}},
+        served,drunk,sip:sip?.age??null,tea:tea.inspect()};
     },
   };
 }

@@ -111,6 +111,9 @@ function robeRadius(profile,y) {
     ((1-step)*tangent(before,slope)-step*tangent(slope,after));
 }
 
+const cuffWrist=fabric([[0,-.171],[.012,-.167],[.016,-.153],[.020,-.131],
+  [.024,-.111],[0,-.103]],1.16,0,16,0,()=>1);
+
 function surfacePoint(profile,theta,y,standOff) {
   const radius=robeRadius(profile,y)*robeVolume(theta,y)+standOff;
   return [radius*Math.sin(theta),y+.012*Math.cos(theta),radius*.70*Math.cos(theta)];
@@ -589,6 +592,12 @@ function sewnCuff(profile, joint, sections, drape) {
     geometry.setAttribute("color",new THREE.BufferAttribute(colors,3));
   };
   colorize(cuff,1);
+  const position=cuff.attributes.position, dye=cuff.attributes.color;
+  for(let i=0;i<position.count;i++) {
+    const radius=Math.hypot(position.getX(i),position.getZ(i)/depth);
+    const shade=THREE.MathUtils.lerp(.34,1,THREE.MathUtils.smoothstep(radius,.025,.061));
+    dye.setXYZ(i,shade,shade,shade);
+  }
   const parts=[cuff];
   const thread=new THREE.SphereGeometry(1,6,4);
   const y=-.363;
@@ -684,7 +693,7 @@ function tailoredSleeve(arm, cloth, binding, cuffBinding, sections, cut, correct
   arm.updateWorldMatrix(true,true);
   sleeve.bind(new THREE.Skeleton([shoulder,elbow]));
   // Below the elbow blend the sleeve and its folded cuff use the same bone and contour.
-  const rim=cuffBinding ? [[.050,-.350],[.049,-.374],[.052,-.382],[.056,-.383],
+  const rim=cuffBinding ? [[.018,-.328],[.030,-.335],[.050,-.350],[.049,-.374],[.052,-.382],[.056,-.383],
     [.060,-.380],...profile.slice(2,cuffRow+1)] : profile.slice(0,cuffRow+1);
   const edge=cuffBinding ? sewnCuff(rim,joint,sections,drape) :
     fabric(rim.map(([radius,y])=>[radius,y-joint]),.88,0,sections,joint,drape);
@@ -1366,6 +1375,11 @@ export function riverWorker(parent, surface, role, residentHat=false, variant=0,
     elbow.rotation.x=-restElbow;
     const hand=buildHand(elbow,skin,side,{lowDetail,scale:profile?.hand??1});
     hand.group.position.set(0,-.163,-.009);
+    if(detail) {
+      const wrist=piece(elbow,cuffWrist,skin,0,0,-.009);
+      wrist.name="Wrist beneath the cuff";
+      wrist.castShadow=false;
+    }
     limbs.hands.push(hand);
     limbs.arms.push(arm);
     limbs.elbows.push(elbow);
