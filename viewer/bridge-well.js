@@ -252,6 +252,21 @@ export function buildStreetWell(parent,city,surface,floor) {
   for(const xx of [-.55,.55]) plank(trough,stone[1],.146,.291,.625,xx,.347,troughZ,.031);
   const troughWater=drawSurface(trough,new THREE.PlaneGeometry(.936,.530),0,.29,troughZ);
   city.box("Watering trough",x-.62,x+.62,z+troughZ-.41,z+troughZ+.41,y,y+.493);
+  const tapX=-.746,tapY=.324,tapZ=troughZ-.035;
+  const irrigationOutlet={x:x+tapX,y:y+tapY-.018,z:z+tapZ};
+  const tapWood=surface("tea-wood",0x937655,.88,.88);
+  const tapIron=plain(0x4f4b3b,.74,.35);
+  const tapMount=place(trough,new THREE.CylinderGeometry(.077,.071,.053,14),tapWood,-.617,tapY+.017,tapZ);
+  tapMount.rotation.z=Math.PI/2;
+  const tapProfile=[[.018,-.186],[.039,-.186],[.048,-.158],[.043,-.125],
+    [.034,.147],[.029,.181],[.017,.186],[.015,.178],[.015,-.186]];
+  const tap=place(trough,new THREE.LatheGeometry(tapProfile.map(([r,h])=>new THREE.Vector2(r,h)),18),
+    tapWood,tapX+.107,tapY+.009,tapZ);
+  tap.name="Hollow trough draw spout";tap.rotation.z=Math.PI/2-.064;tap.scale.y=.59;
+  const ferrule=place(trough,new THREE.CylinderGeometry(.036,.039,.019,18),tapIron,tapX+.032,tapY+.002,tapZ);
+  ferrule.rotation.z=tap.rotation.z;
+  const tapHandle=place(trough,new THREE.CylinderGeometry(.017,.013,.095,10),tapWood,-.659,tapY+.058,tapZ);
+  tapHandle.name="Trough spout stopcock";tapHandle.rotation.z=-.17;
   const flume=new THREE.Group();flume.name="Pivoting wooden water chute";
   flume.position.set(0,.725,.747);
   root.add(flume);
@@ -308,6 +323,7 @@ export function buildStreetWell(parent,city,surface,floor) {
   let lapping=0;
   function canPour() {return bucketY>=high-.018 && filled && volume<.985;}
   function canWater() {return !pouring() && volume>=.39;}
+  function canDraw(amount) {return stage==="idle" && volume>=.18+amount;}
   function pouring() {return stage==="pour";}
   function near(player) {return Math.hypot(player.x-station.x,player.z-station.z)<1.17;}
   function use(player) {
@@ -418,7 +434,14 @@ export function buildStreetWell(parent,city,surface,floor) {
   restore();
   return {station,approachMarker,near,use,release,frame,render,pose,restore,canPour,
     active:()=>stage!=="idle",operating:()=>stage==="working" || stage==="pour",
-    pouring, canWater, basin, progress:()=>(bucketY-low)/(high-low), full:()=>volume>=.985, filled:()=>filled,
+    pouring, canWater, basin, irrigationOutlet, canDraw,
+    draw(amount) {
+      if(!canDraw(amount)) return false;
+      volume-=amount;
+      return true;
+    },
+    irrigationFlow(amount){tapHandle.rotation.x=amount*1.32;},
+    progress:()=>(bucketY-low)/(high-low), full:()=>volume>=.985, filled:()=>filled,
     sipPoint:target=>target.set(basin.x,y+.264+.183*volume,basin.z+sipOffset.z),
     leadClearance(px,pz,ropeY) {
       const u=Math.abs(px-x),v=Math.abs(pz-basin.z);

@@ -290,11 +290,11 @@ export function buildKitchenGarden(root,city,surface,height) {
     const dx=hand.x-player.x,dz=hand.z-player.z;
     return -dx*Math.sin(yaw)-dz*Math.cos(yaw)<.20 ? 0 : .92*(1-smoothstep(Math.hypot(dx,dz),.36,.66));
   }
-  function pose(person,player,yaw) {
+  function pose(person,player,yaw,hand=1) {
     const amount=reach(player,yaw);
     if(amount<.01) return;
     wrist.set(.11,angle+.22,.14,"YXZ");
-    person.graspProp(1,grip,turnFrame.setFromEuler(wrist),amount,.60);
+    person.graspProp(hand,grip,turnFrame.setFromEuler(wrist),amount,.60);
   }
   return {near,use,frame,pose,reach,breeze,
     restore(open=false){target=open ? opens : 0;blocked=false;sync(target);},

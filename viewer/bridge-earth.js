@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { canalBankGLSL } from "./bridge-canal-bed.js";
-import { westBankEarthGLSL } from "./bridge-west-bank.js";
+import { cropBeds, westBankEarthGLSL } from "./bridge-west-bank.js";
 
 const textureRoot="../data/bridge-finish/earth/";
 const layers=[
@@ -10,8 +10,10 @@ const layers=[
 
 export function createEarthMaterial(origin,load) {
   const material=new THREE.MeshStandardMaterial({color:0xb39d78,roughness:.94});
+  const gardenWater=cropBeds.map(()=>new THREE.Vector3());
+  material.userData.gardenWater=gardenWater;
   const uniforms={
-    earthCanalOrigin:{value:origin}, earthReady:{value:0},
+    earthCanalOrigin:{value:origin}, earthReady:{value:0}, gardenWater:{value:gardenWater},
   };
   const loading=layers.flatMap(([directory,key])=>[
     ["color.webp",key+"Color",THREE.SRGBColorSpace],
@@ -113,21 +115,23 @@ export function createEarthMaterial(origin,load) {
         vec3 earthColor=mix(pathPigment,vergePigment,edge);
         earthColor=mix(earthColor,earthColor*vec3(.71,.86,.63),weeds*.61);
         earthColor*=mix(.88,1.16,areaVariation);
-        float loam=gardenLoam(pEarth,earthNoise(pEarth*16.)-.47);
+        float irrigationWet;
+        float loam=gardenLoam(pEarth,earthNoise(pEarth*16.)-.47,irrigationWet);
         vec3 loamPigment=vec3(.142,.092,.054)*
           pow(clamp(compact/vec3(.191,.130,.047),.26,2.09),vec3(.52));
         float cultivation=.94+.08*sin(pEarth.x*42.+3.5*grain)+.15*(patchVariation-.5);
         earthColor=mix(earthColor,loamPigment*cultivation,loam);
+        earthColor*=mix(vec3(1.),vec3(.53,.59,.63),irrigationWet);
         earthColor*=1.-.24*wheel*(.80+.20*grain);
         earthColor*=mix(vec3(1.),vec3(.66,.71,.75),earthMoisture);
         earthColor=mix(earthColor,vec3(.721,.681,.504),smoothstep(114.,160.,-pEarth.x)*.78);
         vec3 baseEarth=mix(diffuseColor.rgb,vec3(.32,.26,.164),westField*.52);
-        baseEarth=mix(baseEarth,vec3(.142,.092,.054),loam);
+        baseEarth=mix(baseEarth,vec3(.142,.092,.054),loam)*mix(1.,.58,irrigationWet);
         diffuseColor.rgb=mix(baseEarth,earthColor,earthReady);
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         float dryRough=mix(mix(compactSurface.b,alternateSurface.b,packedWeight),vergeSurface.b,edge);
-        float earthRough=mix(dryRough-.19*wheel-.17*earthMoisture,.92,loam);
+        float earthRough=mix(dryRough-.19*wheel-.17*earthMoisture,.92-.33*irrigationWet,loam);
         roughnessFactor=mix(roughnessFactor,clamp(earthRough,.54,1.),earthReady);
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>

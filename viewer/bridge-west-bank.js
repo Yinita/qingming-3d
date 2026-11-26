@@ -56,11 +56,16 @@ export const westBankEarthGLSL=`
     float edge=max(along,abs(q.x+.014*sin(q.y*6.2+center.x))/(radius*taper));
     return 1.-smoothstep(.84,1.15,edge+uneven*.19);
   }
-  float gardenLoam(vec2 p,float uneven) {
+  uniform vec3 gardenWater[${cropBeds.length}];
+  float gardenLoam(vec2 p,float uneven,out float wet) {
+    wet=0.;
     if(p.x<-82.15 || p.x>-76.86 || p.y<-35.70 || p.y>-29.4) return 0.;
-    float soil=0.;
-    ${cropBeds.map(({x,z,length,wide})=>
-      `soil=max(soil,gardenLoamPatch(p,vec2(${x.toFixed(3)},${z.toFixed(3)}),${(length*.5).toFixed(3)},${wide ? ".398" : ".372"},uneven));`
+    float soil=0., bedMask;
+    ${cropBeds.map(({x,z,length,wide},i)=>
+      `bedMask=gardenLoamPatch(p,vec2(${x.toFixed(3)},${z.toFixed(3)}),${(length*.5).toFixed(3)},${wide ? ".398" : ".372"},uneven);
+    soil=max(soil,bedMask);
+    wet=max(wet,bedMask*gardenWater[${i}].z*
+      (.32+.68*(1.-smoothstep(.14,.98,length((p-gardenWater[${i}].xy)*vec2(1.62,1.))+uneven*.23))));`
     ).join("\n    ")}
     return soil;
   }
