@@ -25,6 +25,10 @@ function wetWood(material,height) {
   material.customProgramCacheKey=()=>"moored-skiff-wet-wood";
 }
 
+export const skiffBoardingSill={
+  x:.357,z:-.476,y:.293,slope:-.18,minX:.228,maxX:.487,
+};
+
 export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
   const boat = new THREE.Group();
   boat.name = "Moored timber skiff";
@@ -52,13 +56,27 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
   }
 
   for (const side of [-1,1]) {
+    const station=side<0 ? shape : shape.flatMap((sample,i)=>{
+      const next=shape[i+1];
+      if(!next) return [sample];
+      const sections=[sample];
+      for(const z of [-.743,-.697,-.255,-.207]) if(z>sample[0] && z<next[0]) {
+        const u=(z-sample[0])/(next[0]-sample[0]);
+        sections.push([z,THREE.MathUtils.lerp(sample[1],next[1],u),THREE.MathUtils.lerp(sample[2],next[2],u)]);
+      }
+      return sections;
+    }).map(([z,width,height])=>{
+      const into=THREE.MathUtils.smoothstep(z,-.743,-.697);
+      const out=1-THREE.MathUtils.smoothstep(z,-.255,-.207);
+      return [z,width,height-.075*into*out];
+    });
     const positions = [], uv = [], indices = [];
-    for (const [i,[z,width,height]] of shape.entries()) {
+    for (const [i,[z,width,height]] of station.entries()) {
       for (const [j,[r,y]] of [[.48,-.091],[.79,.005],[.944,.117],[1,height],[.93,height+.012],[.88,.124],[.625,.006]].entries()) {
         positions.push(side*r*width,y,z);
         uv.push(.27+z*.74,y*1.4+j*.31);
         const a = i*7+j, b = a+7;
-        if (i<shape.length-1 && j<6) indices.push(...(side>0 ? [a,a+1,b,a+1,b+1,b] : [a,b,a+1,a+1,b,b+1]));
+        if (i<station.length-1 && j<6) indices.push(...(side>0 ? [a,a+1,b,a+1,b+1,b] : [a,b,a+1,a+1,b,b+1]));
       }
     }
     const hull = new THREE.BufferGeometry();
@@ -67,8 +85,8 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
     hull.setIndex(indices);
     hull.computeVertexNormals();
     solid(hull,trim,boat);
-    for (let i=0; i<shape.length-1; i++) {
-      const [from,w1,h1] = shape[i], [to,w2,h2] = shape[i+1];
+    for (let i=0; i<station.length-1; i++) {
+      const [from,w1,h1] = station[i], [to,w2,h2] = station[i+1];
       const rail = plank(boat,(w1+w2)*.5*side,(h1+h2)*.5+.007,(from+to)*.5,
         .047,.058,Math.hypot(to-from,w2-w1)+.019,timber,Math.atan2((w2-w1)*side,to-from));
       rail.rotation.x = Math.atan2(h1-h2,to-from);
@@ -94,8 +112,11 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
   for (const [width,z] of [[.91,-.78],[1.10,.05],[.92,.83]]) {
     plank(boat,0,.199,z,width,.047,.172,timber);
   }
-  plank(boat,.362,.280,-.476,.263,.063,.427,trim);
-  for(const z of [-.633,-.316]) plank(boat,.340,.315,z,.216,.007,.021,timber);
+  const sill=skiffBoardingSill, slope=Math.atan(sill.slope), sillDepth=.057;
+  const saddle=plank(boat,sill.x,sill.y-sillDepth*.5/Math.cos(slope),sill.z,
+    (sill.maxX-sill.minX)/Math.cos(slope),sillDepth,.427,trim);
+  saddle.rotation.z=slope;
+  for(const z of [-.629,-.322]) plank(boat,.416,.157,z,.065,.195,.072,timber);
   for (const [x,z] of [[.21,.49],[-.14,.75]]) {
     plank(boat,x,.16,z,.264,.253,.239,timber,.10);
     for (const offset of [-.088,.070]) plank(boat,x+offset,.167,z+.118,.021,.266,.018,trim,.10);

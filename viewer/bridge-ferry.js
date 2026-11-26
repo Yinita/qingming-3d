@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { detailedBox } from "./bridge-look.js";
 import { legRig } from "./bridge-gait.js";
+import { skiffBoardingSill } from "./bridge-boat.js";
 
 const dockZ=-50.63, ferryZ=-51.76, deckY=.258;
 const boardZ=dockZ-.065;
@@ -11,7 +12,8 @@ const moorings=[
 ];
 const yaw=-Math.PI/2;
 const seatZ=-.78, deckFootY=.049;
-const boardLength=.505, gangwayWidth=.48, boardingZ=seatZ+.304;
+const boardLength=.505, gangwayWidth=.48, boardingZ=skiffBoardingSill.z;
+const sillHeight=x=>skiffBoardingSill.y+skiffBoardingSill.slope*(x-skiffBoardingSill.x);
 const travel=moorings[1].boat-moorings[0].boat;
 const {damp,lerp,smoothstep}=THREE.MathUtils;
 
@@ -158,12 +160,15 @@ export function buildFerryLanding(root,city,surface) {
     const setback=.083;
     toe.set(0,Math.sqrt(boardLength**2-setback**2),-setback);
     if(amount>0) {
-      boat.toWorld(target.set(0,.317,boardingZ));
-      boat.toWorld(axis.set(1,.317,boardingZ)).sub(target).normalize();
+      boat.toWorld(target.set(0,sillHeight(0)+.004,boardingZ));
+      boat.toWorld(axis.set(1,sillHeight(1)+.004,boardingZ)).sub(target);
+      const scale=axis.length();
+      axis.divideScalar(scale);
       target.sub(hinge);
       const nearest=-target.dot(axis);
       const radial=target.lengthSq()-nearest*nearest;
-      const onPad=THREE.MathUtils.clamp(nearest-Math.sqrt(Math.max(0,boardLength**2-radial)),.228,.484);
+      const onPad=THREE.MathUtils.clamp(nearest-Math.sqrt(Math.max(0,boardLength**2-radial)),
+        skiffBoardingSill.minX*scale,skiffBoardingSill.maxX*scale);
       target.addScaledVector(axis,onPad);
       toe.lerp(target,amount);
     }
@@ -417,13 +422,16 @@ export function createFerry(landing,boat,floor,onStep) {
     footPoint.set(x,rider.feetY,z);
     if(passenger==="aboard") return boat.deckHeight(footPoint,deckFootY);
     const ramp=landing.rampHeight(exitBank,x,z);
+    const ground=floor(x,z);
+    if(Number.isFinite(ramp)) return Math.max(ground,ramp);
     boat.fromWorld(footPoint);
     const length=Math.abs(footPoint.z-boardingZ);
-    const boatSide=length<.235 && footPoint.x>=.228 && footPoint.x<=.509;
+    const boatSide=length<.2135 && footPoint.x>=skiffBoardingSill.minX && footPoint.x<=skiffBoardingSill.maxX;
+    const height=sillHeight(footPoint.x);
     const live=length<.59 && Math.abs(footPoint.x)<.31;
     footPoint.set(x,rider.feetY,z);
-    const deck=boatSide ? boat.deckHeight(footPoint,.316) : live ? boat.deckHeight(footPoint,deckFootY) : -Infinity;
-    return Math.max(floor(x,z),ramp,deck);
+    const deck=boatSide ? boat.deckHeight(footPoint,height) : live ? boat.deckHeight(footPoint,deckFootY) : -Infinity;
+    return Math.max(ground,deck);
   }
 
   return {
