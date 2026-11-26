@@ -587,7 +587,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const cameraPivot=new THREE.Vector3(), cameraGoal=new THREE.Vector3();
   const cameraSide=new THREE.Vector3(),cameraForward=new THREE.Vector3();
   const streetCamera=createStreetCamera(city.cameraDistance);
-  let boomLength=3.2, cameraObstacle=null, cameraClose=false;
+  let boomLength=3.2, cameraObstacle=null, cameraClose=false, nearAvatar=false;
   const peekTarget=new THREE.Vector2();
   const groundMarker=new THREE.Group();
   groundMarker.name="Mission objective ground marker";
@@ -1043,6 +1043,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     wading=false;
     wetLine=dampness=0;
     streetCamera.reset();
+    nearAvatar=false;
     boomLength=3.2;
     gait.reset();
     weather.reset();
@@ -1898,6 +1899,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       teaRoom.cancelPush();
       teaRoom.cancelDrink();
       streetCamera.reset();
+      nearAvatar=false;
       document.body.classList.remove("yard-hauling");
       if(teaRoom.leaveChair(player)) gait.reset();
       document.body.classList.remove("tea-room-open","tea-seated");
@@ -2310,7 +2312,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
           vx,vz,allowShoulder);
         cameraObstacle=rig.obstacle;
         boomLength=rig.distance;
-        cameraClose=boomLength<(indoors ? .53 : .75);
+        const nearBody=indoors ? (allowShoulder ? .43 : .53) : .75;
+        nearAvatar=boomLength<nearBody+(nearAvatar ? .066 : 0);
+        cameraClose=nearAvatar;
         const lookAhead=lerp(2,.83,sawFraming);
         camera.lookAt(lerp(player.x+cameraForward.x*lookAhead,player.x-.23,seatFraming),
           cameraY+lerp(1.05+player.pitch*2.3,1.19,seatFraming),
@@ -2535,6 +2539,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if (view !== "mission") return;
     stopTeaShot();
     streetCamera.reset();
+    nearAvatar=false;
     firstPerson = !firstPerson;
     ui();
   }
