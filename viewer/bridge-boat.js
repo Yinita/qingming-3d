@@ -94,6 +94,8 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
   for (const [width,z] of [[.91,-.78],[1.10,.05],[.92,.83]]) {
     plank(boat,0,.199,z,width,.047,.172,timber);
   }
+  plank(boat,.362,.280,-.476,.263,.063,.427,trim);
+  for(const z of [-.633,-.316]) plank(boat,.340,.315,z,.216,.007,.021,timber);
   for (const [x,z] of [[.21,.49],[-.14,.75]]) {
     plank(boat,x,.16,z,.264,.253,.239,timber,.10);
     for (const offset of [-.088,.070]) plank(boat,x+offset,.167,z+.118,.021,.266,.018,trim,.10);
@@ -305,6 +307,7 @@ export function mooredSkiff(parent, center, timber, trim, boxGeometry) {
         return oar.localToWorld(target.set(-side*.408,0,0));
       },
       toWorld(point) { return boat.localToWorld(point); },
+      fromWorld(point) { return boat.worldToLocal(point); },
       attitude(target) { return boat.getWorldQuaternion(target); },
       deckHeight(point,height) {
         boat.localToWorld(deckOrigin.set(0,height,0));

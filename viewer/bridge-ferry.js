@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { detailedBox } from "./bridge-look.js";
+import { legRig } from "./bridge-gait.js";
 
 const dockZ=-50.63, ferryZ=-51.76, deckY=.258;
 const boardZ=dockZ-.065;
@@ -10,6 +11,7 @@ const moorings=[
 ];
 const yaw=-Math.PI/2;
 const seatZ=-.78, deckFootY=.049;
+const boardLength=.505, gangwayWidth=.48, boardingZ=seatZ+.304;
 const travel=moorings[1].boat-moorings[0].boat;
 const {damp,lerp,smoothstep}=THREE.MathUtils;
 
@@ -40,6 +42,7 @@ export function buildFerryLanding(root,city,surface) {
   root.add(landings);
   const colliders=[];
   const stands=[];
+  const gangways=[];
   for(const stop of moorings) {
     const group=new THREE.Group();
     group.name=stop.west ? "West ferry landing" : "East ferry landing";
@@ -60,6 +63,34 @@ export function buildFerryLanding(root,city,surface) {
     const boardWidth=(span-.6)/sections;
     const stand={x:stop.boat-seatZ,z:boardZ};
     stands.push(stand);
+    const hinge=new THREE.Vector3(stop.boat-boardingZ,deckY+.019,dockZ-.408);
+    const ramp=new THREE.Group();
+    ramp.name=stop.west ? "West hinged gangway" : "East hinged gangway";
+    group.add(ramp);
+    const boards=[],straps=[];
+    const part=(set,mat,w,h,d,x,y,z)=>{
+      const geometry=detailedBox(w,h,d,mat,.012,z*11);
+      geometry.translate(x,y,z);
+      set.push(geometry);
+    };
+    for(let i=0;i<4;i++) part(boards,worn,gangwayWidth/4-.004,.048,boardLength,(i-1.5)*gangwayWidth/4,-.024,-boardLength*.5);
+    for(const z of [-.075,-.222,-.385,-.544]) {
+      part(boards,worn,gangwayWidth+.015,.016,.038,0,.006,z);
+      for(const x of [-.168,.168]) part(straps,iron,.016,.006,.015,x,.017,z);
+    }
+    for(const x of [-.171,.171]) {
+      part(boards,worn,.057,.057,boardLength-.032,x,-.053,-boardLength*.51);
+      part(straps,iron,.047,.013,.153,x,.004,-.059);
+      box(iron,.063,.046,.114,hinge.x+x,hinge.y-.013,hinge.z+.048);
+    }
+    for(const [mat,parts] of [[worn,boards],[iron,straps]]) {
+      const model=new THREE.Mesh(mergeGeometries(parts),mat);
+      parts.forEach(geometry=>geometry.dispose());
+      model.castShadow=model.receiveShadow=true;
+      model.layers.enable(1);
+      ramp.add(model);
+    }
+    gangways.push({ramp,hinge,toe:new THREE.Vector3(),amount:0});
     for(let i=0;i<sections;i++) {
       const x=deckStart+dir*(i+.5)*boardWidth;
       box(i%5===1 ? worn : timber,boardWidth-.006,.054,walkWidth+Math.sin(i*6.11)*.041,x,deckY-.027,dockZ);
@@ -119,16 +150,69 @@ export function buildFerryLanding(root,city,surface) {
     }
   }
 
-  return {stands,show(on) {
+  const target=new THREE.Vector3(),axis=new THREE.Vector3(),backward=new THREE.Vector3(),side=new THREE.Vector3(),normal=new THREE.Vector3();
+  const face=new THREE.Matrix4(),up=new THREE.Vector3(0,1,0),point=new THREE.Vector3();
+  function poseRamp(i,amount,boat) {
+    const {ramp,hinge,toe}=gangways[i];
+    gangways[i].amount=amount;
+    const setback=.083;
+    toe.set(0,Math.sqrt(boardLength**2-setback**2),-setback);
+    if(amount>0) {
+      boat.toWorld(target.set(0,.317,boardingZ));
+      boat.toWorld(axis.set(1,.317,boardingZ)).sub(target).normalize();
+      target.sub(hinge);
+      const nearest=-target.dot(axis);
+      const radial=target.lengthSq()-nearest*nearest;
+      const onPad=THREE.MathUtils.clamp(nearest-Math.sqrt(Math.max(0,boardLength**2-radial)),.228,.484);
+      target.addScaledVector(axis,onPad);
+      toe.lerp(target,amount);
+    }
+    toe.setLength(boardLength).add(hinge);
+    backward.subVectors(hinge,toe).normalize();
+    side.crossVectors(up,backward).normalize();
+    normal.crossVectors(backward,side);
+    ramp.position.copy(hinge);
+    ramp.quaternion.setFromRotationMatrix(face.makeBasis(side,normal,backward));
+    ramp.updateMatrixWorld();
+  }
+  for(let i=0;i<gangways.length;i++) poseRamp(i,0,null);
+  return {stands,poseRamp,
+    footOnRamp(i,side,along,out) {
+      return gangways[i].ramp.localToWorld(out.set(side*.108,.015,-boardLength*along));
+    },
+    rampHeight(i,x,z) {
+      const {ramp,hinge,amount}=gangways[i];
+      if(amount<.985) return -Infinity;
+      normal.set(0,1,0).applyQuaternion(ramp.quaternion);
+      const y=hinge.y-(normal.x*(x-hinge.x)+normal.z*(z-hinge.z))/normal.y+.013;
+      ramp.worldToLocal(point.set(x,y,z));
+      return Math.abs(point.x)<=gangwayWidth*.52 && point.z>=-boardLength && point.z<=.011 ? y : -Infinity;
+    },
+    shoreFoot(i,side,out) {
+      const {hinge}=gangways[i];
+      return out.set(hinge.x+side*.107,deckY,dockZ-.22);
+    },
+    inspect:()=>gangways.map(({amount,toe})=>({amount,tip:toe.toArray()})),
+    show(on) {
     landings.visible=on;
     for(const item of colliders) item.enabled=on;
   }};
 }
 
-export function createFerry(landing,boat,floor) {
+export function createFerry(landing,boat,floor,onStep) {
   const worldSeat=new THREE.Vector3();
   const stance=[new THREE.Vector3(),new THREE.Vector3()];
   const stepFrom=new THREE.Vector3(), footPoint=new THREE.Vector3(), localCargo=new THREE.Vector3();
+  const path=stance.map((_,i)=>({
+    side:i===0 ? -1 : 1, waypoints:Array.from({length:4},()=>new THREE.Vector3()), contact:"dock",
+  }));
+  const times=[[0,.15,.30,.48,.64,.82],[.15,.30,.48,.64,.82,.985]];
+  const supportSlots=["dock","dock","ramp","deck"];
+  const angles=[0,0,0,Math.PI/2];
+  const ramps=[0,0];
+  const lastContact=["dock","dock"];
+  let transferPhase=0;
+  let boardSteps=0;
   const weight={x:0,y:0,z:0};
   const rider={y:0,feetY:0,facing:0,seated:0};
   let engaged=false, progress=0, speed=0, facingBank=0, motion=0, stroke=0, direction=0;
@@ -153,10 +237,13 @@ export function createFerry(landing,boat,floor) {
 
   function action(player) {
     if(passenger==="boarding" || passenger==="alighting") return null;
-    if(passenger==="aboard") return docked()!==null ? "下船 G" : null;
+    if(passenger==="aboard") {
+      const bank=docked();
+      return bank!==null && ramps[bank]>=.992 ? "下船 G" : null;
+    }
     const bank=nearby(player);
     if(bank<0) return null;
-    if(docked()===bank) return "登船 G";
+    if(docked()===bank) return ramps[bank]>=.992 ? "登船 G" : null;
     if(engaged && edge()===bank) return null;
     return "叫渡船 G";
   }
@@ -165,6 +252,10 @@ export function createFerry(landing,boat,floor) {
     if(!action(player)) return null;
     if(passenger==="aboard") {
       exitBank=docked();
+      const shore=landing.stands[exitBank];
+      stepFrom.set(shore.x,deckY,shore.z);
+      fromYaw=player.yaw;
+      lastContact.fill("deck");
       passenger="alighting";since=time;
       return "正在下船。";
     }
@@ -181,7 +272,8 @@ export function createFerry(landing,boat,floor) {
     facingBank=lastDock=exitBank=bank;
     stepFrom.set(player.x,floor(player.x,player.z),player.z);
     fromYaw=player.yaw;
-    return "扶住船沿跨上去。W 划向对岸，S 往回划。";
+    lastContact.fill("dock");
+    return "沿跳板登船。坐稳后按 W 划向对岸，S 往回划。";
   }
 
   function command() {
@@ -189,31 +281,89 @@ export function createFerry(landing,boat,floor) {
   }
 
   const faceYaw=yaw+Math.PI;
-  const transferTime=()=>passenger==="boarding" ? 1.16 : .91;
+  const transferTime=()=>passenger==="boarding" ? 2.27 : 2.11;
+  const oarsReady=()=>passenger==="aboard" && ramps[0]<.22 && ramps[1]<.22;
+  function syncGangways() {
+    for(let i=0;i<ramps.length;i++) landing.poseRamp(i,ramps[i],boat);
+  }
+
+  function transferFoot(i,t,anchor) {
+    const {side,waypoints}=path[i], [start,shore,ramp,deck]=waypoints;
+    const c=Math.cos(fromYaw),s=Math.sin(fromYaw);
+    start.set(stepFrom.x+c*side*.112,stepFrom.y,stepFrom.z-s*side*.112);
+    const y=floor(start.x,start.z);
+    if(Number.isFinite(y)) start.y=y;
+    landing.shoreFoot(exitBank,side,shore);
+    landing.footOnRamp(exitBank,side,i===0 ? .64 : .81,ramp);
+    boat.toWorld(deck.set(-side*.114,deckFootY,boardingZ));
+    for(let step=0;step<3;step++) {
+      const begin=times[i][step*2], end=times[i][step*2+1];
+      if(t>end && step<2) continue;
+      const travel=smoothstep(t,begin,end);
+      const source=waypoints[step], next=waypoints[step+1];
+      const lift=(step===2 ? .126 : .082)*Math.sin(Math.PI*travel);
+      anchor.lerpVectors(source,next,travel);
+      anchor.y+=lift;
+      anchor.side=side;
+      const startYaw=step===0 ? fromYaw : angles[step];
+      const endYaw=angles[step+1];
+      anchor.yaw=startYaw+Math.atan2(Math.sin(endYaw-startYaw),Math.cos(endYaw-startYaw))*travel;
+      anchor.pitch=.105*Math.sin(Math.PI*2*travel);
+      anchor.planted=travel===0 || travel===1;
+      path[i].contact=anchor.planted ? supportSlots[step+Number(travel===1)] : "swing";
+      return;
+    }
+  }
+
   function position(t,player) {
     boat.toWorld(worldSeat.set(0,.221,seatZ));
-    const destination=landing.stands[exitBank];
-    const incoming=passenger==="boarding";
-    const alignAcross=incoming ? smoothstep(t,0,.19) : 1;
-    const alignAlong=incoming ? smoothstep(t,.08,.40) : 1;
-    const amount=passenger==="aboard" ? 1 : incoming ? smoothstep(t,.40,1) : 1-smoothstep(t,0,1);
-    const fromX=incoming ? lerp(stepFrom.x,destination.x,alignAlong) : destination.x;
-    const fromZ=incoming ? lerp(stepFrom.z,destination.z,alignAcross) : destination.z;
-    const fromY=incoming ? lerp(stepFrom.y,deckY,alignAlong) : deckY;
-    const angleChange=Math.atan2(Math.sin(faceYaw-fromYaw),Math.cos(faceYaw-fromYaw));
-    player.x=lerp(fromX,worldSeat.x,amount);
-    player.z=lerp(fromZ,worldSeat.z,amount);
-    rider.seated=smoothstep(amount,.53,1);
-    rider.facing=fromYaw+angleChange*amount;
-    const jump=.24*Math.sin(Math.PI*amount);
-    rider.feetY=lerp(fromY,worldSeat.y-.167,amount)+jump;
-    rider.y=lerp(rider.feetY,worldSeat.y-.628,rider.seated);
+    if(passenger==="aboard") {
+      player.x=worldSeat.x;
+      player.z=worldSeat.z;
+      rider.facing=faceYaw;
+      rider.feetY=worldSeat.y-.167;
+      rider.y=worldSeat.y-.628;
+      rider.seated=1;
+      return;
+    }
+    const step=passenger==="boarding" ? t : 1-t;
+    transferPhase=step;
+    for(let i=0;i<stance.length;i++) transferFoot(i,step,stance[i]);
+    const turnOnDock=smoothstep(step,.015,.27);
+    const shoreYaw=fromYaw+Math.atan2(Math.sin(-fromYaw),Math.cos(-fromYaw))*turnOnDock;
+    rider.facing=lerp(shoreYaw,faceYaw,smoothstep(step,.61,.99));
+    rider.seated=smoothstep(step,.79,1);
+    const alignment=smoothstep(step,0,.098);
+    player.x=lerp(stepFrom.x,(stance[0].x+stance[1].x)*.5,alignment);
+    player.z=lerp(stepFrom.z,(stance[0].z+stance[1].z)*.5,alignment);
+    rider.feetY=Math.min(stance[0].y,stance[1].y);
+    const {separation,hip,upper,lower,ankle}=legRig;
+    const cos=Math.cos(rider.facing),sin=Math.sin(rider.facing);
+    const span=upper+lower-.012;
+    let standing=rider.feetY-.018;
+    for(const foot of stance) {
+      const dx=foot.x-player.x-foot.side*separation*cos;
+      const dz=foot.z-player.z+foot.side*separation*sin;
+      standing=Math.min(standing,foot.y+ankle-hip+Math.sqrt(Math.max(.06,span*span-dx*dx-dz*dz)));
+    }
+    player.x=lerp(player.x,worldSeat.x,rider.seated);
+    player.z=lerp(player.z,worldSeat.z,rider.seated);
+    rider.y=lerp(standing,worldSeat.y-.628,rider.seated);
   }
 
   function update(dt,time,player,drive) {
     if(!engaged) return;
     const growing=passenger==="aboard";
-    const thrust=growing ? drive*(facingBank===0 ? 1 : -1) : 0;
+    const bank=passenger==="boarding" || passenger==="alighting" ? exitBank : docked();
+    let thrust=growing ? drive*(facingBank===0 ? 1 : -1) : 0;
+    const departure=(bank===0 && thrust>0) || (bank===1 && thrust<0);
+    for(let i=0;i<ramps.length;i++) {
+      const desired=bank===i && !departure ? 1 : 0;
+      ramps[i]=damp(ramps[i],desired,desired ? 9 : 11,dt);
+      if(Math.abs(ramps[i]-desired)<.003) ramps[i]=desired;
+    }
+    syncGangways();
+    if(departure && ramps[bank]>.025) thrust=0;
     speed=damp(speed,thrust*1.95,2.8,dt);
     const old=progress;
     progress=THREE.MathUtils.clamp(progress+dt*speed/travel,0,1);
@@ -225,11 +375,19 @@ export function createFerry(landing,boat,floor) {
       motion+=dt*(6+Math.abs(speed)*1.40);
     }
     command();
-    boat.stroke(motion,stroke,direction,growing);
+    boat.stroke(motion,stroke,direction,oarsReady());
     if(!growing && passenger==="ashore") return;
     if(passenger==="boarding" || passenger==="alighting") {
       const t=Math.min(1,(time-since)/transferTime());
       position(t,player);
+      for(const [i,foot] of stance.entries()) {
+        const contact=path[i].contact;
+        if(lastContact[i]==="swing" && foot.planted) {
+          onStep(foot.x,foot.z,contact);
+          boardSteps++;
+        }
+        lastContact[i]=contact;
+      }
       if(t<1) return;
       if(passenger==="boarding") return void (passenger="aboard");
       passenger="ashore";
@@ -243,37 +401,50 @@ export function createFerry(landing,boat,floor) {
     position(1,player);
   }
 
-  function feet(player) {
+  function feet() {
+    if(passenger!=="aboard") return stance;
     for(const [i,foot] of stance.entries()) {
-      const side=i===0 ? -1 : 1;
-      boat.toWorld(foot.set(-side*.114,deckFootY,seatZ+.304));
-      const c=Math.cos(rider.facing),s=Math.sin(rider.facing);
-      foot.x=lerp(player.x+c*side*.115,foot.x,rider.seated);
-      foot.z=lerp(player.z-s*side*.115,foot.z,rider.seated);
-      foot.y=lerp(rider.feetY,foot.y,rider.seated);
-      foot.pitch=0;foot.side=side;foot.yaw=rider.facing;
+      foot.side=path[i].side;
+      boat.toWorld(foot.set(-foot.side*.114,deckFootY,boardingZ));
+      foot.pitch=0;
+      foot.yaw=rider.facing;
+      foot.planted=true;
     }
     return stance;
   }
 
+  function grounding(x,z) {
+    footPoint.set(x,rider.feetY,z);
+    if(passenger==="aboard") return boat.deckHeight(footPoint,deckFootY);
+    const ramp=landing.rampHeight(exitBank,x,z);
+    boat.fromWorld(footPoint);
+    const length=Math.abs(footPoint.z-boardingZ);
+    const boatSide=length<.235 && footPoint.x>=.228 && footPoint.x<=.509;
+    const live=length<.59 && Math.abs(footPoint.x)<.31;
+    footPoint.set(x,rider.feetY,z);
+    const deck=boatSide ? boat.deckHeight(footPoint,.316) : live ? boat.deckHeight(footPoint,deckFootY) : -Infinity;
+    return Math.max(floor(x,z),ramp,deck);
+  }
+
   return {
-    action,use,update,feet,rider,nearby,stands:landing.stands,
+    action,use,update,feet,rider,nearby,syncGangways,stands:landing.stands,
     arrivedAcross:()=>exitBank!==facingBank,
     deferTransfer(seconds) { since+=seconds; },
     viewYaw(yaw) {
-      const offset=Math.atan2(Math.sin(faceYaw-fromYaw),Math.cos(faceYaw-fromYaw));
-      return yaw+offset*rider.seated;
+      const turn=rider.facing-fromYaw;
+      return yaw+Math.atan2(Math.sin(turn),Math.cos(turn));
+    },
+    gangwayPitch() {
+      if(passenger!=="boarding" && passenger!=="alighting") return 0;
+      return -.83*smoothstep(transferPhase,0,.28)*(1-smoothstep(transferPhase,.69,1));
     },
     active:()=>passenger!=="ashore",
     atMooring:()=>!engaged,
-    rowing:()=>passenger==="aboard" ? .18+.82*stroke : 0,
+    rowing:()=>oarsReady() ? .18+.82*stroke : 0,
     grip:boat.grip,
     sync(time,player) { position(Math.min(1,(time-since)/transferTime()),player); },
     cargoAttitude:boat.attitude,
-    grounding(x,z) {
-      footPoint.set(x,rider.feetY,z);
-      return lerp(rider.feetY,boat.deckHeight(footPoint,deckFootY),rider.seated);
-    },
+    grounding,
     cargo(fallback) {
       boat.toWorld(localCargo.set(0,.229,.05));
       weight.x=lerp(fallback.x,localCargo.x,rider.seated);
@@ -282,13 +453,18 @@ export function createFerry(landing,boat,floor) {
       return weight;
     },
     reset() {
-      engaged=false;progress=speed=motion=stroke=direction=trips=0;passenger="ashore";
+      engaged=false;progress=speed=motion=stroke=direction=trips=boardSteps=0;passenger="ashore";
       rider.y=rider.feetY=rider.facing=rider.seated=0;
+      ramps.fill(0);
       boat.reset();
+      syncGangways();
     },
     inspect(player) {
       return {phase:passenger,engaged,near:nearby(player),docked:docked(),progress,speed,trips,
-        standingY:rider.y,feetY:rider.feetY,stroke,stands:landing.stands};
+        standingY:rider.y,feetY:rider.feetY,stroke,stands:landing.stands,gangways:landing.inspect(),boardSteps,
+        transfer:passenger==="boarding" || passenger==="alighting" ? {
+          phase:transferPhase,feet:stance.map((foot,i)=>({position:foot.toArray(),planted:foot.planted,contact:path[i].contact})),
+        } : null};
     },
   };
 }

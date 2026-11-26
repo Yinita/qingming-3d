@@ -213,7 +213,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   bridgeLook.leafSource(foreground.shedLeaf);
   const ferryLanding=buildFerryLanding(root,city,material);
   ferryLanding.show(false);
-  const ferry=createFerry(ferryLanding,bridgeLook.ferry,floor);
+  const ferry=createFerry(ferryLanding,bridgeLook.ferry,floor,(x,z,support)=>
+    audio.play("wood",x,z,support==="ramp" ? .29 : .23,"ferryStep",.85,hasCargo()));
   const passengerCarrier=()=>ferry.active() ? ferry : freight.active() ? freight : null;
   const cargoAttitude=new THREE.Quaternion(),oarGrip=new THREE.Vector3();
   const stallFloor=new THREE.Box3().setFromObject(stonePlatform);
@@ -1974,7 +1975,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const doorLook=teaRoom.pushLook();
         const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : player.yaw+(doorLook?.yaw??0);
         const haul=yard.gripWeight();
-        const pitch=player.pitch-.048*seat-.60*haul+(doorLook?.pitch??0)+teaRoom.drinkLook();
+        const ferryLook=carrier===ferry ? ferry.gangwayPitch() : 0;
+        const pitch=player.pitch-.048*seat-.60*haul+(doorLook?.pitch??0)+teaRoom.drinkLook()+ferryLook;
         const eyeOffset=.083*seat+.082*haul-.025*sawFraming-(doorLook?.forward??0)+
           (chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
         const lateral=carrier===freight ? .28*seat : -.064*sawFraming;
@@ -2394,6 +2396,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if (view !== "mission") return;
       bridgeLook.frame(elapsed,Math.min(.07,elapsed-lastPrepare));
       lastPrepare=elapsed;
+      ferry.syncGangways();
       if(ferry.active()) renderPassenger();
       bridgeLook.prepare(renderer,scene,camera);
       weather.prepare(renderer,scene,camera);
