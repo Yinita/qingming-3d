@@ -14,6 +14,7 @@ import { createCounterDelivery } from "./bridge-counter-delivery.js";
 import { createStreetCamera } from "./bridge-street-camera.js";
 import { buildTeaRoom } from "./bridge-tearoom.js";
 import { buildConsignment, parcelSize } from "./bridge-consignment.js";
+import { createStreetRoute } from "./bridge-street-route.js";
 import { createWorkyard, workyardEntry } from "./bridge-workyard.js";
 import { createJoinery } from "./bridge-joinery.js";
 import { createBacklane, drainBridgeApproach } from "./bridge-backlane.js";
@@ -515,13 +516,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let stockFraming=0;
   let wellLookYaw=0, wellLookPitch=0;
   let guideMarket=false, guideFerry=false, guideRoom=false, guideFreight=false, guideYard=false;
-  let freightHeld=null, freightTransfer=null, freightGuideStep=0;
-  const backstreetGuide=[
-    {x:-38.42,z:routeZ,label:"沿街向东 · 瓷器货栈"},
-    {x:-38.42,z:-33.83,label:"绕过摊位 · 东巷"},
-    {x:-44.90,z:-33.83,label:"沿后巷往西"},
-    {x:-44.90,z:-36.21,label:"瓷器货栈"},
-  ];
+  let freightHeld=null, freightTransfer=null;
+  const freightRoute=createStreetRoute(root,floor);
   const freightTarget=new THREE.Vector3(), freightRotation=new THREE.Quaternion(), cargoUp=new THREE.Vector3(0,1,0);
   const freightStage=()=>state.freightStage??"ready";
   const hasCargo=()=>state.phase==="carrying" || Boolean(freightHeld);
@@ -766,6 +762,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       guideRoom && !teaRoom.atDoor(player) && !teaRoom.contains(player.x,player.z);
     if(passengerCarrier() || teaRoom.chairActive() || inspectingChest || chestFraming>.12 || chestTransfer.action ||
       selfDelivering() || well.active() || irrigation.locked() || harvest.locked() || grain.locked() || stock.locked() || stock.held() && !toStockBank) {
+      freightRoute.hide();
       groundMarker.visible=beacon.visible=startPillar.visible=false;
       waypoint.hidden=true;
       return;
@@ -780,10 +777,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const pending=phase==="waiting" && !state.started && !toWell && !toStock && !toGarden && !fieldAim;
     startPillar.visible=beacon.visible && pending;
     waypoint.hidden=!groundMarker.visible && !shopper;
+    const freightSelected=toFreight && !waypoint.hidden && !fieldAim && !wateringBed && !harvestBasket &&
+      !toDrain && !toCourt && !courtGoal && !toStock && !toGarden && !toWell && !toYard;
+    const freightAim=freightSelected && canUseConsignment() ? markFreightRoute() : null;
+    if(!freightAim) freightRoute.hide();
+    if(freightSelected && !freightAim) {
+      groundMarker.visible=beacon.visible=false;
+      waypoint.hidden=true;
+    }
     if(waypoint.hidden) return;
-    if(toFreight && freightGuideStep<backstreetGuide.length &&
-        distance(player,backstreetGuide[freightGuideStep])<.74) freightGuideStep++;
-    const freightAim=toFreight ? freightGoal() : null;
+    if(freightAim?.statusOnly || freightAim?.distance>0) groundMarker.visible=beacon.visible=false;
     const aroundFence=toDrain && player.x>-75.39 && player.z<-42.1;
     const at=fieldAim ?? wateringBed ?? harvestBasket ?? (toDrain ? (aroundFence ? {x:-74.42,z:drainBridgeApproach.z} : drainBridgeApproach) :
       toCourt ? {x:-79.2,z:drainBridgeApproach.z} : courtGoal ??
@@ -793,7 +796,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
     markerGold.material.color.setHex(atMarket ? 0xcbd49b : state.started ? 0xefd99a : 0xffc863);
-    const hover=y+(phase==="waiting" || courtGoal || toWell || toStock || toGarden || fieldAim ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
+    const hover=y+(freightAim ? freightAim.arrived ? 1.13 : .68 :
+      phase==="waiting" || courtGoal || toWell || toStock || toGarden || fieldAim ? 1.06 : atMarket || shopper ? 1.50 : 2.1)+.085*Math.sin(elapsed*3.6);
     beacon.position.set(x,hover,z);
     if(startPillar.visible) {
       const bottom=y+.26, top=hover-.23;
@@ -801,7 +805,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       startPillar.scale.y=top-bottom;
     }
     beacon.rotation.y=elapsed*.92;
-    beacon.scale.setScalar(pending ? 1.39 : atMarket ? .72 : 1);
+    groundMarker.scale.setScalar(freightAim ? .43 : 1);
+    beacon.scale.setScalar(freightAim ? .44 : pending ? 1.39 : atMarket ? .72 : 1);
     waypoint.dataset.start=String(pending);
     waypoint.classList.toggle("market-waypoint",atMarket || shopper);
     markerPoint.set(x,hover+.35,z);
@@ -827,12 +832,12 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.top=clampedY+"px";
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
-    const metres=Math.hypot(x-player.x,z-player.z);
+    const metres=freightAim?.distance??Math.hypot(x-player.x,z-player.z);
     const target=fieldAim?.label ?? (wateringBed ? "待浇菜畦" : harvestBasket ? (player.x>gardenGate.x ? "回菜园" : "收菜竹筐") :
       toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" : courtGoal ? courtGoal.label :
       toStock ? (toStockBank ? "石槽北侧" : "拴驴桩") : toGarden ? "菜园" : toWell ? "西岸汲水井" : toYard ? "西岸料场" : freightAim?.label??(atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
       phase==="waiting" ? "取茶叶箱" : "茶铺 · 交货处"));
-    const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
+    const text=freightAim?.arrived ? target : target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
     if(text!==markerText) {markerText=text;waypoint.textContent=text;}
     waypoint.hidden=false;
   }
@@ -1174,7 +1179,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     guideMarket=guideFerry=guideRoom=guideFreight=guideYard=guideWell=guideStock=guideGarden=false;
     guideCourt=false;
     freightHeld=freightTransfer=null;
-    freightGuideStep=0;
+    freightRoute.clear();
     consignment.visible(false);
     ferry.reset();
     freight.reset();
@@ -1230,6 +1235,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     gardenTrade.restore();
     if(saleChanged) dialogue.clear();
     freightHeld=freightTransfer=null;
+    freightRoute.clear();
     consignment.visible(view==="mission" && state.phase==="delivered");
     restoreMarket();
     stopTeaShot();
@@ -1983,18 +1989,43 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function freightGoal() {
-    if(guideFreight && !freightHeld && freightStage()!=="delivered" && freightGuideStep<backstreetGuide.length) {
-      if(!(freightStage()==="loaded" && freightGuideStep>=2)) {
-        const next=backstreetGuide[freightGuideStep];
-        return {point:next,label:next.label};
-      }
+    const stage=freightStage();
+    if(freightHeld==="unloaded") return {id:"handIn",...consignment.destination.foot,reach:.73,label:"北巷收货台"};
+    if(freightHeld==="picked" || stage==="loaded") {
+      const loading=freightHeld==="picked", depot=loading ? 0 : 1;
+      const docked=freight.depot()===depot;
+      const {x,z}=docked ? freight.latchPoint(freightTarget) : freight.stopPoint(depot,freightTarget,0,2.04);
+      return {id:loading ? "load" : "unload",x,z,reach:docked ? .65 : .36,docked,
+        label:loading ? "车尾 · 装瓷器" : "北巷 · 卸瓷器",
+        prepare:!docked ? null : loading ? freightBoardingClear : freightPackClear};
     }
-    if(freightHeld==="unloaded") return {point:consignment.destination.approach,label:"北巷收货台"};
-    if(freightHeld==="picked") return {point:freight.depot()===0 ? freight.latchPoint(freightTarget) :
-      freight.stopPoint(0,freightTarget),label:"车尾 · 装瓷器"};
-    if(freightStage()==="loaded") return {point:freight.depot()===1 ? freight.latchPoint(freightTarget) :
-      freight.stopPoint(1,freightTarget),label:"北巷 · 卸瓷器"};
-    return {point:consignment.origin.approach,label:"瓷器货栈"};
+    return {id:"pick",...consignment.origin.foot,reach:.74,label:"瓷器货栈",prepare:freightPackClear};
+  }
+
+  function freightPackClear(point,yaw) {
+    return !cargoObstacle(point.x,point.z,yaw,null,.135,null,parcelSize);
+  }
+
+  function freightBoardingClear(point) {
+    return Boolean(freight.action(point,walkable,false));
+  }
+
+  function freightRoutePass(x,z,yaw) {
+    return canStep(x,z,workerRadius+.012) && wadeDepth(x,z)<.035 &&
+      (!freightHeld || freightPackClear({x,z},yaw));
+  }
+
+  function markFreightRoute() {
+    const goal=freightGoal(),action=consignmentAction();
+    if(action && (!goal.prepare || goal.prepare(player,bodyYaw))) {
+      freightRoute.clear();
+      return {point:goal,label:consignmentLabels[action],arrived:true};
+    }
+    const route=freightRoute.guide(player,goal,freightRoutePass,elapsed);
+    if(route && route.distance!==0) return route;
+    const label=!route ? "货路暂时不通" : goal.docked===false ? "等货车靠站" :
+      action && goal.id!=="load" ? "转身给箱子留出空位" : goal.label;
+    return {point:route ? goal : player,label,arrived:true,statusOnly:!route};
   }
 
   function canUseConsignment() {
@@ -2021,11 +2052,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function toggleFreightGuide() {
     guideFreight=!guideFreight;
+    freightRoute.clear();
     if(guideFreight) {
-      guideRoom=guideMarket=guideYard=guideWell=guideStock=guideGarden=false;
-      if(freightStage()==="ready" && distance(player,consignment.origin.foot)<2.5) freightGuideStep=4;
-      else if(player.z>-34.2) freightGuideStep=2;
-      else freightGuideStep=player.x>-39 ? 1 : 0;
+      guideRoom=guideMarket=guideYard=guideWell=guideStock=guideGarden=guideCourt=guideFields=false;
       hint.textContent=freightStage()==="loaded" ? "到北巷卸瓷器，运到旁边的收货台。" :
         "到蒸糕摊后街取瓷器。装车后可以随车去北巷。";
     }
@@ -2070,7 +2099,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     clearPlayerControl();
     guideRoom=guideMarket=false;
     guideFreight=action!=="handIn";
-    freightGuideStep=4;
+    freightRoute.clear();
     ui();
     canvas.focus({preventScroll:true});
   }
@@ -2106,7 +2135,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   }
 
   function inspectConsignment() {
-    return {stage:freightStage(),held:freightHeld,transfer:Boolean(freightTransfer),goal:freightGoal(),
+    const {x,z,label}=freightGoal();
+    return {stage:freightStage(),held:freightHeld,transfer:Boolean(freightTransfer),
+      goal:{point:{x,z},label},route:freightRoute.inspect(),
       origin:consignment.origin.foot,destination:consignment.destination.foot,
       position:consignment.parcel.position.toArray()};
   }
@@ -2346,6 +2377,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function setView(mode) {
     view = mode;
+    if(mode!=="mission") freightRoute.hide();
     stock.show(mode==="mission");
     if(mode!=="mission") irrigation.load(state.irrigation);
     if(mode!=="mission") harvest.cancel();
