@@ -283,6 +283,13 @@ export function createPlayLighting(scene, renderer, center, ambient, sun) {
     sky.visible = key.visible = active;
     ambient.visible = sun.visible = !active;
   }
+  activate.follow=(x,z)=>{
+    const weight=THREE.MathUtils.smoothstep(-x,82.6,89.9);
+    const aimX=weight ? Math.round((center.x+.7+(x-center.x-.7)*weight)*32)/32 : center.x+.7;
+    const aimZ=weight ? Math.round((center.z+(z-center.z)*weight)*32)/32 : center.z;
+    key.target.position.set(aimX,0,aimZ);
+    key.position.set(aimX-9.7,17,aimZ-7);
+  };
   const dryBackground=scene.background.clone(),rainBackground=new THREE.Color(0xb4c0b8);
   const drySky=sky.color.clone(),rainSky=new THREE.Color(0xd1e0df);
   const dryKey=key.color.clone(),rainKey=new THREE.Color(0xe5eeeb);

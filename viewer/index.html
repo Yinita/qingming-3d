@@ -184,8 +184,8 @@
   }
   body.stock-leading #missionHud > .mission-actions:has(#missionExit),
   body.stock-leading #missionHud > .mission-actions button:not(#missionCamera):not(#missionStockRelease) { display:none; }
-  body.pail-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionPail):not(#missionPailSetDown):not(#missionGarden):not(#missionGardenGuide) { display:none; }
-  body.crop-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionHarvest):not(#missionGarden):not(#missionGardenGuide):not(#missionUndo) { display:none; }
+  body.pail-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionPail):not(#missionPailSetDown):not(#missionGarden):not(#missionFieldDoor):not(#missionGardenGuide) { display:none; }
+  body.crop-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionHarvest):not(#missionGarden):not(#missionFieldDoor):not(#missionGardenGuide):not(#missionUndo) { display:none; }
   body.garden-trading #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather) { display:none; }
   body.stock-leading #missionHud :is(.mission-title, #missionProgress, #missionSteps, #missionObjective,
     .mission-metrics:not(#missionStockStatus), #missionEconomy, #missionSpeech, .mission-controls) { display:none; }
@@ -257,8 +257,8 @@
 { "imports": {
   "three": "./vendor/three/build/three.module.js",
   "three/addons/": "./vendor/three/examples/jsm/",
-  "./bridge-look.js": "./bridge-look.js?v=136",
-  "./bridge-earth.js": "./bridge-earth.js?v=165",
+  "./bridge-look.js": "./bridge-look.js?v=168",
+  "./bridge-earth.js": "./bridge-earth.js?v=168",
   "./bridge-canal-bed.js": "./bridge-canal-bed.js?v=18",
   "./bridge-joinery.js": "./bridge-joinery.js?v=143",
   "./bridge-backlane.js": "./bridge-backlane.js?v=162",
@@ -266,7 +266,7 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=146",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=167",
+  "./bridge-mission.js": "./bridge-mission.js?v=168",
   "./bridge-street-camera.js": "./bridge-street-camera.js?v=161",
   "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=159",
   "./bridge-chest-transfer.js": "./bridge-chest-transfer.js?v=159",
@@ -285,8 +285,8 @@
   "./bridge-people.js": "./bridge-people.js?v=167",
   "./bridge-head.js": "./bridge-head.js?v=1643",
   "./bridge-head-data.js": "./bridge-head-data.js?v=1612",
-  "./bridge-street.js": "./bridge-street.js?v=164",
-  "./bridge-street-ground.js": "./bridge-street-ground.js?v=164",
+  "./bridge-street.js": "./bridge-street.js?v=168",
+  "./bridge-street-ground.js": "./bridge-street-ground.js?v=168",
   "./bridge-foreground.js": "./bridge-foreground.js?v=131",
   "./bridge-boat.js": "./bridge-boat.js?v=156",
   "./bridge-consignment.js": "./bridge-consignment.js?v=128",
@@ -303,12 +303,15 @@
   "./bridge-steamer.js": "./bridge-steamer.js?v=122",
   "./bridge-touch.js": "./bridge-touch.js?v=162",
   "./bridge-stock-lead.js": "./bridge-stock-lead.js?v=163",
-  "./bridge-garden.js": "./bridge-garden.js?v=167",
+  "./bridge-garden.js": "./bridge-garden.js?v=168",
   "./bridge-crops.js": "./bridge-crops.js?v=167",
   "./bridge-harvest.js": "./bridge-harvest.js?v=167",
   "./bridge-garden-trade.js": "./bridge-garden-trade.js?v=167",
   "./bridge-irrigation.js": "./bridge-irrigation.js?v=165",
-  "./bridge-west-bank.js": "./bridge-west-bank.js?v=165",
+  "./bridge-west-bank.js": "./bridge-west-bank.js?v=168",
+  "./bridge-field-layout.js": "./bridge-field-layout.js?v=168",
+  "./bridge-fields.js": "./bridge-fields.js?v=168",
+  "./bridge-field-shed.js": "./bridge-field-shed.js?v=168",
   "./bridge-well.js": "./bridge-well.js?v=165",
   "./bridge-street-trees.js": "./bridge-street-trees.js?v=164",
   "./bridge-leaf-light.js": "./bridge-leaf-light.js?v=123"
@@ -382,7 +385,7 @@
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
-<div id="seal">入卷 v1.67</div>
+<div id="seal">入卷 v1.68</div>
 <script id="sceneEntry" type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -391,6 +394,7 @@ import { bridgeAnchor, createBridgeMission } from "./bridge-mission.js";
 import { canalDepth, canalHalfLength, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetScene } from "./bridge-street.js";
 import { createStreetTerrain } from "./bridge-street-ground.js";
+import { fieldsFooting } from "./bridge-field-layout.js";
 import { cutDrainApron } from "./bridge-backlane.js";
 import { wellSite } from "./bridge-well.js";
 import { createEarthMaterial } from "./bridge-earth.js";
@@ -690,7 +694,7 @@ function setMode(m) {
 // --- walk controls ---
 const walk = { yaw: 0, pitch: -0.05, pos: new THREE.Vector3(0, 1.6, 2) };
 const walkSupport=(x,z)=>Math.max(street.streetHeight(x,z),street.housing.workshop.support(x,z));
-const walkClear=(x,z,feet)=>!street.collisions.blocking(x,z,feet,.31,1.67);
+const walkClear=(x,z,feet)=>fieldsFooting(x,z) && !street.collisions.blocking(x,z,feet,.31,1.67);
 function clearWalkSpawn() {
   const {x,y,z}=walk.pos, feet=y-1.54;
   if(walkClear(x,z,feet)) return;
@@ -819,6 +823,7 @@ renderer.setAnimationLoop(now => {
   if(street.root.visible) street.updateTrees(cam,now*.001);
   if(street.root.visible && !mission?.restartOpen) {
     street.garden.breeze(now*.001,camPos);
+    street.fields.flow(now*.001);
     const {x,y,z}=walk.pos;
     const observer=mode==="walk" ? {x,y:y-1.54,z} : mission?.livestockVisitor();
     street.livestock.update(dt,now*.001,camPos,observer);

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { canalBankGLSL } from "./bridge-canal-bed.js";
 import { cropBeds, westBankEarthGLSL } from "./bridge-west-bank.js";
+import { fieldsGLSL } from "./bridge-field-layout.js";
 
 const textureRoot="../data/bridge-finish/earth/";
 const layers=[
@@ -64,6 +65,7 @@ export function createEarthMaterial(origin,load) {
           return vec2(q.x,q.y-skew*q.x-.16*sin(q.x*.61));
         }
         ${westBankEarthGLSL}
+        ${fieldsGLSL}
       `)
       .replace("#include <color_fragment>",`#include <color_fragment>
         vec2 pEarth=earthPoint;
@@ -115,6 +117,12 @@ export function createEarthMaterial(origin,load) {
         vec3 earthColor=mix(pathPigment,vergePigment,edge);
         earthColor=mix(earthColor,earthColor*vec3(.71,.86,.63),weeds*.61);
         earthColor*=mix(.88,1.16,areaVariation);
+        vec3 fieldTint=fieldPigments(pEarth,patchVariation);
+        float farmWalk=fieldCartway(pEarth);
+        earthColor=mix(earthColor,earthColor*vec3(.73,.91,.62),fieldTint.x);
+        earthColor=mix(earthColor,earthColor*vec3(.64,.58,.47),fieldTint.y*.71);
+        earthColor=mix(earthColor,pathPigment*vec3(.93,.87,.79),farmWalk*.67);
+        earthColor=mix(earthColor,earthColor*vec3(.56,.62,.61),fieldTint.z*.74);
         float irrigationWet;
         float loam=gardenLoam(pEarth,earthNoise(pEarth*16.)-.47,irrigationWet);
         vec3 loamPigment=vec3(.142,.092,.054)*
@@ -131,7 +139,7 @@ export function createEarthMaterial(origin,load) {
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         float dryRough=mix(mix(compactSurface.b,alternateSurface.b,packedWeight),vergeSurface.b,edge);
-        float earthRough=mix(dryRough-.19*wheel-.17*earthMoisture,.92-.33*irrigationWet,loam);
+        float earthRough=mix(dryRough-.19*wheel-.17*earthMoisture-.19*fieldTint.z,.92-.33*irrigationWet,loam);
         roughnessFactor=mix(roughnessFactor,clamp(earthRough,.54,1.),earthReady);
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>

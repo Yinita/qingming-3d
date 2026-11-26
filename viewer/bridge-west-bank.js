@@ -1,4 +1,5 @@
 import { MathUtils } from "three";
+import { fieldRelief,insideFields } from "./bridge-field-layout.js";
 
 const {smoothstep}=MathUtils;
 export const gardenBounds={west:-82.54,east:-76.18,south:-35.94,north:-28.72};
@@ -13,10 +14,16 @@ export const westBankTrees=[
   [-83.14,-34.55,4.95,4.85],[-82.25,-28.42,4.32,4.67],[-77.03,-28.45,5.25,4.32],
   [-87.26,-29.98,5.00,4.61],[-88.17,-38.25,4.76,4.27],[-94.35,-32.07,5.84,5.19],
   [-102.54,-28.45,6.25,5.30],[-115.01,-37.42,6.93,4.61],[-110.45,-19.01,7.30,5.17],
+  [-85.34,-28.81,3.62,4.02],[-87.13,-26.46,3.92,4.28],[-84.99,-25.16,3.68,3.89],
+  [-93.50,-24.40,4.95,5.03],[-98.32,-24.73,4.64,4.44],[-99.93,-26.86,4.86,4.90],
+  [-106.81,-31.25,4.62,4.31],[-105.58,-26.21,5.16,5.33],[-107.49,-38.35,5.17,4.75],
+  [-99.01,-42.87,5.02,4.34],[-102.17,-42.46,4.38,3.85],[-111.40,-28.94,6.43,5.82],
+  [-111.66,-34.83,4.91,4.76],[-113.12,-31.70,5.71,5.44],[-116.11,-27.21,5.48,4.98],
+  [-117.48,-34.89,6.04,5.43],[-120.56,-29.76,5.37,5.18],[-114.39,-40.56,5.14,4.60],
 ].map(([x,z,h,w],i)=>({id:"o"+(9017+i*37),x,z,h,w,detail:i<3 ? .78 : i<5 ? .51 : .34}));
 
 export function westBankAccess(x,z) {
-  return x>=gardenBounds.west && x<=vergeEdge && z>=gardenBounds.south && z<=gardenBounds.north;
+  return insideFields(x,z) || (x>=gardenBounds.west && x<=vergeEdge && z>=gardenBounds.south && z<=gardenBounds.north);
 }
 
 export function westBankRelief(x,z) {
@@ -36,7 +43,7 @@ export function westBankRelief(x,z) {
     if(row>.45 || end>bed.length*.5+.14) continue;
     y+=.134*(1-smoothstep(row,.13,.44))*(1-smoothstep(end,bed.length*.41,bed.length*.5+.13));
   }
-  return y;
+  return y+fieldRelief(x,z);
 }
 
 // The painted earth, collision bounds, and fitted ground all share the gate coordinates.

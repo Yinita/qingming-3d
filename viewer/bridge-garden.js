@@ -6,6 +6,7 @@ import { createGardenHarvest } from "./bridge-harvest.js";
 import { createGardenTrade } from "./bridge-garden-trade.js";
 import { detailedBox } from "./bridge-look.js";
 import { cropBeds,gardenBounds,gardenGate,vergeEdge } from "./bridge-west-bank.js";
+import { fieldOpening } from "./bridge-field-layout.js";
 
 const {damp,lerp,smoothstep}=THREE.MathUtils;
 const {west,east,north,south}=gardenBounds;
@@ -92,7 +93,8 @@ export function buildKitchenGarden(root,city,surface,height) {
     Object.assign(solid,{x:middleX,z:middleZ,yaw:angle,bottom:feet-.11,top:feet+1.13});
     if(gateSide) gatePanels.add(solid);
   }
-  fence(west,south,west,north);
+  fence(west,south,west,fieldOpening.z-fieldOpening.width*.5);
+  fence(west,fieldOpening.z+fieldOpening.width*.5,west,north);
   fence(west,south,east,south);
   fence(west,north,east,north);
   fence(east,south,east,pivotZ,true);

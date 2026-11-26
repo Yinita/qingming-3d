@@ -80,15 +80,17 @@ export function createStreetTerrain(width,depth) {
   function coordinates(start,end,ranges,coarse=.72) {
     const axis=[start];
     for(let value=start;value<end;) {
-      const increment=ranges.some(([min,max])=>value>=min && value<max) ? .115 : coarse;
+      const range=ranges.find(([min,max])=>value>=min && value<max);
+      const increment=range ? (range[2]??.115) : coarse;
       value=Math.min(value+increment,end);
       axis.push(value);
     }
     return axis;
   }
   const apronRanges=pavedAprons.map(({x,w})=>[x-w*.5-.5,x+w*.5+.5]);
-  const west=coordinates(-width/2-9,-width/2,[[-83.5,-74]]);
-  const fields=coordinates(-width/2-92,-width/2-9,[],2.15);
+  const fieldRanges=[[-91.5,-87.6,.128],[-110,-84,.358]];
+  const west=coordinates(-width/2-9,-width/2,[...fieldRanges,[-83.5,-74]]);
+  const fields=coordinates(-width/2-92,-width/2-9,fieldRanges,2.15);
   const xs=[...fields.slice(0,-1),...west.slice(0,-1),
     ...coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges])];
   const zs=coordinates(-depth,0,[[-52,-14],[-14,-11]]);
