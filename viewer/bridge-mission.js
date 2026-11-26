@@ -1304,9 +1304,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const {x,y,z}=crateMesh.position;
     const aim=state.crate.yaw+chestOrbit;
     const distance=Math.max(.92,.52/camera.aspect);
-    chestLook.set(x,y+.412,z);
+    // At the tea counter, keep the eye inside the hanging shop sign.
+    const atCounter=state.phase==="delivered";
+    const front=atCounter ? .42 : distance;
+    const rise=atCounter ? THREE.MathUtils.clamp(.36+chestTilt*distance,1.08,1.53) : .32+chestTilt*distance;
+    chestLook.set(x,y+(atCounter ? .68 : .412),z-(atCounter ? .062 : 0));
     chestClipStart.set(x,y+.66,z);
-    chestEye.set(x+distance*Math.sin(aim),y+.32+chestTilt*distance,z+distance*Math.cos(aim));
+    chestEye.set(x+front*Math.sin(aim),y+rise,z+front*Math.cos(aim));
     const length=chestEye.distanceTo(chestClipStart);
     const clearance=city.cameraDistance(chestClipStart,chestEye,.06).distance;
     if(clearance<length) chestEye.lerpVectors(chestClipStart,chestEye,clearance/length);
