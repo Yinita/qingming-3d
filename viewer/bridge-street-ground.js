@@ -3,6 +3,7 @@ import { buildStreetworks,pavedAprons,streetworksRelief } from "./bridge-streetw
 import { canalDepth, waterHeight } from "./bridge-canal-bed.js";
 import { backlaneRelief } from "./bridge-backlane.js";
 import { wellSite } from "./bridge-well.js";
+import { gardenGate,westBankRelief } from "./bridge-west-bank.js";
 
 // Shallow stonework set into the dirt at the market and bridge approaches.
 const lanes=[
@@ -71,23 +72,25 @@ export function streetSurfaceHeight(x,z) {
     height-=.049*(1-smoothstep(distance,.20,1.35));
     height+=.006*Math.exp(-(((distance-1.03)/.17)**2));
   }
-  return height+streetworksRelief(x,z)+backlaneRelief(x,z);
+  return height+streetworksRelief(x,z)+backlaneRelief(x,z)+westBankRelief(x,z);
 }
 
 export function createStreetTerrain(width,depth) {
   // Densify the regular plane only where a tread or road shoulder can be seen.
-  function coordinates(start,end,ranges) {
+  function coordinates(start,end,ranges,coarse=.72) {
     const axis=[start];
     for(let value=start;value<end;) {
-      const increment=ranges.some(([min,max])=>value>=min && value<max) ? .115 : .72;
+      const increment=ranges.some(([min,max])=>value>=min && value<max) ? .115 : coarse;
       value=Math.min(value+increment,end);
       axis.push(value);
     }
     return axis;
   }
   const apronRanges=pavedAprons.map(({x,w})=>[x-w*.5-.5,x+w*.5+.5]);
-  const west=coordinates(-width/2-9,-width/2,[[-78.35,-74]]);
-  const xs=[...west.slice(0,-1),...coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges])];
+  const west=coordinates(-width/2-9,-width/2,[[-83.5,-74]]);
+  const fields=coordinates(-width/2-92,-width/2-9,[],2.15);
+  const xs=[...fields.slice(0,-1),...west.slice(0,-1),
+    ...coordinates(-width/2,width/2,[[-75,-63],[-52,-33],[15,38],...apronRanges])];
   const zs=coordinates(-depth,0,[[-52,-14],[-14,-11]]);
   const position=[],uv=[],index=[],wellOpening=[];
   for(const z of zs) for(const x of xs) {
@@ -482,6 +485,8 @@ export function buildStreetGround(root,origin,surface,anchor,terrain) {
     {x:-43.68,z:anchor.z-.29,length:9.58,width:3.29,seed:835,name:"East bridge approach"},
   ];
   for(const approach of approaches) addPaving({...approach,angle:Math.PI/2,coursed:true});
+  addPaving({x:-79.19,z:gardenGate.z,length:5.77,width:1.09,seed:642,
+    angle:Math.PI/2,coursed:true,name:"Kitchen garden stone path"});
   root.add(roadsideGrass(origin,terrain));
   const streetworks=buildStreetworks(root,surface,terrain,addSurface);
   function surfaceHeight(cells,x,z) {

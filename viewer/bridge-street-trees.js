@@ -158,6 +158,7 @@ export function buildStreetTrees(root,entries,surface,solids,center,options={}) 
 
   for(const o of entries) {
     const rng=randomFor(o.id), h=clamp(o.h*.91,2.7,10.65);
+    const detail=o.detail??1;
     const ratio=o.w/o.h;
     const form=crownTypes[ratio<.65 ? 1 : ratio>.96 || rng()>.68 ? 0 : 2];
     const nearCenter=Math.hypot(o.x-center.x,o.z-center.z)<36;
@@ -219,7 +220,9 @@ export function buildStreetTrees(root,entries,surface,solids,center,options={}) 
       data.fineRoots.push(windRoot);
       branchesTotal++;
     }
-    for(let limb=0;limb<form.limbs;limb++) {
+    const limbs=Math.round(form.limbs*(.69+.31*detail));
+    const clusters=detail<.55 ? 4 : 6;
+    for(let limb=0;limb<limbs;limb++) {
       const a=yaw+limb*2.399963+rng()*.25;
       const reach=radius*form.reach*(.61+.40*rng());
       const fork=firstFork.clone().lerp(trunk2,.03+.86*rng());
@@ -229,8 +232,8 @@ export function buildStreetTrees(root,entries,surface,solids,center,options={}) 
       const bough=curve(fork,joint,tip);
       tube(data.bark,bough,trunk*(.20+.22*rng()),.009,windRoot,a,{rings:nearCenter ? 13 : 9,sides:7});
       branchesTotal++;
-      for(let cluster=0;cluster<6;cluster++) {
-        const at=.31+cluster*.134;
+      for(let cluster=0;cluster<clusters;cluster++) {
+        const at=.31+cluster*.134*(5/(clusters-1));
         const origin=bough.getPointAt(at);
         const bearing=a+cluster*1.54;
         const span=radius*(.24+.26*rng())*form.spread;
@@ -248,7 +251,7 @@ export function buildStreetTrees(root,entries,surface,solids,center,options={}) 
           twigSegment(from,end,Math.max(.0033,trunk*.039));
           shoots.push({start:from,end,bearing:phi});
         }
-        const blades=nearCenter ? form.density : Math.floor(form.density*.84);
+        const blades=Math.max(9,Math.floor(form.density*(nearCenter ? 1 : .84)*detail));
         for(let i=0;i<blades;i++) {
           const shoot=shoots[i%shoots.length];
           const along=.10+.89*(Math.floor(i/shoots.length)+.72*rng())/Math.ceil(blades/shoots.length);
@@ -257,7 +260,7 @@ export function buildStreetTrees(root,entries,surface,solids,center,options={}) 
           aim.set(Math.cos(spin),.48-.96*rng(),Math.sin(spin)).normalize();
           pose.quaternion.setFromUnitVectors(up,aim);
           pose.rotateY(rng()*tau);
-          const size=(.185+.208*rng())*(.86+.17*radius)*(1.02-.15*along);
+          const size=(.185+.208*rng())*(.86+.17*radius)*(1.02-.15*along)*(1+.25*(1-detail));
           pose.scale.set(size*form.width*(.86+.21*rng()),size,size);
           pose.updateMatrix();
           const leafMatrix=pose.matrix.clone();

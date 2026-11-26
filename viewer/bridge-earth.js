@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { canalBankGLSL } from "./bridge-canal-bed.js";
+import { westBankEarthGLSL } from "./bridge-west-bank.js";
 
 const textureRoot="../data/bridge-finish/earth/";
 const layers=[
@@ -60,6 +61,7 @@ export function createEarthMaterial(origin,load) {
           vec2 q=p-center;
           return vec2(q.x,q.y-skew*q.x-.16*sin(q.x*.61));
         }
+        ${westBankEarthGLSL}
       `)
       .replace("#include <color_fragment>",`#include <color_fragment>
         vec2 pEarth=earthPoint;
@@ -73,9 +75,11 @@ export function createEarthMaterial(origin,load) {
         vec2 landing=earthTrack(pEarth,vec2(-44.6,-50.6),.015);
         float wear=max(max(earthLane(market,14.8,2.29),earthLane(west,7.3,2.15)),
                        max(earthLane(east,7.1,2.12),.66*earthLane(landing,5.1,1.34)));
+        float westWalk=westLane(pEarth);
+        wear=max(wear,westWalk*.93);
         vec2 track=abs(pEarth.x-25.8)<7.5 ? market : pEarth.x<-58. ? west : east;
         float wheelLine=abs(abs(track.y+fray*.27)-(.83+.085*sin(track.x*.56)));
-        float wheel=(1.-smoothstep(.047,.23,wheelLine))*wear;
+        float wheel=(1.-smoothstep(.047,.23,wheelLine))*wear*(1.-westWalk);
         vec2 river=pEarth-earthCanalOrigin;
         float earthMoisture=smoothstep(-1.08,.03,earthBank(river)-abs(river.x))*
           (1.-smoothstep(13.2,16.2,abs(river.y)));
@@ -102,20 +106,34 @@ export function createEarthMaterial(origin,load) {
         vec3 vergeTint=vec3(.295,.248,.175);
         vec3 pathPigment=pathTint*pow(clamp(compact/vec3(.191,.130,.047),.18,2.3),vec3(.66));
         vec3 vergePigment=vergeTint*pow(clamp(verge/vec3(.058,.032,.015),.18,2.3),vec3(.62));
+        float westField=(1.-smoothstep(-70.5,-65.8,pEarth.x))*smoothstep(-40.6,-38.2,pEarth.y);
+        float weeds=westField*(1.-westWalk*.87)*smoothstep(.27,.64,patchVariation*.62+areaVariation*.38);
+        pathPigment=mix(pathPigment,pathTint*(.86+.26*areaVariation),westField*.32);
+        vergePigment=mix(vergePigment,vergeTint*(.82+.29*patchVariation),westField*.41);
         vec3 earthColor=mix(pathPigment,vergePigment,edge);
+        earthColor=mix(earthColor,earthColor*vec3(.71,.86,.63),weeds*.61);
         earthColor*=mix(.88,1.16,areaVariation);
+        float loam=gardenLoam(pEarth,earthNoise(pEarth*16.)-.47);
+        vec3 loamPigment=vec3(.142,.092,.054)*
+          pow(clamp(compact/vec3(.191,.130,.047),.26,2.09),vec3(.52));
+        float cultivation=.94+.08*sin(pEarth.x*42.+3.5*grain)+.15*(patchVariation-.5);
+        earthColor=mix(earthColor,loamPigment*cultivation,loam);
         earthColor*=1.-.24*wheel*(.80+.20*grain);
         earthColor*=mix(vec3(1.),vec3(.66,.71,.75),earthMoisture);
-        diffuseColor.rgb=mix(diffuseColor.rgb,earthColor,earthReady);
+        earthColor=mix(earthColor,vec3(.721,.681,.504),smoothstep(114.,160.,-pEarth.x)*.78);
+        vec3 baseEarth=mix(diffuseColor.rgb,vec3(.32,.26,.164),westField*.52);
+        baseEarth=mix(baseEarth,vec3(.142,.092,.054),loam);
+        diffuseColor.rgb=mix(baseEarth,earthColor,earthReady);
       `)
       .replace("#include <roughnessmap_fragment>",`#include <roughnessmap_fragment>
         float dryRough=mix(mix(compactSurface.b,alternateSurface.b,packedWeight),vergeSurface.b,edge);
-        roughnessFactor=mix(roughnessFactor,clamp(dryRough-.19*wheel-.17*earthMoisture,.54,1.),earthReady);
+        float earthRough=mix(dryRough-.19*wheel-.17*earthMoisture,.92,loam);
+        roughnessFactor=mix(roughnessFactor,clamp(earthRough,.54,1.),earthReady);
       `)
       .replace("#include <normal_fragment_maps>",`#include <normal_fragment_maps>
         vec2 compactRelief=mix(compactSurface.rg*2.-1.,(alternateSurface.rg*2.-1.)*turn,packedWeight);
         vec2 vergeRelief=(vergeSurface.rg*2.-1.)*turn;
-        vec2 earthRelief=mix(compactRelief*.73,vergeRelief*.91,edge)*(1.-.48*wheel);
+        vec2 earthRelief=mix(mix(compactRelief*.73,vergeRelief*.91,edge),compactRelief*.92,loam)*(1.-.48*wheel);
         normal=normalize(normal+mat3(viewMatrix)*vec3(earthRelief.x,0.,earthRelief.y)*earthReady);
       `);
   };

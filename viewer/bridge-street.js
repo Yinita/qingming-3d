@@ -8,6 +8,8 @@ import { riverWorker } from "./bridge-people.js";
 import { createFreightCart } from "./bridge-freight.js";
 import { buildStreetGround } from "./bridge-street-ground.js";
 import { buildStreetWell } from "./bridge-well.js";
+import { buildKitchenGarden } from "./bridge-garden.js";
+import { westBankTrees } from "./bridge-west-bank.js";
 import { bridgeDeckHeight, bridgeRailOffset, buildWoodenBridge, createSurfaceLibrary, detailedBox } from "./bridge-look.js";
 import { canalDepth, canalOrigin } from "./bridge-canal-bed.js";
 import { createStreetCollision, workerHeight, workerRadius } from "./bridge-collision.js";
@@ -595,7 +597,7 @@ export function createStreetScene(scene,objects,anchor,terrain) {
     streetHeight.addThreshold(x,z+depth*.5+.57,width*.79,.94,4379+i*37);
   }
   const housing=buildStreetHouses(root,collisions,surface,objects);
-  const crowns=buildStreetTrees(root,treeObjects,surface,collisions,anchor,{
+  const crowns=buildStreetTrees(root,[...treeObjects,...westBankTrees],surface,collisions,anchor,{
     groundAt:streetHeight,
     registerRoot:streetHeight.addRootSurface,
   });
@@ -604,6 +606,7 @@ export function createStreetScene(scene,objects,anchor,terrain) {
   const market=buildLivingMarket(root,collisions,surface,streetHeight,origin);
   const freight=createFreightCart(root,collisions,surface,streetHeight);
   const well=buildStreetWell(root,collisions,surface,streetHeight);
+  const garden=buildKitchenGarden(root,collisions,surface,streetHeight);
   const {placed,place}=placeResidents(people,collisions,anchor,origin,streetHeight);
   const {sync:syncResidents,updateHeads}=residents(root,placed,surface,streetHeight);
   function registerHouse(object) {
@@ -617,8 +620,9 @@ export function createStreetScene(scene,objects,anchor,terrain) {
     }
     syncResidents();
   }
-  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,freight,livestock,housing,well,
+  return {root,bridge,replacements,collisions,registerHouse,streetHeight,updateHeads,market,freight,livestock,housing,well,garden,
     updateTrees:crowns.update,foliage:crowns.inspect,inspect:()=>({people:placed.filter(p=>!p.hidden).length,
     relocated:placed.filter(p=>!p.hidden&&p.shift>0).length,bridgePeople:placed.filter(p=>!p.hidden&&p.bridge).length,
-    trees:treeObjects.length,houses:buildings.length,props:props+livestock.count,livestock:livestock.count,colliders:collisions.inspect()})};
+    trees:treeObjects.length+westBankTrees.length,houses:buildings.length,props:props+livestock.count,
+    livestock:livestock.count,colliders:collisions.inspect()})};
 }
