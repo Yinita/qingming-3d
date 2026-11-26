@@ -105,6 +105,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   scene.add(root);
   const city=street.collisions;
   const {livestock,market,freight,well,garden}=street;
+  const harvest=garden.harvest;
   const workshop=street.housing.workshop;
   const localColliders=[];
   const plain = color => new THREE.MeshStandardMaterial({ color, roughness: .81 });
@@ -312,6 +313,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     <p class="mission-metrics" id="missionJoinerStatus" hidden></p>
     <p class="mission-metrics" id="missionStockStatus" hidden></p>
     <p class="mission-metrics" id="missionPailStatus" hidden></p>
+    <p class="mission-metrics" id="missionHarvestStatus" hidden></p>
     <div id="missionWellStatus" hidden>
       <span id="missionWellHint"></span>
       <progress id="missionWellHeight" max="1" aria-label="水桶高度"></progress>
@@ -325,6 +327,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       <button id="missionWeather" type="button" aria-keyshortcuts="T" aria-pressed="false">等一场雨 T</button>
       <button id="missionGardenGuide" type="button" hidden aria-pressed="false">指路到菜园</button>
       <button id="missionGarden" type="button" hidden aria-keyshortcuts="E">推开菜园门 E</button>
+      <button id="missionHarvest" type="button" hidden aria-keyshortcuts="E"></button>
       <button id="missionPail" type="button" hidden aria-keyshortcuts="E"></button>
       <button id="missionPailSetDown" type="button" hidden>放下木桶</button>
       <button id="missionStockGuide" type="button" hidden aria-pressed="false">指路到拴驴桩</button>
@@ -464,6 +467,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   const marketGuideButton=byId("missionMarketGuide");
   const stockGuide=byId("missionStockGuide"), stockButton=byId("missionStock");
   const gardenButton=byId("missionGarden"), gardenGuideButton=byId("missionGardenGuide");
+  const harvestButton=byId("missionHarvest"),harvestStatus=byId("missionHarvestStatus");
   const pailButton=byId("missionPail"), pailSetDown=byId("missionPailSetDown"), pailStatus=byId("missionPailStatus");
   const stockRelease=byId("missionStockRelease"), stockStatus=byId("missionStockStatus");
   const wellButton=byId("missionWell"), wellGuideButton=byId("missionWellGuide"), wellLeaveButton=byId("missionWellLeave");
@@ -476,6 +480,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   let state = loadSave();
   well.restore(state.wellWater);
   garden.restore(state.gardenOpen===true);
+  harvest.load(state.gardenHarvest);
   let guideGarden=false, gardenStep=0;
   const gardenRoad=[
     {x:-73.17,z:-38.75,reach:.068},{x:-74.47,z:-38.75,reach:.12},{x:-74.44,z:-35.24,reach:.098},
@@ -677,6 +682,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(guideGarden && (!canUseGarden() || player.x<gardenGate.x+.78 && garden.near(player))) guideGarden=false;
     const toGarden=guideGarden;
     const wateringBed=irrigation.guide(player);
+    const harvestBasket=harvest.held() && !toGarden ?
+      (player.x>gardenGate.x ? gardenRoad[gardenRoad.length-1] : harvest.tray) : null;
     const gardenTurn=gardenRoad[gardenStep];
     if(toGarden && gardenStep<gardenRoad.length-1 && distance(player,gardenTurn)<gardenTurn.reach) gardenStep++;
     if(guideWell && !toWell) guideWell=false;
@@ -690,7 +697,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const atRoom=view==="mission" && !showStart && !restartDialog.open && phase==="delivered" &&
       guideRoom && !teaRoom.atDoor(player) && !teaRoom.contains(player.x,player.z);
     if(passengerCarrier() || teaRoom.chairActive() || inspectingChest || chestFraming>.12 || chestTransfer.action ||
-      selfDelivering() || well.active() || irrigation.locked() || stock.locked() || stock.held() && !toStockBank) {
+      selfDelivering() || well.active() || irrigation.locked() || harvest.locked() || stock.locked() || stock.held() && !toStockBank) {
       groundMarker.visible=beacon.visible=startPillar.visible=false;
       waypoint.hidden=true;
       return;
@@ -699,7 +706,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const stop=ferry.stands[0];
     const atDock=toDock && ferry.nearby(player)>=0;
     groundMarker.visible=view==="mission" && !restartDialog.open && !yard.active() && !atDock &&
-      !backlane.locked() && (wateringBed || toDrain || toCourt || courtGoal || toWell || toStock || toGarden ||
+      !backlane.locked() && (wateringBed || harvestBasket || toDrain || toCourt || courtGoal || toWell || toStock || toGarden ||
         !irrigation.held() && (phase!=="delivered" || atMarket || atRoom || toFreight || toYard));
     beacon.visible=groundMarker.visible;
     const pending=phase==="waiting" && !state.started && !toWell && !toStock && !toGarden;
@@ -710,11 +717,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         distance(player,backstreetGuide[freightGuideStep])<.74) freightGuideStep++;
     const freightAim=toFreight ? freightGoal() : null;
     const aroundFence=toDrain && player.x>-75.39 && player.z<-42.1;
-    const at=wateringBed ?? (toDrain ? (aroundFence ? {x:-74.42,z:drainBridgeApproach.z} : drainBridgeApproach) :
+    const at=wateringBed ?? harvestBasket ?? (toDrain ? (aroundFence ? {x:-74.42,z:drainBridgeApproach.z} : drainBridgeApproach) :
       toCourt ? {x:-79.2,z:drainBridgeApproach.z} : courtGoal ??
       (toStock ? (toStockBank ? stockBank : stockHitch) : toGarden ? gardenRoad[gardenStep] : toWell ? well.approachMarker(player) : toYard ? workyardEntry : freightAim?.point??(atRoom ? teaRoom.entrance : atMarket ? market.visitorPoint : shopper ? market.shopperPosition : toDock ? stop :
       phase==="waiting" ? state.crate : counter)));
-    const x=at.x, z=at.z+(wateringBed || toDrain || toCourt || courtGoal || toWell || toStock || toGarden || toYard || phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
+    const x=at.x, z=at.z+(wateringBed || harvestBasket || toDrain || toCourt || courtGoal || toWell || toStock || toGarden || toYard || phase==="waiting" || atMarket || shopper || toDock || toFreight ? 0 : .83);
     const y=floor(x,z);
     groundMarker.position.set(x,y+.039,z);
     markerGold.material.color.setHex(atMarket ? 0xcbd49b : state.started ? 0xefd99a : 0xffc863);
@@ -753,7 +760,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     waypoint.style.setProperty("--waypoint-angle",
       Math.atan2(py-clampedY,px-clampedX)+"rad");
     const metres=Math.hypot(x-player.x,z-player.z);
-    const target=wateringBed ? "待浇菜畦" : toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" : courtGoal ? courtGoal.label :
+    const target=wateringBed ? "待浇菜畦" : harvestBasket ? (player.x>gardenGate.x ? "回菜园" : "收菜竹筐") :
+      toDrain ? (aroundFence ? "绕至栅栏南端" : "排水沟小桥") : toCourt ? "木料后院" : courtGoal ? courtGoal.label :
       toStock ? (toStockBank ? "石槽北侧" : "拴驴桩") : toGarden ? "菜园" : toWell ? "西岸汲水井" : toYard ? "西岸料场" : freightAim?.label??(atRoom ? "河边茶间" : atMarket ? "蒸糕摊" : shopper ? "采买客" : toDock ? "西岸渡口" : pending ? "任务起点 · 取茶叶箱" :
       phase==="waiting" ? "取茶叶箱" : "茶铺 · 交货处");
     const text=target+" · "+(metres<10 ? metres.toFixed(1) : Math.round(metres))+" 米";
@@ -1088,6 +1096,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     stock.restore();
     garden.restore();
     irrigation.load();
+    harvest.load();
     guideStock=guideGarden=false;
     wellFraming=wellPourLook=stockFraming=0;
     guideMarket=guideFerry=guideRoom=guideFreight=guideYard=guideWell=guideStock=guideGarden=false;
@@ -1130,7 +1139,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
 
   function undo() {
     if(!previous || market.sharing() || passengerCarrier() || freightTransfer || teaRoom.drinking() ||
-      chestTransfer.action || counterDelivery.action || well.active() || stock.held() || irrigation.held() || irrigation.locked()) return;
+      chestTransfer.action || counterDelivery.action || well.active() || stock.held() || irrigation.held() ||
+      irrigation.locked() || harvest.locked()) return;
     resetCounterDelivery();
     closeChest(true);
     yard.release();
@@ -1139,6 +1149,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     stock.restore(state.donkeyWatered===true);
     garden.restore(state.gardenOpen===true);
     irrigation.load(state.irrigation);
+    harvest.load(state.gardenHarvest);
     freightHeld=freightTransfer=null;
     consignment.visible(view==="mission" && state.phase==="delivered");
     restoreMarket();
@@ -1184,7 +1195,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     introShade.dataset.pending=String(awaitingStart());
     labels.inert=awaitingStart() && !restartDialog.open;
     touchPad.visible(view==="mission" && intro.hidden && !restartDialog.open && !freight.active() &&
-      !teaRoom.chairActive() && !well.pouring() && !stock.locked() && !irrigation.locked() && !Number.isFinite(teaShotStart));
+      !teaRoom.chairActive() && !well.pouring() && !stock.locked() && !irrigation.locked() && !harvest.locked() &&
+      !Number.isFinite(teaShotStart));
     touchPad.mode(ferry.active() ? "row" : yard.active() ? "haul" : well.active() ? "well" : "walk");
     const inStreet=view==="mission" && intro.hidden && !restartDialog.open;
     dialogue.activate(inStreet);
@@ -1262,9 +1274,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     canvas.focus({preventScroll:true});
   }
 
-  function freeForStreetWork(withPail=false) {
+  function freeForStreetWork(withGardenCarry=false) {
     return view==="mission" && !showStart && !restartDialog.open && !hasCargo() &&
-      !irrigation.locked() && (withPail || !irrigation.held()) &&
+      !irrigation.locked() && !harvest.locked() && (withGardenCarry || !irrigation.held() && !harvest.held()) &&
       state.phase!=="courier" && !passengerCarrier() && !yard.active() && !backlane.busy() &&
       !teaRoom.chairActive() && !teaRoom.pushing() && !inspectingChest && !chestTransfer.action &&
       !counterDelivery.action && !market.sharing() && !freightTransfer && !Number.isFinite(teaShotStart);
@@ -1275,7 +1287,35 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   function canUseGarden() {return freeForStreetWork(true) && !well.active() && !stock.held();}
 
   const pailActions={fill:"接井水",refill:"再接一桶水",lift:"提起木桶",lower:"放下木桶",pour:"浇这畦菜"};
-  function canUsePail() {return canUseGarden() && journal.panel.hidden;}
+  function canUsePail() {return canUseGarden() && !harvest.held() && journal.panel.hidden;}
+  function canHarvest() {return canUseGarden() && !irrigation.held() && journal.panel.hidden;}
+
+  function showHarvestAction() {
+    const action=canHarvest() ? harvest.option(player,bodyYaw) : null;
+    const count=harvest.count();
+    const held=harvest.held(),locked=harvest.locked();
+    harvestButton.hidden=!action;
+    if(action) {
+      const label=action.type==="leave" ? "放入收菜筐 E" : action.point.kind ? "拔一株葱 E" : "采一棵青菜 E";
+      if(harvestButton.textContent!==label) harvestButton.textContent=label;
+    }
+    harvestStatus.hidden=view!=="mission" || (!held && !locked &&
+      !(count && player.x<gardenGate.x && westBankAccess(player.x,player.z)));
+    if(!harvestStatus.hidden) {
+      const label=locked ? (harvest.stage()==="take" ? "正在采收" : "正在放入收菜筐") :
+        held ? "手中有菜 · 去陶罐旁的竹筐" : `竹筐中有 ${count} 棵菜`;
+      if(harvestStatus.textContent!==label) harvestStatus.textContent=label;
+    }
+  }
+
+  function useHarvest() {
+    const action=canHarvest() ? harvest.option(player,bodyYaw) : null;
+    if(!harvest.start(action,player)) return;
+    clearPlayerControl();
+    if(action.type==="take") livestock.cancel();
+    ui();
+    canvas.focus({preventScroll:true});
+  }
   function showPailActions() {
     const available=canUsePail();
     const choice=available ? irrigation.action(player) : null;
@@ -1752,7 +1792,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(yard.active()) return yardButton;
     if(well.active()) return wellButton.hidden ? null : wellButton;
     if(stock.held()) return stockButton.hidden ? null : stockButton;
-    if(irrigation.locked()) return null;
+    if(irrigation.locked() || harvest.locked()) return null;
+    if(harvest.held()) return [harvestButton,gardenButton].find(button=>!button.hidden)??null;
     if(irrigation.held()) {
       if(!pailButton.hidden && irrigation.action(player)?.type==="pour") return pailButton;
       return [gardenButton,pailButton].find(button=>!button.hidden)??null;
@@ -1762,6 +1803,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(teaRoom.chairActive()) {
       return [drinkButton,roomTeaButton,seatButton].find(button=>!button.hidden)??null;
     }
+    if(!harvestButton.hidden && player.x<gardenGate.x-.96) return harvestButton;
     const visibleCrate=!interactButton.disabled && (state.phase==="waiting" || distance(player,counter)<deliveryReach);
     let crate=visibleCrate ? interactButton : null;
     if(crate && state.phase==="waiting" && !talkButton.hidden) {
@@ -1771,7 +1813,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(courierFacing>.78 && courierFacing>facing(state.crate)+.12) crate=talkButton;
     }
     const workshopPriority=workshopButton.textContent.includes("油灯") ? distance(player,workshop.lampAt)<.63 : true;
-    return [repairButton,timberPorterButton,consignmentButton,ferryButton,freightButton,crate,pailButton,wellButton,stockButton,gardenButton,seatButton,roomTeaButton,doorButton,yardButton,
+    return [repairButton,timberPorterButton,consignmentButton,ferryButton,freightButton,crate,pailButton,wellButton,stockButton,gardenButton,harvestButton,seatButton,roomTeaButton,doorButton,yardButton,
       workshopPriority ? workshopButton : null,joinerButton,workshopButton,
       cakeButton,shareCakeButton,teaButton,talkButton,animalButton,steamerButton,interactButton,mooringButton,pebbleButton]
       .find(control=>control && !control.hidden && !control.disabled)??null;
@@ -1997,6 +2039,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     document.body.classList.toggle("well-working",view==="mission" && well.active());
     document.body.classList.toggle("stock-leading",view==="mission" && stock.held());
     document.body.classList.toggle("pail-handling",view==="mission" && (irrigation.held() || irrigation.locked()));
+    document.body.classList.toggle("crop-handling",view==="mission" && (harvest.held() || harvest.locked()));
     document.body.classList.toggle("chest-moving",view==="mission" && Boolean(chestTransfer.action || selfDelivering()));
     const {objective}=stageOf(state.phase);
     if(status.textContent!==objective) status.textContent=objective;
@@ -2060,6 +2103,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     showStockActions();
     showGardenAction();
     showPailActions();
+    showHarvestAction();
     dialogue.update();
     journal.update(state);
     labels.dataset.phase = state.phase;
@@ -2144,6 +2188,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     view = mode;
     stock.show(mode==="mission");
     if(mode!=="mission") irrigation.load(state.irrigation);
+    if(mode!=="mission") harvest.cancel();
     irrigation.show(mode==="mission");
     weather.show(mode==="mission");
     light.storm(mode==="mission" ? weather.intensity : 0);
@@ -2308,6 +2353,20 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         audio.play("wood",gardenGate.x,gardenGate.z,.135,"gardenGateStop");
       }
       if(gardenEvent==="blocked") hint.textContent="门扇被挡住了。让开门扇，木门就会继续移动。";
+      const gathered=harvest.frame(dt);
+      if(gathered) {
+        remember();
+        state.gardenHarvest=harvest.snapshot();
+        if(gathered.type==="leave" && harvest.count()===1) record(state,"在西岸菜园采菜，放入收菜筐",0);
+        if(gathered.type==="take") hint.textContent=
+          (gathered.kind ? "葱已拔起。" : "青菜已采下。")+"沿石路去陶罐旁，把菜放进竹筐。";
+        else {
+          hint.textContent=`已收好，筐里有 ${harvest.count()} 棵菜。`;
+          audio.play("wood",harvest.tray.x,harvest.tray.z,.13,"gardenBasket");
+        }
+        store();
+        ui();
+      }
       const pailEvent=irrigation.frame(dt);
       if(pailEvent) {
         const filled=irrigation.filled();
@@ -2330,7 +2389,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       }
       const courtLocked=backlane.locked(), workStation=backlane.workStation();
       const pushingDoor=teaRoom.pushing();
-      const input=awaitingStart() || courtLocked || stock.locked() || irrigation.locked() || pushingDoor || teaRoom.drinking() ||
+      const input=awaitingStart() || courtLocked || stock.locked() || irrigation.locked() || harvest.locked() ||
+        pushingDoor || teaRoom.drinking() ||
         chestTransfer.action || selfDelivering() ? noInput : keys;
       if(pushingDoor) {
         const turn=Math.atan2(-Math.sin(player.yaw),Math.cos(player.yaw));
@@ -2348,6 +2408,11 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const turn=irrigation.yaw()-player.yaw;
         player.yaw+=Math.atan2(Math.sin(turn),Math.cos(turn))*(1-Math.exp(-9*dt));
         player.pitch=THREE.MathUtils.damp(player.pitch,-.77,8,dt);
+      }
+      if(harvest.locked() && firstPerson) {
+        const turn=harvest.turn()-player.yaw;
+        player.yaw+=Math.atan2(Math.sin(turn),Math.cos(turn))*(1-Math.exp(-9*dt));
+        player.pitch=THREE.MathUtils.damp(player.pitch,harvest.stage()==="take" ? -.88 : -.65,8,dt);
       }
       const dx = Number(input.has("d") || input.has("arrowright") || input!==noInput && touchPad.move("d")) -
                  Number(input.has("a") || input.has("arrowleft") || input!==noInput && touchPad.move("a"));
@@ -2396,7 +2461,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       side.set(-fwd.z, 0, fwd.x);
       const beforeDepth=passengerCarrier() ? 0 : wadeDepth(player.x,player.z);
       const drag=1-.69*THREE.MathUtils.smoothstep(beforeDepth,.025,.51);
-      const carrying=hasCargo(), handsLoaded=carrying || backlane.loaded() || irrigation.held();
+      const carrying=hasCargo(), handsLoaded=carrying || backlane.loaded() || irrigation.held() || harvest.held();
       const backpedaling=dz<0;
       const pace=stock.held() ? 1.05 : irrigation.held() ? (backpedaling ? .97 : 1.27) : backpedaling ? (handsLoaded ? 1.03 : 1.21) :
         input.has("shift") ? (handsLoaded ? 2.72 : 3.51) : (handsLoaded ? 1.40 : 1.64);
@@ -2513,7 +2578,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
           sweepHorizontal(player,approachX*move,approachZ*move,(x,z)=>canStep(x,z));
           streetVelocity.set((player.x-oldX)/dt,(player.z-oldZ)/dt);
         }
-      } else if(aboard || landed || freightTransfer || stock.locked() || irrigation.locked() || chairBefore || pushingDoor ||
+      } else if(aboard || landed || freightTransfer || stock.locked() || irrigation.locked() || harvest.locked() || chairBefore || pushingDoor ||
         awaitingStart() || courtLocked && !workStation) clearStreetMotion();
       else if(yard.active()) {
         yard.frame(dt,player,bodyYaw,dx,dz,weather.traction(player.x,player.z),standByYard,audio.scrape);
@@ -2573,6 +2638,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       if(well.active()) heading=well.station.yaw;
       if(irrigation.locked()) heading=irrigation.bodyYaw();
       else if(firstPerson && irrigation.held()) heading=player.yaw;
+      if(harvest.locked()) heading=harvest.heading();
+      else if(firstPerson && harvest.held()) heading=player.yaw;
       if(stock.locked()) {
         heading=Math.atan2(player.x-stock.dock.x,player.z-stock.dock.z+.33);
         const turn=heading-player.yaw;
@@ -2621,10 +2688,10 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       const lookPitch=player.pitch+wellLookPitch*wellFraming;
       const cameraYaw=streetCamera.followYaw(lookYaw,dt,firstPerson || aboard || chairBefore);
       const seatFov=2*THREE.MathUtils.radToDeg(Math.atan(Math.tan(Math.PI*27/180)/camera.aspect));
-      const pailView=firstPerson && (irrigation.held() || irrigation.locked());
+      const closeWork=firstPerson && (irrigation.held() || irrigation.locked() || harvest.held() || harvest.locked());
       const lens=firstPerson && well.operating() ? clamp(seatFov+10*wellPourLook,70,104) :
         firstPerson && yard.active() ? clamp(seatFov,70,96) :
-        pailView ? clamp(seatFov+10,74,97) :
+        closeWork ? clamp(seatFov+10,74,97) :
         firstPerson && stockFraming>.005 ? lerp(58,clamp(seatFov+1,65,100),stockFraming) :
         firstPerson && aboard ? 70 : firstPerson && chairBefore ?
         clamp(seatFov,58,100) : firstPerson ? lerp(58,clamp(seatFov,71,91),sawFraming) : 58;
@@ -2639,13 +2706,13 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
         const yaw=carrier===ferry ? ferry.viewYaw(player.yaw) : lookYaw+(doorLook?.yaw??0)-.39*wellPourLook;
         const haul=yard.gripWeight();
         const ferryLook=carrier===ferry ? ferry.gangwayPitch() : 0;
-        const pitch=lookPitch-.048*seat-.60*haul-(pailView && !irrigation.locked() ? .16 : 0)+
+        const pitch=lookPitch-.048*seat-.60*haul-(closeWork && !irrigation.locked() && !harvest.locked() ? .16 : 0)+
           (doorLook?.pitch??0)+teaRoom.drinkLook()+ferryLook;
         const eyeOffset=.083*seat+.082*haul-.025*sawFraming+.079*wellPourLook-(doorLook?.forward??0)+
           (chairBefore && camera.aspect<.70 ? .093*teaRoom.chair.weight : 0);
         const lateral=carrier===freight ? .28*seat : -.064*sawFraming+.10*wellPourLook;
         camera.position.set(player.x+eyeOffset*Math.sin(yaw)+lateral*Math.cos(yaw),
-          cameraY+1.57-.020*sawFraming-.74*irrigation.crouch(),
+          cameraY+1.57-.020*sawFraming-.74*(irrigation.crouch()+harvest.crouch()),
           player.z+eyeOffset*Math.cos(yaw)-lateral*Math.sin(yaw));
         camera.quaternion.setFromEuler(new THREE.Euler(pitch,yaw,0,"YXZ"));
         if(stockFraming>.005) {
@@ -2743,6 +2810,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       showStockActions();
       showGardenAction();
       showPailActions();
+      showHarvestAction();
       well.render(elapsed);
     }
     const animalGesture=livestock.gesture(livestockVisitor());
@@ -2752,16 +2820,16 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     for(let i=0;i<2;i++) playerBody.limbs.arms[i].visible=pushingHand===undefined || i===pushingHand;
     showGreetingArms(view==="mission" && firstPerson && (!!animalGesture || market.sharing() || riding ||
       yard.active() || stock.held() || irrigation.held() || irrigation.locked() || garden.reach(player,bodyYaw)>.01 ||
-      well.operating() || backlane.busy() || teaRoom.pushing() || teaRoom.drinking()));
+      harvest.held() || harvest.locked() || well.operating() || backlane.busy() || teaRoom.pushing() || teaRoom.drinking()));
     playerBody.figure.visible = (view === "mission" && ((!firstPerson && !cameraClose && chestFraming<.40) ||
         deliveryFraming>.36)) ||
       handsOnly || (view==="missionScroll" && (riding || state.phase==="carrying"));
     const seated=view==="mission" && teaRoom.chairActive();
     const transfer=chestTransfer.action;
     const crouch=transfer ? chestTransfer.pose.crouch : 0;
-    const pailCrouch=view==="mission" ? irrigation.crouch() : 0;
+    const gardenCrouch=view==="mission" ? irrigation.crouch()+harvest.crouch() : 0;
     const bodyY=riding ? carrier.rider.y : seated ? teaRoom.chair.y :
-      view==="mission" ? gait.rootHeight(player.x,player.z)-crouch-pailCrouch : floor(player.x,player.z);
+      view==="mission" ? gait.rootHeight(player.x,player.z)-crouch-gardenCrouch : floor(player.x,player.z);
     playerBody.figure.position.set(player.x,bodyY,player.z);
     playerBody.figure.rotation.y=bodyYaw;
     playerBody.moisture.set(playerBody.figure.position.y,wetLine,dampness);
@@ -2775,8 +2843,8 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     const haulWeight=view==="mission" && yard.active() ? yard.gripWeight() : 0;
     playerBody.torsoPivot.position.z=-.050*haulWeight;
     playerBody.torsoPivot.rotation.x-=.22*haulWeight;
-    playerBody.torsoPivot.position.z-=.27*pailCrouch;
-    playerBody.torsoPivot.rotation.x-=1.05*pailCrouch;
+    playerBody.torsoPivot.position.z-=.27*gardenCrouch;
+    playerBody.torsoPivot.rotation.x-=1.05*gardenCrouch;
     if(view==="mission" && !riding) {
       if(seated) {
         const weight=teaRoom.chair.weight;
@@ -2821,8 +2889,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       backlane.pose(playerBody);
       well.pose(playerBody);
       stock.pose(playerBody);
-      garden.pose(playerBody,player,bodyYaw,irrigation.held() ? 0 : 1);
+      garden.pose(playerBody,player,bodyYaw,irrigation.held() || harvest.held() ? 0 : 1);
       irrigation.pose(playerBody,elapsed,streetVelocity.length(),dt);
+      harvest.pose(playerBody);
     }
     if(view==="mission") {
       teaRoom.poseDoor(playerBody);
@@ -3013,6 +3082,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     clearPlayerControl();
     startMission();
     hint.textContent=state.phase==="waiting" ? "任务已开始。走到金色「取茶叶箱」标记处，按 E 拿箱。" : "";
+    if(harvest.held()) setGardenGuide(true);
     ui();
     markObjective();
     canvas.focus({preventScroll:true});
@@ -3021,6 +3091,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   continueButton.onclick=()=>{
     audio.unlock();
     showStart=false;
+    if(harvest.held()) setGardenGuide(true);
     ui();
     canvas.focus({preventScroll:true});
   };
@@ -3068,6 +3139,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
   repairButton.onclick=repairDrain;
   timberPorterButton.onclick=talkToTimberPorter;
   gardenButton.onclick=useGarden;
+  harvestButton.onclick=useHarvest;
   pailButton.onclick=()=>usePail();
   pailSetDown.onclick=()=>usePail(true);
   function setGardenGuide(enabled) {
@@ -3219,6 +3291,9 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
     if(irrigation.locked() && !["KeyT","KeyV"].includes(e.code)) return;
     if(irrigation.held() && e.code==="Escape") {usePail(true);return;}
     if(irrigation.held() && !["KeyT","KeyV","KeyJ","Tab"].includes(e.code)) return;
+    if(harvest.locked() && e.code==="Escape") {harvest.cancel();ui();return;}
+    if(harvest.locked() && !["KeyT","KeyV"].includes(e.code)) return;
+    if(harvest.held() && !["KeyT","KeyV","KeyJ","Tab"].includes(e.code)) return;
     if(yard.active() && e.code==="Escape") {useYard();return;}
     if(yard.active() && !["KeyT","KeyV","Tab"].includes(e.code)) return;
     if(e.code==="KeyT" && !e.ctrlKey && !e.metaKey && !e.altKey) weatherButton.click();
@@ -3312,6 +3387,7 @@ export function createBridgeMission({ scene, camera, renderer, ambient, sun, gro
       well:{...well.inspect(),station:well.station},
       stock:{...stock.inspect(),home:stock.home,dock:stock.dock,bank:stockBank},
       garden:garden.inspect(),
+      harvest:harvest.inspect(),
       irrigation:irrigation.inspect(),
       walkable: canStep(player.x,player.z), drawn: root.visible }),
   };

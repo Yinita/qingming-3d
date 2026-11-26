@@ -185,6 +185,7 @@
   body.stock-leading #missionHud > .mission-actions:has(#missionExit),
   body.stock-leading #missionHud > .mission-actions button:not(#missionCamera):not(#missionStockRelease) { display:none; }
   body.pail-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionPail):not(#missionPailSetDown):not(#missionGarden):not(#missionGardenGuide) { display:none; }
+  body.crop-handling #missionHud > .mission-actions button:not(#missionCamera):not(#missionWeather):not(#missionHarvest):not(#missionGarden):not(#missionGardenGuide):not(#missionUndo) { display:none; }
   body.stock-leading #missionHud :is(.mission-title, #missionProgress, #missionSteps, #missionObjective,
     .mission-metrics:not(#missionStockStatus), #missionEconomy, #missionSpeech, .mission-controls) { display:none; }
   @media (max-width:760px), (max-height:525px) {
@@ -264,7 +265,7 @@
   "./bridge-timber-gate.js": "./bridge-timber-gate.js?v=146",
   "./bridge-timber-porter.js": "./bridge-timber-porter.js?v=146",
   "./bridge-workyard.js": "./bridge-workyard.js?v=143",
-  "./bridge-mission.js": "./bridge-mission.js?v=165",
+  "./bridge-mission.js": "./bridge-mission.js?v=166",
   "./bridge-street-camera.js": "./bridge-street-camera.js?v=161",
   "./bridge-tea-chest.js": "./bridge-tea-chest.js?v=159",
   "./bridge-chest-transfer.js": "./bridge-chest-transfer.js?v=159",
@@ -301,7 +302,9 @@
   "./bridge-steamer.js": "./bridge-steamer.js?v=122",
   "./bridge-touch.js": "./bridge-touch.js?v=162",
   "./bridge-stock-lead.js": "./bridge-stock-lead.js?v=163",
-  "./bridge-garden.js": "./bridge-garden.js?v=165",
+  "./bridge-garden.js": "./bridge-garden.js?v=166",
+  "./bridge-crops.js": "./bridge-crops.js?v=166",
+  "./bridge-harvest.js": "./bridge-harvest.js?v=166",
   "./bridge-irrigation.js": "./bridge-irrigation.js?v=165",
   "./bridge-west-bank.js": "./bridge-west-bank.js?v=165",
   "./bridge-well.js": "./bridge-well.js?v=165",
@@ -377,7 +380,7 @@
     <button id="bMissionRestart" type="button" aria-haspopup="dialog">重置任务</button>
   </div>
 </nav>
-<div id="seal">入卷 v1.65</div>
+<div id="seal">入卷 v1.66</div>
 <script id="sceneEntry" type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -813,7 +816,7 @@ renderer.setAnimationLoop(now => {
   const camPos = cam.position;
   if(street.root.visible) street.updateTrees(cam,now*.001);
   if(street.root.visible && !mission?.restartOpen) {
-    street.garden.breeze(now*.001);
+    street.garden.breeze(now*.001,camPos);
     const {x,y,z}=walk.pos;
     const observer=mode==="walk" ? {x,y:y-1.54,z} : mission?.livestockVisitor();
     street.livestock.update(dt,now*.001,camPos,observer);

@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { circleTouchesBox,sweepYaw,workerRadius } from "./bridge-collision.js";
+import { createKitchenCrops } from "./bridge-crops.js";
+import { createGardenHarvest } from "./bridge-harvest.js";
 import { detailedBox } from "./bridge-look.js";
 import { cropBeds,gardenBounds,gardenGate,vergeEdge } from "./bridge-west-bank.js";
 
-const {clamp,damp,lerp,smoothstep}=THREE.MathUtils;
+const {damp,lerp,smoothstep}=THREE.MathUtils;
 const {west,east,north,south}=gardenBounds;
 
 function seedFrom(state) {
@@ -23,112 +25,12 @@ function installBatch(parent,parts,material,name) {
   parent.add(mesh);
 }
 
-function leafGeometry(wide) {
-  const p=[],color=[],ix=[];
-  const rows=8;
-  for(let i=0;i<=rows;i++) {
-    const t=i/rows;
-    const shape=Math.sin(Math.PI*t)**(wide ? .63 : .83);
-    const width=wide ? shape*.244*(.94+.06*Math.cos(t*37))+.002 : .027*shape+.004*(1-t);
-    const arc=wide ? .77*t-.33*t*t+.062*Math.sin(Math.PI*t) : 1.05*t-.13*t*t;
-    for(let side=-1;side<=1;side++) {
-      p.push(side*width,arc- Math.abs(side)*shape*.082,t*(wide ? 1 : .35));
-      const light=.56+.24*t+.21*Number(side===0)-.047*side;
-      color.push(light,light*(1.012+.048*t),light*.920);
-    }
-    if(i) for(let j=0;j<2;j++) {
-      const a=(i-1)*3+j,b=a+3;
-      ix.push(a,b,a+1,a+1,b,b+1);
-    }
-  }
-  const mesh=new THREE.BufferGeometry();
-  mesh.setIndex(ix);
-  mesh.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
-  mesh.setAttribute("color",new THREE.Float32BufferAttribute(color,3));
-  mesh.computeVertexNormals();
-  return mesh;
-}
-
-function kitchenCrops(parent,height) {
-  const random=seedFrom(33286), rows=[[],[]];
-  const tones=[[0x596c38,0x748252,0x668044,0x879365],[0x5c764f,0x718962,0x5d805a,0x899774]];
-  for(const bed of cropBeds) {
-    const across=bed.wide ? 2 : 3, count=Math.floor(bed.length/(bed.wide ? .29 : .238));
-    for(let i=0;i<count;i++) for(let j=0;j<across;j++) {
-      if(random()<.04) continue;
-      const x=bed.x+(j-(across-1)*.5)*(bed.wide ? .27 : .195)+(random()-.5)*.091;
-      const z=bed.z+((i+.5)/count-.5)*bed.length+(random()-.5)*.068;
-      const variety=Number(!bed.wide);
-      const heightAt=height(x,z)+.003;
-      const fan=bed.wide ? 10 : 6;
-      for(let k=0;k<fan;k++) {
-        const leafScale=bed.wide ? .165+.142*random() : .23+.18*random();
-        const direction=k*2.399963+random()*.31;
-        rows[variety].push([x,heightAt,z,direction,leafScale,.60+.58*random(),tones[variety][k%tones[variety].length]]);
-      }
-    }
-  }
-  const edges=[
-    [west-.26,south,west-.63,north+.42],
-    [west,north+.24,east,north+.44],
-    [west,south-.35,east-.20,south-.58],
-    [east+.30,north+.22,vergeEdge-.21,north+.51],
-  ];
-  for(const [x,z,toX,toZ] of edges) {
-    const length=Math.hypot(toX-x,toZ-z);
-    for(let at=.22;at<length;at+=.11+.42*random()) {
-      if(random()<.27) continue;
-      const nx=lerp(x,toX,at/length)+(random()-.5)*.33;
-      const nz=lerp(z,toZ,at/length)+(random()-.5)*.41;
-      const y=height(nx,nz);
-      for(let blade=0;blade<5;blade++) {
-        rows[1].push([nx,y,nz,blade*1.923+random(),.063+.168*random()**1.67,
-          .47+.58*random(),blade%3===0 ? 0x9a8a5d : 0x758055]);
-      }
-    }
-  }
-  const pose=new THREE.Object3D(), pigment=new THREE.Color();
-  const leaf=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:.88});
-  const shadow=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,side:THREE.DoubleSide});
-  const time={value:0};
-  for(const material of [leaf,shadow]) {
-    material.customProgramCacheKey=()=>"kitchen-garden-leaf-wind";
-    material.onBeforeCompile=shader=>{
-      shader.uniforms.cropTime=time;
-      shader.vertexShader=shader.vertexShader.replace("#include <common>","#include <common>\nuniform float cropTime;")
-        .replace("#include <begin_vertex>",`#include <begin_vertex>
-          vec2 rootPoint=instanceMatrix[3].xz;
-          float flex=pow(clamp(max(position.y,position.z),0.,1.),1.6);
-          float gust=sin(cropTime*1.24+dot(rootPoint,vec2(1.28,.91)));
-          transformed.x+=flex*(.065*gust+.023*sin(cropTime*3.55+rootPoint.y*2.4));
-          transformed.z+=flex*.050*sin(cropTime*1.93+rootPoint.x*.793);
-        `);
-    };
-  }
-  rows.forEach((entries,kind)=>{
-    const plants=new THREE.InstancedMesh(leafGeometry(kind===0),leaf,entries.length);
-    plants.name=kind===0 ? "Kitchen greens with curved leaves" : "Kitchen garden scallion rows";
-    plants.castShadow=plants.receiveShadow=true;
-    plants.customDepthMaterial=shadow;
-    entries.forEach(([x,y,z,rotation,size,stretch,color],i)=>{
-      pose.position.set(x,y,z);
-      pose.rotation.set(0,rotation,0);
-      pose.scale.set(size,size*stretch,size);
-      pose.updateMatrix();
-      plants.setMatrixAt(i,pose.matrix);
-      plants.setColorAt(i,pigment.setHex(color));
-    });
-    plants.computeBoundingSphere();
-    parent.add(plants);
-  });
-  return seconds=>{time.value=seconds;};
-}
-
 export function buildKitchenGarden(root,city,surface,height) {
   const group=new THREE.Group();
   group.name="West bank kitchen garden";
   root.add(group);
-  const breeze=kitchenCrops(group,height);
+  const crops=createKitchenCrops(group,height);
+  const harvest=createGardenHarvest(group,city,surface,height,crops);
   const timber=surface("rail-wood",0xb59b74,.83,.91);
   const reed=surface("tea-wood",0xab9069,.66,.88);
   const stone=surface("worn-stone",0xc0b69c,.91,.96);
@@ -296,7 +198,7 @@ export function buildKitchenGarden(root,city,surface,height) {
     wrist.set(.11,angle+.22,.14,"YXZ");
     person.graspProp(hand,grip,turnFrame.setFromEuler(wrist),amount,.60);
   }
-  return {near,use,frame,pose,reach,breeze,
+  return {near,use,frame,pose,reach,breeze:crops.breeze,harvest,
     restore(open=false){target=open ? opens : 0;blocked=false;sync(target);},
     opened:()=>angle===opens,
     name:()=>target===0 ? "推开菜园门" : "合上菜园门",
